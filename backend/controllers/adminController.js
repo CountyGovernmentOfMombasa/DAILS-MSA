@@ -1,0 +1,352 @@
+const pool = require('../config/db');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+const AdminUser = require('../models/AdminUser'); // Changed from adminUserModel to AdminUser
+
+exports.getAllDeclarations = async (req, res) => {
+    try {
+        const [declarations] = await pool.query(`
+            SELECT 
+                d.*,
+                u.first_name,
+                u.last_name,
+                u.payroll_number,
+                u.email
+            FROM declarations d
+            JOIN users u ON d.user_id = u.id
+            ORDER BY d.declaration_date DESC
+        `);
+        
+        return res.json({
+            success: true,
+            data: declarations
+        });
+    } catch (error) {
+        console.error('Get all declarations error:', error);
+        return res.status(500).json({ 
+            success: false,
+            message: 'Server error while fetching all declarations',
+            error: error.message 
+        });
+    }
+};
+
+exports.adminLogin = async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({ message: 'Username and password are required' });
+    }
+
+    // Find admin user in database
+    const admin = await AdminUser.findByUsername(username);
+    
+    if (!admin) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    // Verify password
+    const isValidPassword = await admin.verifyPassword(password);
+    
+    if (!isValidPassword) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    // Update last login
+    await admin.updateLastLogin();
+
+    // Generate admin token
+    const adminToken = jwt.sign(
+      { 
+        adminId: admin.id, 
+        username: admin.username, 
+        role: admin.role,
+        isAdmin: true
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '8h' }
+    );
+
+    res.json({
+      message: 'Admin login successful',
+      adminToken,
+      admin: admin.toJSON()
+    });
+
+  } catch (error) {
+    console.error('Admin login error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.verifyAdmin = async (req, res) => {
+  try {
+    // Get fresh admin data from database
+    const admin = await AdminUser.findById(req.admin.adminId);
+    
+    if (!admin) {
+      return res.status(401).json({ message: 'Admin not found' });
+    }
+
+    res.json({
+      message: 'Admin verified',
+      admin: admin.toJSON()
+    });
+  } catch (error) {
+    console.error('Admin verification error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.getAllUsers = async (req, res) => {
+  try {
+    const { page = 1, limit = 50, emailFilter = 'all' } = req.query;
+    const offset = (page - 1) * limit;
+
+    let whereClause = '';
+    if (emailFilter === 'with-email') {
+      whereClause = 'WHERE email IS NOT NULL AND email != ""';
+    } else if (emailFilter === 'without-email') {
+      whereClause = 'WHERE email IS NULL OR email = ""';
+    }
+
+    // Get total count
+    const [countResult] = await pool.query(`
+      SELECT COUNT(*) as total FROM users ${whereClause}
+    `);
+    const total = countResult[0].total;
+
+    // Get users with pagination
+    const [users] = await pool.query(`
+      SELECT id, payroll_number, first_name, last_name, email, department, birthdate
+      FROM users 
+      ${whereClause}
+      ORDER BY payroll_number
+      LIMIT ? OFFSET ?
+    `, [parseInt(limit), parseInt(offset)]);
+
+    res.json({
+      users,
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      totalPages: Math.ceil(total / limit)
+    });
+
+  } catch (error) {
+    console.error('Get all users error:', error);
+    res.status(500).json({ message: 'Server error while fetching users' });
+  }
+};
+
+exports.updateUserEmail = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
+
+    const [result] = await pool.query(
+      'UPDATE users SET email = ? WHERE id = ?',
+      [email, userId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.json({ message: 'Email updated successfully' });
+
+  } catch (error) {
+    console.error('Update user email error:', error);
+    res.status(500).json({ message: 'Server error while updating email' });
+  }
+};
+
+exports.bulkUpdateEmails = async (req, res) => {
+  try {
+    const { userIds, emailTemplate } = req.body;
+
+    if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({ message: 'User IDs array is required' });
+    }
+
+    if (!emailTemplate) {
+      return res.status(400).json({ message: 'Email template is required' });
+    }
+
+    let updated = 0;
+
+    for (const userId of userIds) {
+      // Get user data for template replacement
+      const [userResult] = await pool.query(
+        'SELECT first_name, last_name, payroll_number FROM users WHERE id = ?',
+        [userId]
+      );
+
+      if (userResult.length > 0) {
+        const user = userResult[0];
+        let email = emailTemplate
+          .replace(/{first_name}/g, user.first_name.toLowerCase())
+          .replace(/{last_name}/g, user.last_name.toLowerCase())
+          .replace(/{payroll}/g, user.payroll_number);
+
+        await pool.query(
+          'UPDATE users SET email = ? WHERE id = ?',
+          [email, userId]
+        );
+        updated++;
+      }
+    }
+
+    res.json({ 
+      message: `Successfully updated ${updated} email addresses`,
+      updated 
+    });
+
+  } catch (error) {
+    console.error('Bulk update emails error:', error);
+    res.status(500).json({ message: 'Server error while updating emails' });
+  }
+};
+
+// Admin management functions
+exports.getAllAdmins = async (req, res) => {
+  try {
+    const admins = await AdminUser.getAllActive();
+    res.json({
+      success: true,
+      data: admins
+    });
+  } catch (error) {
+    console.error('Get all admins error:', error);
+    res.status(500).json({ message: 'Server error while fetching admins' });
+  }
+};
+
+exports.createAdmin = async (req, res) => {
+  try {
+    const { username, password, email, role, first_name, last_name } = req.body;
+    
+    if (!username || !password) {
+      return res.status(400).json({ message: 'Username and password are required' });
+    }
+
+    const adminData = {
+      username,
+      password,
+      email,
+      role: role || 'hr_admin',
+      first_name,
+      last_name,
+      created_by: req.admin.adminId
+    };
+
+    const newAdmin = await AdminUser.create(adminData);
+    
+    res.status(201).json({
+      success: true,
+      message: 'Admin created successfully',
+      data: newAdmin.toJSON()
+    });
+
+  } catch (error) {
+    console.error('Create admin error:', error);
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ message: 'Username already exists' });
+    }
+    res.status(500).json({ message: 'Server error while creating admin' });
+  }
+};
+
+exports.updateAdmin = async (req, res) => {
+  try {
+    const { adminId } = req.params;
+    const { email, role, first_name, last_name, is_active } = req.body;
+
+    const admin = await AdminUser.findById(adminId);
+    if (!admin) {
+      return res.status(404).json({ message: 'Admin not found' });
+    }
+
+    const updatedAdmin = await admin.update({
+      email,
+      role,
+      first_name,
+      last_name,
+      is_active
+    });
+
+    res.json({
+      success: true,
+      message: 'Admin updated successfully',
+      data: updatedAdmin.toJSON()
+    });
+
+  } catch (error) {
+    console.error('Update admin error:', error);
+    res.status(500).json({ message: 'Server error while updating admin' });
+  }
+};
+
+exports.deleteAdmin = async (req, res) => {
+  try {
+    const { adminId } = req.params;
+
+    // Prevent self-deletion
+    if (parseInt(adminId) === req.admin.adminId) {
+      return res.status(400).json({ message: 'Cannot delete your own account' });
+    }
+
+    const admin = await AdminUser.findById(adminId);
+    if (!admin) {
+      return res.status(404).json({ message: 'Admin not found' });
+    }
+
+    await admin.deactivate();
+
+    res.json({
+      success: true,
+      message: 'Admin deactivated successfully'
+    });
+
+  } catch (error) {
+    console.error('Delete admin error:', error);
+    res.status(500).json({ message: 'Server error while deleting admin' });
+  }
+};
+
+exports.changeAdminPassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Current and new passwords are required' });
+    }
+
+    const admin = await AdminUser.findById(req.admin.adminId);
+    if (!admin) {
+      return res.status(404).json({ message: 'Admin not found' });
+    }
+
+    // Verify current password
+    const isValidPassword = await admin.verifyPassword(currentPassword);
+    if (!isValidPassword) {
+      return res.status(400).json({ message: 'Current password is incorrect' });
+    }
+
+    await admin.updatePassword(newPassword);
+
+    res.json({
+      success: true,
+      message: 'Password updated successfully'
+    });
+
+  } catch (error) {
+    console.error('Change admin password error:', error);
+    res.status(500).json({ message: 'Server error while changing password' });
+  }
+};
