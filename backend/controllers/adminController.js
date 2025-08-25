@@ -4,31 +4,47 @@ const bcrypt = require('bcryptjs');
 const AdminUser = require('../models/AdminUser'); // Changed from adminUserModel to AdminUser
 
 exports.getAllDeclarations = async (req, res) => {
-    try {
-        const [declarations] = await pool.query(`
-            SELECT 
-                d.*,
-                u.first_name,
-                u.last_name,
-                u.payroll_number,
-                u.email
-            FROM declarations d
-            JOIN users u ON d.user_id = u.id
-            ORDER BY d.declaration_date DESC
-        `);
-        
-        return res.json({
-            success: true,
-            data: declarations
-        });
-    } catch (error) {
-        console.error('Get all declarations error:', error);
-        return res.status(500).json({ 
-            success: false,
-            message: 'Server error while fetching all declarations',
-            error: error.message 
-        });
+  try {
+    const [declarations] = await pool.query(`
+      SELECT 
+        d.*,
+        u.first_name,
+        u.last_name,
+        u.payroll_number,
+        u.email
+      FROM declarations d
+      JOIN users u ON d.user_id = u.id
+      ORDER BY d.declaration_date DESC
+    `);
+
+    // For each declaration, fetch spouses and children
+    const declarationIds = declarations.map(d => d.id);
+    let spouses = [];
+    let children = [];
+    if (declarationIds.length > 0) {
+      [spouses] = await pool.query(`SELECT * FROM spouses WHERE declaration_id IN (?)`, [declarationIds]);
+      [children] = await pool.query(`SELECT * FROM children WHERE declaration_id IN (?)`, [declarationIds]);
     }
+
+    // Attach spouses and children to each declaration
+    const data = declarations.map(declaration => ({
+      ...declaration,
+      spouses: spouses.filter(s => s.declaration_id === declaration.id),
+      children: children.filter(c => c.declaration_id === declaration.id)
+    }));
+
+    return res.json({
+      success: true,
+      data
+    });
+  } catch (error) {
+    console.error('Get all declarations error:', error);
+    return res.status(500).json({ 
+      success: false,
+      message: 'Server error while fetching all declarations',
+      error: error.message 
+    });
+  }
 };
 
 exports.adminLogin = async (req, res) => {
@@ -230,33 +246,44 @@ exports.getAllAdmins = async (req, res) => {
 exports.createAdmin = async (req, res) => {
   try {
     const { username, password, email, role, first_name, last_name } = req.body;
-    
-    if (!username || !password) {
-      return res.status(400).json({ message: 'Username and password are required' });
+    // Validate required fields
+    if (!username || !password || !first_name || !last_name) {
+      return res.status(400).json({ message: 'Username, password, first name, and last name are required.' });
     }
-
+    // Validate role
+    const allowedRoles = ['super_admin', 'hr_admin', 'finance_admin'];
+    const safeRole = role && allowedRoles.includes(role) ? role : 'hr_admin';
+    // Prepare admin data
     const adminData = {
       username,
       password,
       email,
-      role: role || 'hr_admin',
+      role: safeRole,
       first_name,
       last_name,
       created_by: req.admin.adminId
     };
-
     const newAdmin = await AdminUser.create(adminData);
-    
+
+    // Send notification email
+    const sendEmail = require('../util/sendEmail');
+    const adminHtml = `<!DOCTYPE html><html><body style=\"font-family: Arial, sans-serif; background: #f7f7f7; padding: 20px;\"><div style=\"max-width: 500px; margin: auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #eee; padding: 24px;\"><h2 style=\"color: #2a7ae2;\">WDP Admin Account Created</h2><p>Dear <strong>${first_name}</strong>,</p><p>Your admin account has been successfully created. You now have access to the WDP Employee Declaration Portal with administrative privileges.</p><p style=\"margin-top: 24px;\">Best regards,<br><strong>WDP Team</strong></p><hr><small style=\"color: #888;\">This is an automated message. Please do not reply.</small></div></body></html>`;
+    await sendEmail({
+      to: email,
+      subject: 'Your WDP Admin Account Has Been Created',
+      text: `Hello ${first_name},\nYour admin account has been created.`,
+      html: adminHtml
+    });
+
     res.status(201).json({
       success: true,
       message: 'Admin created successfully',
       data: newAdmin.toJSON()
     });
-
   } catch (error) {
     console.error('Create admin error:', error);
     if (error.code === 'ER_DUP_ENTRY') {
-      return res.status(400).json({ message: 'Username already exists' });
+      return res.status(400).json({ message: 'Username or email already exists.' });
     }
     res.status(500).json({ message: 'Server error while creating admin' });
   }
@@ -266,26 +293,29 @@ exports.updateAdmin = async (req, res) => {
   try {
     const { adminId } = req.params;
     const { email, role, first_name, last_name, is_active } = req.body;
-
+    // Validate role
+    const allowedRoles = ['super_admin', 'hr_admin', 'finance_admin'];
+    const safeRole = role && allowedRoles.includes(role) ? role : undefined;
+    // Validate required fields
+    if (!first_name || !last_name) {
+      return res.status(400).json({ message: 'First name and last name are required.' });
+    }
     const admin = await AdminUser.findById(adminId);
     if (!admin) {
       return res.status(404).json({ message: 'Admin not found' });
     }
-
     const updatedAdmin = await admin.update({
       email,
-      role,
+      role: safeRole,
       first_name,
       last_name,
       is_active
     });
-
     res.json({
       success: true,
       message: 'Admin updated successfully',
       data: updatedAdmin.toJSON()
     });
-
   } catch (error) {
     console.error('Update admin error:', error);
     res.status(500).json({ message: 'Server error while updating admin' });

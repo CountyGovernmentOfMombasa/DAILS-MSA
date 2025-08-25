@@ -11,8 +11,13 @@ const Declaration = {
       assets,
       liabilities,
       other_financial_info,
-      signature_path
+      signature_path,
+      status = 'pending' // default
     } = declarationData;
+
+    // Ensure assets and liabilities are stored as JSON strings if needed
+    const assetsJson = (typeof assets === 'object') ? JSON.stringify(assets) : assets;
+    const liabilitiesJson = (typeof liabilities === 'object') ? JSON.stringify(liabilities) : liabilities;
 
     const [result] = await pool.query(
       `INSERT INTO declarations (
@@ -23,44 +28,60 @@ const Declaration = {
         assets,
         liabilities,
         other_financial_info,
-        signature_path
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        signature_path,
+        status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         user_id,
         marital_status,
         declaration_date,
         annual_income,
-        assets,
-        liabilities,
+        assetsJson,
+        liabilitiesJson,
         other_financial_info,
-        signature_path
+        signature_path,
+        status
       ]
     );
 
-    return result.insertId;
+    // Return the full declaration including created_at and updated_at
+    const [rows] = await pool.query(
+      'SELECT * FROM declarations WHERE id = ?',
+      [result.insertId]
+    );
+    return rows[0];
   },
 
   // Create spouse records
   async createSpouses(declarationId, spouses) {
     if (!spouses || spouses.length === 0) return;
-
-    const values = spouses.map(spouse => [
-      declarationId,
-      spouse.full_name,
-      spouse.birthdate,
-      spouse.occupation,
-      spouse.employer,
-      spouse.annual_income
-    ]);
-
+    // Accept financials from spouse objects if present
+    const values = spouses.map(spouse => {
+      const fullName = spouse.full_name || `${spouse.first_name || ''} ${spouse.last_name || ''}`.trim();
+      // Accept financials if present
+      return [
+        declarationId,
+        spouse.first_name,
+        spouse.last_name,
+        fullName,
+        spouse.occupation,
+        spouse.annual_income ? JSON.stringify(spouse.annual_income) : '[]',
+        spouse.assets ? JSON.stringify(spouse.assets) : '[]',
+        spouse.liabilities ? JSON.stringify(spouse.liabilities) : '[]',
+        spouse.other_financial_info || ''
+      ];
+    });
     await pool.query(
       `INSERT INTO spouses (
         declaration_id,
+        first_name,
+        last_name,
         full_name,
-        birthdate,
         occupation,
-        employer,
-        annual_income
+        annual_income,
+        assets,
+        liabilities,
+        other_financial_info
       ) VALUES ?`,
       [values]
     );
@@ -69,20 +90,30 @@ const Declaration = {
   // Create children records
   async createChildren(declarationId, children) {
     if (!children || children.length === 0) return;
-
-    const values = children.map(child => [
-      declarationId,
-      child.full_name,
-      child.birthdate,
-      child.school
-    ]);
-
+    // Accept financials from child objects if present
+    const values = children.map(child => {
+      const fullName = child.full_name || `${child.first_name || ''} ${child.last_name || ''}`.trim();
+      return [
+        declarationId,
+        child.first_name,
+        child.last_name,
+        fullName,
+        child.annual_income ? JSON.stringify(child.annual_income) : '[]',
+        child.assets ? JSON.stringify(child.assets) : '[]',
+        child.liabilities ? JSON.stringify(child.liabilities) : '[]',
+        child.other_financial_info || ''
+      ];
+    });
     await pool.query(
       `INSERT INTO children (
         declaration_id,
+        first_name,
+        last_name,
         full_name,
-        birthdate,
-        school
+        annual_income,
+        assets,
+        liabilities,
+        other_financial_info
       ) VALUES ?`,
       [values]
     );
@@ -136,11 +167,10 @@ const Declaration = {
     const [spouses] = await pool.query(
       `SELECT 
         id,
+        first_name,
+        last_name,
         full_name,
-        DATE_FORMAT(birthdate, '%d/%m/%Y') as birthdate,
-        occupation,
-        employer,
-        annual_income
+        occupation
        FROM spouses
        WHERE declaration_id = ?`,
       [declarationId]
@@ -150,9 +180,9 @@ const Declaration = {
     const [children] = await pool.query(
       `SELECT 
         id,
-        full_name,
-        DATE_FORMAT(birthdate, '%d/%m/%Y') as birthdate,
-        school
+        first_name,
+        last_name,
+        full_name
        FROM children
        WHERE declaration_id = ?`,
       [declarationId]

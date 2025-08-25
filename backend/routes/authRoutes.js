@@ -9,9 +9,15 @@ const {
 } = require('../middleware/validation');
 const router = express.Router();
 
-router.post('/register', validateRegister, authController.register);
-router.post('/login', validateLogin, authController.login);
-router.put('/change-password', verifyToken, validatePasswordChange, authController.changePassword);
-router.get('/me', verifyToken, authController.getMe);
+// --- Registration & Login ---
+router.post('/register', validateRegister, authController.register); // Register new user
+router.post('/login', validateLogin, authController.login); // Login user
+
+// --- Password Management ---
+router.put('/change-password', verifyToken, validatePasswordChange, authController.changePassword); // Change password
+router.post('/check-password-status', authController.checkPasswordStatus);
+
+// --- Profile ---
+router.get('/me', verifyToken, authController.getMe); // Get user profile
 
 module.exports = router;

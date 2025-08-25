@@ -1,11 +1,14 @@
 const pool = require('../config/db');
 
 class Spouse {
-  static async create(declaration_id, full_name, birthdate, occupation, employer, annual_income) {
-    await pool.query(
-      'INSERT INTO spouses (declaration_id, full_name, birthdate, occupation, employer, annual_income) VALUES (?, ?, ?, ?, ?, ?)',
-      [declaration_id, full_name, birthdate, occupation, employer, annual_income]
+  static async create(declaration_id, first_name, last_name, full_name, occupation) {
+    const [result] = await pool.query(
+      'INSERT INTO spouses (declaration_id, first_name, last_name, full_name, occupation) VALUES (?, ?, ?, ?, ?)',
+      [declaration_id, first_name, last_name, full_name, occupation]
     );
+    // Return the inserted spouse including created_at
+    const [rows] = await pool.query('SELECT * FROM spouses WHERE id = ?', [result.insertId]);
+    return rows[0];
   }
 
   static async findByDeclarationId(declaration_id) {

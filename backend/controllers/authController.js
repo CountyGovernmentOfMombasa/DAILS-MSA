@@ -13,7 +13,21 @@ exports.register = async (req, res) => {
     return res.status(400).json({ errors: errors.array() });
   }
 
-  const { payroll_number, birthdate, first_name, last_name, email, phone } = req.body;
+  // Destructure all possible fields
+  const {
+    payroll_number,
+    birthdate,
+    first_name,
+    last_name,
+    email,
+    phone,
+    place_of_birth,
+    postal_address,
+    physical_address,
+    designation,
+    department,
+    employment_nature
+  } = req.body;
 
   try {
     // Check if user exists
@@ -26,7 +40,8 @@ exports.register = async (req, res) => {
 
     // Hash password
     const hashedPassword = await bcrypt.hash(birthdate, 10);
-    
+    const validEmploymentNature = employment_nature || '';
+
     // Create user
     const userId = await User.create({
       payroll_number,
@@ -35,7 +50,23 @@ exports.register = async (req, res) => {
       first_name,
       last_name,
       email,
-      phone
+      phone,
+      place_of_birth,
+      postal_address,
+      physical_address,
+      designation,
+      department,
+      employment_nature: validEmploymentNature
+    });
+
+    // Send notification email
+    const sendEmail = require('../util/sendEmail');
+    const registrationHtml = `<!DOCTYPE html><html><body style=\"font-family: Arial, sans-serif; background: #f7f7f7; padding: 20px;\"><div style=\"max-width: 500px; margin: auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #eee; padding: 24px;\"><h2 style=\"color: #2a7ae2;\">Welcome to WDP!</h2><p>Dear <strong>${first_name}</strong>,</p><p>Your registration was successful. You can now securely submit your financial declarations and manage your profile online.</p><p style=\"margin-top: 24px;\">Best regards,<br><strong>WDP Team</strong></p><hr><small style=\"color: #888;\">This is an automated message. Please do not reply.</small></div></body></html>`;
+    await sendEmail({
+      to: email,
+      subject: 'Welcome to WDP Employee Declaration Portal',
+      text: `Hello ${first_name},\nYour registration was successful!`,
+      html: registrationHtml
     });
 
     // Generate JWT
@@ -171,32 +202,27 @@ exports.login = async (req, res) => {
 exports.changePassword = async (req, res) => {
   const { newPassword } = req.body;
   const userId = req.user.id;
-
   try {
     // Hash new password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    
-    // Update user password and mark as changed
+    // Increment password_changed by 1
     await pool.query(
-      'UPDATE users SET password = ?, password_changed = TRUE WHERE id = ?',
+      'UPDATE users SET password = ?, password_changed = password_changed + 1 WHERE id = ?',
       [hashedPassword, userId]
     );
-
     // Generate new token for normal access
     const token = jwt.sign(
       { id: userId }, 
       process.env.JWT_SECRET, 
       { expiresIn: process.env.JWT_EXPIRES_IN }
     );
-
     res.json({
       success: true,
       token,
       message: 'Password changed successfully'
     });
-
   } catch (error) {
-    console.error('Password change error:', error);
+    console.error('Change password error:', error);
     res.status(500).json({ 
       message: 'Server error during password change',
       error: error.message 
@@ -237,5 +263,40 @@ exports.getMe = async (req, res) => {
       message: 'Server error while fetching profile',
       error: error.message 
     });
+  }
+};
+
+// @desc    Check if user has changed password
+// @route   POST /api/auth/check-password-status
+// @access  Public
+exports.checkPasswordStatus = async (req, res) => {
+  try {
+    const { payrollNumber, birthdate } = req.body;
+    if (!payrollNumber || !birthdate) {
+      return res.status(400).json({ message: 'Payroll number and birthdate are required.' });
+    }
+    // Convert birthdate to YYYY-MM-DD
+    const convertDateFormat = (ddmmyyyy) => {
+      if (!ddmmyyyy) return null;
+      const [day, month, year] = ddmmyyyy.split('/');
+      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    };
+    const formattedBirthdate = convertDateFormat(birthdate);
+    const [users] = await pool.query(
+      'SELECT password_changed, birthdate FROM users WHERE payroll_number = ?',
+      [payrollNumber]
+    );
+    if (users.length === 0) {
+      return res.json({ password_changed: false });
+    }
+    const user = users[0];
+    if (user.birthdate !== formattedBirthdate) {
+      return res.json({ password_changed: false });
+    }
+    // Check if password_changed > 0
+    return res.json({ password_changed: user.password_changed > 0 });
+  } catch (error) {
+    console.error('Check password status error:', error);
+    return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

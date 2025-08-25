@@ -13,8 +13,9 @@ class AdminUser {
         this.created_at = data.created_at;
         this.updated_at = data.updated_at;
         this.last_login = data.last_login;
+        this.password = data.password; // include password for completeness
+        this.created_by = data.created_by;
     }
-
     // Find admin by username
     static async findByUsername(username) {
         try {
@@ -55,40 +56,28 @@ class AdminUser {
             throw error;
         }
     }
-
-    // Create new admin
+    // Create new admin with enhanced validation
     static async create(adminData) {
         try {
-            const { username, password, email, role, first_name, last_name, created_by } = adminData;
-            
+            let { username, password, email, role, first_name, last_name, created_by, is_active } = adminData;
+            // Validate role enum
+            const allowedRoles = ['super_admin', 'hr_admin', 'finance_admin'];
+            if (!role || !allowedRoles.includes(role)) {
+                role = 'hr_admin'; // default
+            }
+            // Default is_active to true if not provided
+            if (typeof is_active === 'undefined') {
+                is_active = true;
+            }
             // Hash password
             const hashedPassword = await bcrypt.hash(password, 10);
-            
             const [result] = await pool.query(
-                'INSERT INTO admin_users (username, password, email, role, first_name, last_name, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                [username, hashedPassword, email, role, first_name, last_name, created_by]
+                'INSERT INTO admin_users (username, password, email, role, first_name, last_name, created_by, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                [username, hashedPassword, email, role, first_name, last_name, created_by, is_active]
             );
-            
             return await AdminUser.findById(result.insertId);
         } catch (error) {
             console.error('Error creating admin:', error);
-            throw error;
-        }
-    }
-
-    // Update admin
-    async update(updateData) {
-        try {
-            const { email, role, first_name, last_name, is_active } = updateData;
-            
-            await pool.query(
-                'UPDATE admin_users SET email = ?, role = ?, first_name = ?, last_name = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-                [email, role, first_name, last_name, is_active, this.id]
-            );
-            
-            return await AdminUser.findById(this.id);
-        } catch (error) {
-            console.error('Error updating admin:', error);
             throw error;
         }
     }

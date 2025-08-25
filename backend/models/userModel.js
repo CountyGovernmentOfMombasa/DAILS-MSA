@@ -11,16 +11,11 @@ const formatBirthdate = (birthdate) => {
   return birthdate;
 };
 
-const formatDisplayDate = (dbDate) => {
-  if (!dbDate) return null;
-  const [year, month, day] = dbDate.split('-');
-  return `${day}/${month}/${year}`;
-};
-
 // Database operations
 const User = {
   // Create new user
   async create(userData) {
+    const bcrypt = require('bcryptjs');
     const {
       payroll_number,
       birthdate,
@@ -28,29 +23,54 @@ const User = {
       first_name,
       last_name,
       email,
-      phone
+      phone,
+      place_of_birth = null,
+      postal_address = null,
+      physical_address = null,
+      designation = null,
+      department = null,
+      employment_nature = 'permanent' // default
     } = userData;
+
+    // Validate employment_nature
+    const allowedEmployment = ['permanent', 'temporary', 'contract', 'casual'];
+    const validEmploymentNature = allowedEmployment.includes(employment_nature) ? employment_nature : 'permanent';
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     const [result] = await pool.query(
       `INSERT INTO users (
-        payroll_number, 
-        birthdate, 
-        password, 
-        first_name, 
-        last_name, 
-        email, 
-        phone,
-        password_changed
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
         payroll_number,
-        formatBirthdate(birthdate),
+        birthdate,
         password,
         first_name,
         last_name,
         email,
         phone,
-        false
+        password_changed,
+        place_of_birth,
+        postal_address,
+        physical_address,
+        designation,
+        department,
+        employment_nature
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        payroll_number,
+        formatBirthdate(birthdate),
+        hashedPassword,
+        first_name,
+        last_name,
+        email,
+        phone,
+        0, // password_changed default to 0
+        place_of_birth,
+        postal_address,
+        physical_address,
+        designation,
+        department,
+        validEmploymentNature
       ]
     );
 

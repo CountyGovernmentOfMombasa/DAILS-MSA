@@ -4,7 +4,8 @@ const db = require('../config/db');
 const { verifyToken } = require('../middleware/authMiddleware');
 const { body, validationResult, param } = require('express-validator');
 
-// Email validation middleware
+
+// --- Validation Middleware ---
 const emailValidation = [
     body('email')
         .optional({ nullable: true })
@@ -13,11 +14,13 @@ const emailValidation = [
         .normalizeEmail()
 ];
 
+// --- Profile Management ---
 // Get user profile
 router.get('/profile/:userId', verifyToken, async (req, res) => {
     try {
         const userId = req.params.userId;
         
+const upload = require('../middleware/fileUpload');
         // Verify user can only access their own profile or admin can access any
         if (req.user.userId !== parseInt(userId) && req.user.role !== 'admin') {
             return res.status(403).json({ message: 'Access denied' });
@@ -49,11 +52,31 @@ router.put('/profile/:userId', verifyToken, emailValidation, async (req, res) =>
 
         const userId = req.params.userId;
         
-        // Verify user can only update their own profile
-        if (req.user.userId !== parseInt(userId)) {
+        // Verify user can only update their own profile or admin can update any
+        if (req.user.userId !== parseInt(userId) && req.user.role !== 'admin') {
             return res.status(403).json({ message: 'Access denied' });
         }
 
+
+// Upload user signature
+router.post('/profile/:userId/upload-signature', verifyToken, upload.single('signature'), async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        // Verify user can only upload their own signature
+        if (req.user.userId !== parseInt(userId)) {
+            return res.status(403).json({ message: 'Access denied' });
+        }
+        if (!req.file) {
+            return res.status(400).json({ message: 'No file uploaded' });
+        }
+    // Save file path to database
+    await db.execute('UPDATE users SET signature_path = ? WHERE id = ?', [req.file.path, userId]);
+    res.json({ success: true, filePath: req.file.path });
+    } catch (error) {
+        console.error('Error uploading signature:', error);
+        res.status(500).json({ message: 'Server error during file upload' });
+    }
+});
         const { email, full_name, phone, address } = req.body;
 
         // Check if email is already taken by another user
@@ -84,7 +107,8 @@ router.put('/profile/:userId', verifyToken, emailValidation, async (req, res) =>
     }
 });
 
-// Get all users (admin only)
+// --- User Management (Admin Only) ---
+// Get all users
 router.get('/', verifyToken, async (req, res) => {
     try {
         // Check if user is admin
@@ -103,7 +127,7 @@ router.get('/', verifyToken, async (req, res) => {
     }
 });
 
-// Delete user (admin only)
+// Delete user
 router.delete('/:userId', verifyToken, param('userId').isInt(), async (req, res) => {
     try {
         const errors = validationResult(req);
