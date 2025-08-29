@@ -37,6 +37,15 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Serve uploaded files
 app.use('/uploads', express.static('uploads'));
 
+// Endpoint to get server date in DD/MM/YYYY format
+app.get('/api/server-date', (req, res) => {
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    const formattedDate = `${day}/${month}/${year}`;
+    res.json({ date: formattedDate });
+});
 app.use('/api/auth', authRoutes);
 app.use('/api/declarations', declarationRoutes);
 app.use('/api/admin', adminRoutes);

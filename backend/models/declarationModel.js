@@ -12,7 +12,9 @@ const Declaration = {
       liabilities,
       other_financial_info,
       signature_path,
-      status = 'pending' // default
+      witness_signed,
+      witness_name,
+      witness_address
     } = declarationData;
 
     // Ensure assets and liabilities are stored as JSON strings if needed
@@ -29,8 +31,10 @@ const Declaration = {
         liabilities,
         other_financial_info,
         signature_path,
-        status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        witness_signed,
+        witness_name,
+        witness_address
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         user_id,
         marital_status,
@@ -40,7 +44,9 @@ const Declaration = {
         liabilitiesJson,
         other_financial_info,
         signature_path,
-        status
+        witness_signed,
+        witness_name,
+        witness_address
       ]
     );
 
@@ -57,14 +63,13 @@ const Declaration = {
     if (!spouses || spouses.length === 0) return;
     // Accept financials from spouse objects if present
     const values = spouses.map(spouse => {
-      const fullName = spouse.full_name || `${spouse.first_name || ''} ${spouse.last_name || ''}`.trim();
-      // Accept financials if present
+      const fullName = spouse.full_name || `${spouse.first_name || ''} ${spouse.surname || ''} ${spouse.other_names || ''}`.trim();
       return [
         declarationId,
         spouse.first_name,
-        spouse.last_name,
+        spouse.other_names,
+        spouse.surname,
         fullName,
-        spouse.occupation,
         spouse.annual_income ? JSON.stringify(spouse.annual_income) : '[]',
         spouse.assets ? JSON.stringify(spouse.assets) : '[]',
         spouse.liabilities ? JSON.stringify(spouse.liabilities) : '[]',
@@ -75,9 +80,9 @@ const Declaration = {
       `INSERT INTO spouses (
         declaration_id,
         first_name,
-        last_name,
+        other_names,
+        surname,
         full_name,
-        occupation,
         annual_income,
         assets,
         liabilities,
@@ -92,11 +97,12 @@ const Declaration = {
     if (!children || children.length === 0) return;
     // Accept financials from child objects if present
     const values = children.map(child => {
-      const fullName = child.full_name || `${child.first_name || ''} ${child.last_name || ''}`.trim();
+  const fullName = child.full_name || `${child.first_name || ''} ${child.other_names || ''} ${child.surname || ''}`.trim();
       return [
         declarationId,
         child.first_name,
-        child.last_name,
+        child.other_names,
+        child.surname,
         fullName,
         child.annual_income ? JSON.stringify(child.annual_income) : '[]',
         child.assets ? JSON.stringify(child.assets) : '[]',
@@ -108,7 +114,8 @@ const Declaration = {
       `INSERT INTO children (
         declaration_id,
         first_name,
-        last_name,
+        other_names,
+        surname,
         full_name,
         annual_income,
         assets,
@@ -151,7 +158,8 @@ const Declaration = {
         DATE_FORMAT(d.declaration_date, '%d/%m/%Y') as formatted_declaration_date,
         DATE_FORMAT(d.submitted_at, '%d/%m/%Y %H:%i') as formatted_submitted_at,
         u.first_name,
-        u.last_name,
+        u.other_names,
+        u.surname,
         u.payroll_number
        FROM declarations d
        JOIN users u ON d.user_id = u.id
@@ -168,7 +176,8 @@ const Declaration = {
       `SELECT 
         id,
         first_name,
-        last_name,
+        other_names,
+        surname,
         full_name,
         occupation
        FROM spouses
@@ -181,7 +190,8 @@ const Declaration = {
       `SELECT 
         id,
         first_name,
-        last_name,
+        other_names,
+        surname,
         full_name
        FROM children
        WHERE declaration_id = ?`,
@@ -201,7 +211,7 @@ const Declaration = {
       `SELECT 
         d.id,
         d.user_id,
-        CONCAT(u.first_name, ' ', u.last_name) as user_name,
+  CONCAT(u.first_name, ' ', u.other_names, ' ', u.surname) as user_name,
         u.payroll_number,
         d.marital_status,
         DATE_FORMAT(d.declaration_date, '%d/%m/%Y') as declaration_date,

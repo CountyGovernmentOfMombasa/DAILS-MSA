@@ -72,7 +72,8 @@ async function setupAdminTable() {
             email VARCHAR(100),
             role ENUM('super_admin', 'hr_admin', 'finance_admin') DEFAULT 'hr_admin',
             first_name VARCHAR(50),
-            last_name VARCHAR(50),
+            surname VARCHAR(100),
+            other_names VARCHAR(100),
             is_active BOOLEAN DEFAULT TRUE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -99,7 +100,7 @@ async function setupAdminTable() {
       
       // Insert default admin users
       const insertAdminsSQL = `
-        INSERT INTO admin_users (username, password, email, role, first_name, last_name, created_by) VALUES
+  INSERT INTO admin_users (username, password, email, role, first_name, surname, other_names, created_by) VALUES
         ('admin', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin@mombasa.go.ke', 'super_admin', 'System', 'Administrator', 1),
         ('hr_admin', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'hr@mombasa.go.ke', 'hr_admin', 'HR', 'Administrator', 1),
         ('finance_admin', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'finance@mombasa.go.ke', 'finance_admin', 'Finance', 'Administrator', 1)
@@ -125,7 +126,7 @@ async function setupAdminTable() {
       
       // Show existing admin users (without passwords)
       const [admins] = await pool.query(`
-        SELECT username, role, first_name, last_name, is_active, last_login 
+  SELECT username, role, first_name, surname, other_names, is_active, last_login 
         FROM admin_users 
         ORDER BY role, username
       `);

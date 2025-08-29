@@ -1,7 +1,7 @@
 const pool = require('../config/db');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const AdminUser = require('../models/AdminUser'); // Changed from adminUserModel to AdminUser
+const AdminUser = require('../models/AdminUser'); 
 
 exports.getAllDeclarations = async (req, res) => {
   try {
@@ -9,7 +9,8 @@ exports.getAllDeclarations = async (req, res) => {
       SELECT 
         d.*,
         u.first_name,
-        u.last_name,
+        u.other_names,
+        u.surname,
         u.payroll_number,
         u.email
       FROM declarations d
@@ -135,7 +136,7 @@ exports.getAllUsers = async (req, res) => {
 
     // Get users with pagination
     const [users] = await pool.query(`
-      SELECT id, payroll_number, first_name, last_name, email, department, birthdate
+      SELECT id, payroll_number, first_name, other_names, surname, email, department, birthdate
       FROM users 
       ${whereClause}
       ORDER BY payroll_number
@@ -199,7 +200,7 @@ exports.bulkUpdateEmails = async (req, res) => {
     for (const userId of userIds) {
       // Get user data for template replacement
       const [userResult] = await pool.query(
-        'SELECT first_name, last_name, payroll_number FROM users WHERE id = ?',
+        'SELECT first_name, other_names,surname, payroll_number FROM users WHERE id = ?',
         [userId]
       );
 
@@ -207,7 +208,8 @@ exports.bulkUpdateEmails = async (req, res) => {
         const user = userResult[0];
         let email = emailTemplate
           .replace(/{first_name}/g, user.first_name.toLowerCase())
-          .replace(/{last_name}/g, user.last_name.toLowerCase())
+          .replace(/{other_names}/g, user.other_names.toLowerCase())
+          .replace(/{surname}/g, user.surname.toLowerCase())
           .replace(/{payroll}/g, user.payroll_number);
 
         await pool.query(
@@ -248,7 +250,7 @@ exports.createAdmin = async (req, res) => {
     const { username, password, email, role, first_name, last_name } = req.body;
     // Validate required fields
     if (!username || !password || !first_name || !last_name) {
-      return res.status(400).json({ message: 'Username, password, first name, and last name are required.' });
+      return res.status(400).json({ message: 'Username, password, first name, other names, and surname are required.' });
     }
     // Validate role
     const allowedRoles = ['super_admin', 'hr_admin', 'finance_admin'];

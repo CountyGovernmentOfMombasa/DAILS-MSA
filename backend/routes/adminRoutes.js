@@ -60,4 +60,20 @@ router.post('/admins/:adminId/upload-signature', adminAuth, upload.single('signa
   }
 });
 
+// Biennial Declaration Lock (in-memory for demo; use DB for production)
+let biennialLocked = false;
+router.biennialLocked = biennialLocked;
+
+// Get biennial lock status
+router.get('/biennial-lock', adminAuth, (req, res) => {
+  res.json({ locked: biennialLocked });
+});
+
+// Set biennial lock status
+router.post('/biennial-lock', adminAuth, (req, res) => {
+  biennialLocked = !!req.body.locked;
+  router.biennialLocked = biennialLocked;
+  res.json({ locked: biennialLocked });
+});
+
 module.exports = router;

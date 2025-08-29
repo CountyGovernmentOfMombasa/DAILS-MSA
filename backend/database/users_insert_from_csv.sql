@@ -3,7 +3,7 @@
 -- Default password for all users: 'TempPass123!' (hashed)
 -- Email fields set to NULL - users can add emails later
 
-INSERT INTO users (payroll_number, first_name, last_name, email, phone, birthdate, password, password_changed) VALUES
+INSERT INTO users (payroll_number, first_name, last_name, email, birthdate, password, password_changed) VALUES
 ('19870002565', 'MR HUMPHREY', 'NTHIGA NJAGI', NULL, NULL, '1966-12-01', '$2b$10$56d37b1dea780e1c6a6d77c117c96e6e2a4a5693aaa4258e94aab', FALSE),
 ('19950004841', 'MRS MARIAM', 'RASHID KHAMIS', NULL, NULL, '1969-11-11', '$2b$10$56d37b1dea780e1c6a6d77c117c96e6e2a4a5693aaa4258e94aab', FALSE),
 ('19970010827', 'MRS FATMA', 'MOHAMED ABUBAKAR', NULL, NULL, '1973-06-12', '$2b$10$56d37b1dea780e1c6a6d77c117c96e6e2a4a5693aaa4258e94aab', FALSE),

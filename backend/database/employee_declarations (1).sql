@@ -60,8 +60,9 @@ INSERT INTO `admin_users` (`id`, `username`, `password`, `email`, `role`, `first
 CREATE TABLE `children` (
   `id` int(11) NOT NULL,
   `declaration_id` int(11) NOT NULL,
+  `surname` varchar(100) NOT NULL,
   `first_name` varchar(100) NOT NULL,
-  `last_name` varchar(100) NOT NULL,
+  `other_names` varchar(100) DEFAULT NULL,
   `full_name` varchar(200) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -75,7 +76,7 @@ CREATE TABLE `children` (
 CREATE TABLE `declarations` (
   `id` int(11) NOT NULL,
   `user_id` int(11) NOT NULL,
-  `marital_status` enum('single','married','divorced','widowed') NOT NULL,
+  `marital_status` enum('single','married','divorced','widowed','separated') NOT NULL,
   `declaration_date` date NOT NULL,
   `annual_income` decimal(15,2) DEFAULT NULL,
   `assets` text DEFAULT NULL,
@@ -139,8 +140,9 @@ CREATE TABLE `financial_items` (
 CREATE TABLE `spouses` (
   `id` int(11) NOT NULL,
   `declaration_id` int(11) NOT NULL,
+  `surname` varchar(100) NOT NULL,
   `first_name` varchar(100) NOT NULL,
-  `last_name` varchar(100) NOT NULL,
+  `other_names` varchar(100) DEFAULT NULL,
   `full_name` varchar(200) DEFAULT NULL,
   `occupation` varchar(100) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
@@ -158,7 +160,6 @@ CREATE TABLE `users` (
   `first_name` varchar(100) NOT NULL,
   `last_name` varchar(100) NOT NULL,
   `email` varchar(255) NOT NULL,
-  `phone` varchar(20) DEFAULT NULL,
   `birthdate` date NOT NULL,
   `password` varchar(255) NOT NULL,
   `password_changed` tinyint(1) DEFAULT 0,
@@ -176,7 +177,7 @@ CREATE TABLE `users` (
 -- Dumping data for table `users`
 --
 
-INSERT INTO `users` (`id`, `payroll_number`, `first_name`, `last_name`, `email`, `phone`, `birthdate`, `password`, `password_changed`, `created_at`, `updated_at`, `place_of_birth`, `postal_address`, `physical_address`, `designation`, `department`, `employment_nature`) VALUES
+INSERT INTO `users` (`id`, `payroll_number`, `first_name`, `last_name`, `email`, `birthdate`, `password`, `password_changed`, `created_at`, `updated_at`, `place_of_birth`, `postal_address`, `physical_address`, `designation`, `department`, `employment_nature`) VALUES
 (1, '20240326066', 'MR SWALEH', 'MOHAMED ABDULGHAFUR', 'swalehabdulghafur@gmail.com', '0700191407', '1998-01-29', '$2a$10$UAMM9nXxuu3NKLpDaklzbu2bP.vJ8nHNGxOsh71HCzjZ7Gx7XhCtO', 1, '2025-08-08 04:05:10', '2025-08-08 07:21:00', NULL, NULL, NULL, NULL, NULL, 'permanent');
 
 --

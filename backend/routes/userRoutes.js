@@ -27,7 +27,7 @@ const upload = require('../middleware/fileUpload');
         }
 
         const [rows] = await db.execute(
-            'SELECT id, email, full_name, phone, address, created_at FROM users WHERE id = ?',
+            'SELECT id, email, full_name, address, created_at FROM users WHERE id = ?',
             [userId]
         );
 
@@ -77,7 +77,7 @@ router.post('/profile/:userId/upload-signature', verifyToken, upload.single('sig
         res.status(500).json({ message: 'Server error during file upload' });
     }
 });
-        const { email, full_name, phone, address } = req.body;
+    const { email, full_name, address } = req.body;
 
         // Check if email is already taken by another user
         if (email) {
@@ -92,14 +92,27 @@ router.post('/profile/:userId/upload-signature', verifyToken, upload.single('sig
         }
 
         const [result] = await db.execute(
-            'UPDATE users SET email = ?, full_name = ?, phone = ?, address = ? WHERE id = ?',
-            [email, full_name, phone, address, userId]
+            'UPDATE users SET email = ?, full_name = ?, address = ? WHERE id = ?',
+            [email, full_name, address, userId]
         );
 
         if (result.affectedRows === 0) {
             return res.status(404).json({ message: 'User not found' });
         }
 
+        // Send confirmation email after successful profile update
+        const sendEmail = require('../util/sendEmail');
+        try {
+            await sendEmail({
+                to: email,
+                subject: 'Profile Updated Successfully',
+                text: `Hello ${full_name}, your profile has been updated successfully.`,
+                html: `<p>Hello <strong>${full_name}</strong>,</p><p>Your profile has been updated successfully.</p><p>If you did not make this change, please contact support immediately.</p>`
+            });
+        } catch (emailError) {
+            console.error('Error sending profile update email:', emailError);
+            // Do not fail the request if email fails
+        }
         res.json({ message: 'Profile updated successfully' });
     } catch (error) {
         console.error('Error updating user profile:', error);
@@ -117,7 +130,7 @@ router.get('/', verifyToken, async (req, res) => {
         }
 
         const [rows] = await db.execute(
-            'SELECT id, email, full_name, phone, address, created_at FROM users ORDER BY created_at DESC'
+            'SELECT id, email, full_name, address, created_at FROM users ORDER BY created_at DESC'
         );
 
         res.json(rows);

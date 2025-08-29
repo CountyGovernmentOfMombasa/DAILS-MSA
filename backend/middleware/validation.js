@@ -15,24 +15,28 @@ exports.validateRegister = [
         .withMessage('First name must be between 2 and 100 characters')
         .isAlpha('en-US', { ignore: ' ' })
         .withMessage('First name must contain only letters'),
-    
-    body('last_name')
+
+    body('other_names')
         .notEmpty()
-        .withMessage('Last name is required')
+        .withMessage('Other names are required')
         .isLength({ min: 2, max: 100 })
-        .withMessage('Last name must be between 2 and 100 characters')
+        .withMessage('Other names must be between 2 and 100 characters')
         .isAlpha('en-US', { ignore: ' ' })
-        .withMessage('Last name must contain only letters'),
-    
+        .withMessage('Other names must contain only letters'),
+
+    body('surname')
+    .notEmpty()
+        .withMessage('Surname is required')
+        .isLength({ min: 2, max: 100 })
+        .withMessage('Surname must be between 2 and 100 characters')
+        .isAlpha('en-US', { ignore: ' ' })
+        .withMessage('Surname must contain only letters'),
+
     body('email')
         .isEmail()
         .withMessage('Please provide a valid email')
         .normalizeEmail(),
     
-    body('phone')
-        .optional()
-        .isMobilePhone()
-        .withMessage('Please provide a valid phone number'),
     
     body('birthdate')
         .notEmpty()
@@ -46,12 +50,11 @@ exports.validateLogin = [
     body('payroll_number')
         .notEmpty()
         .withMessage('Payroll number is required'),
-    
-    body('birthdate')
+    body('password')
         .notEmpty()
-        .withMessage('Birthdate is required')
-        .matches(/^(0[1-9]|[12][0-9]|3[01])\/(0[1-9]|1[012])\/(19|20)\d\d$/)
-        .withMessage('Birthdate must be in DD/MM/YYYY format')
+        .withMessage('Password is required')
+        .isLength({ min: 8 })
+        .withMessage('Password must be at least 8 characters long')
 ];
 
 // Validation for password change
@@ -70,7 +73,7 @@ exports.validatePasswordChange = [
 // Validation for declaration submission
 exports.validateDeclaration = [
     body('marital_status')
-        .isIn(['single', 'married', 'divorced', 'widowed'])
+        .isIn(['single', 'married', 'divorced', 'widowed', 'separated'])
         .withMessage('Invalid marital status'),
     
     body('declaration_date')

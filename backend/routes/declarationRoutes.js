@@ -6,7 +6,26 @@ const { validateDeclaration } = require('../middleware/validation');
 const router = express.Router();
 
 // --- Declaration Submission ---
-router.post('/', verifyToken, validateDeclaration, submitDeclaration); // Submit a new declaration
+// Biennial lock check middleware
+const adminRoutes = require('./adminRoutes');
+let biennialLocked = false;
+try {
+	biennialLocked = require('./adminRoutes').biennialLocked;
+} catch {}
+
+router.post('/', verifyToken, validateDeclaration, async (req, res, next) => {
+	// Block biennial declaration if locked
+	if (req.body.declaration_type === 'biennial') {
+		// Use the same biennialLocked variable as adminRoutes
+		if (typeof require.cache[require.resolve('./adminRoutes')].exports.biennialLocked !== 'undefined') {
+			biennialLocked = require.cache[require.resolve('./adminRoutes')].exports.biennialLocked;
+		}
+		if (biennialLocked) {
+			return res.status(403).json({ success: false, message: 'Biennial Declaration is currently locked by the administrator.' });
+		}
+	}
+	next();
+}, submitDeclaration); // Submit a new declaration
 
 // --- Declaration Retrieval ---
 router.get('/', verifyToken, getDeclarations); // Get all declarations for user

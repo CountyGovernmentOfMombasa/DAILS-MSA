@@ -18,9 +18,9 @@ exports.register = async (req, res) => {
     payroll_number,
     birthdate,
     first_name,
-    last_name,
+    surname,
+    other_names,
     email,
-    phone,
     place_of_birth,
     postal_address,
     physical_address,
@@ -48,9 +48,9 @@ exports.register = async (req, res) => {
       birthdate,
       password: hashedPassword,
       first_name,
-      last_name,
+      surname,
+      other_names,
       email,
-      phone,
       place_of_birth,
       postal_address,
       physical_address,
@@ -61,11 +61,11 @@ exports.register = async (req, res) => {
 
     // Send notification email
     const sendEmail = require('../util/sendEmail');
-    const registrationHtml = `<!DOCTYPE html><html><body style=\"font-family: Arial, sans-serif; background: #f7f7f7; padding: 20px;\"><div style=\"max-width: 500px; margin: auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #eee; padding: 24px;\"><h2 style=\"color: #2a7ae2;\">Welcome to WDP!</h2><p>Dear <strong>${first_name}</strong>,</p><p>Your registration was successful. You can now securely submit your financial declarations and manage your profile online.</p><p style=\"margin-top: 24px;\">Best regards,<br><strong>WDP Team</strong></p><hr><small style=\"color: #888;\">This is an automated message. Please do not reply.</small></div></body></html>`;
+  const registrationHtml = `<!DOCTYPE html><html><body style=\"font-family: Arial, sans-serif; background: #f7f7f7; padding: 20px;\"><div style=\"max-width: 500px; margin: auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #eee; padding: 24px;\"><h2 style=\"color: #2a7ae2;\">Welcome to WDP!</h2><p>Dear <strong>${first_name} ${surname} ${other_names || ''}</strong>,</p><p>Your registration was successful. You can now securely submit your financial declarations and manage your profile online.</p><p style=\"margin-top: 24px;\">Best regards,<br><strong>WDP Team</strong></p><hr><small style=\"color: #888;\">This is an automated message. Please do not reply.</small></div></body></html>`;
     await sendEmail({
       to: email,
       subject: 'Welcome to WDP Employee Declaration Portal',
-      text: `Hello ${first_name},\nYour registration was successful!`,
+  text: `Hello ${first_name} ${surname} ${other_names || ''},\nYour registration was successful!`,
       html: registrationHtml
     });
 
@@ -83,7 +83,8 @@ exports.register = async (req, res) => {
         id: userId,
         payroll_number,
         first_name,
-        last_name,
+        surname,
+        other_names,
         email
       }
     });
@@ -110,69 +111,47 @@ const convertDateFormat = (ddmmyyyy) => {
 // Update the database query to format the date as string
 exports.login = async (req, res) => {
   try {
-    const { payrollNumber, birthdate } = req.body;
+    const { payrollNumber, password } = req.body;
 
-    console.log('Login attempt:', { payrollNumber, birthdate });
-
-    // Find user by payroll number and format birthdate as string
+    // Find user by payroll number
     const [users] = await pool.query(
-      'SELECT id, payroll_number, first_name, last_name, email, phone, DATE_FORMAT(birthdate, "%Y-%m-%d") as birthdate, password, password_changed FROM users WHERE payroll_number = ?',
+      'SELECT id, payroll_number, first_name, other_names, surname, email, password, password_changed FROM users WHERE payroll_number = ?',
       [payrollNumber]
     );
 
     if (users.length === 0) {
-      console.log('User not found with payroll number:', payrollNumber);
-      return res.status(401).json({ 
-        message: 'Invalid credentials' 
-      });
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
 
     const user = users[0];
-    console.log('Found user:', {
-      id: user.id,
-      payroll_number: user.payroll_number,
-      birthdate: user.birthdate,
-      password_changed: user.password_changed
-    });
 
-    // Convert the input date format (DD/MM/YYYY) to database format (YYYY-MM-DD)
-    const convertedBirthdate = convertDateFormat(birthdate);
-    
-    console.log('Date comparison:', {
-      input: birthdate,
-      converted: convertedBirthdate,
-      database: user.birthdate,
-      match: convertedBirthdate === user.birthdate
-    });
-    
-    // Compare the converted date with the database birthdate
-    if (convertedBirthdate !== user.birthdate) {
-      console.log('Birthdate mismatch!');
-      return res.status(401).json({ 
-        message: 'Invalid credentials' 
-      });
-    }
-
-    // Rest of the function remains the same...
-    console.log('Birthdate match! Checking password_changed status...');
-
+    // If password hasn't been changed, allow payroll number as password
     if (!user.password_changed) {
+      if (password !== user.payroll_number) {
+        return res.status(401).json({ message: 'Invalid credentials' });
+      }
       const changePasswordToken = jwt.sign(
         { id: user.id, changePassword: true },
         process.env.JWT_SECRET,
         { expiresIn: '15m' }
       );
-      
       return res.json({
         changePasswordRequired: true,
         token: changePasswordToken,
         message: 'Please set a new password'
       });
     }
-    
+
+    // If password has been changed, check hashed password
+    const bcrypt = require('bcryptjs');
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
     const token = jwt.sign(
-      { id: user.id }, 
-      process.env.JWT_SECRET, 
+      { id: user.id },
+      process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN }
     );
 
@@ -183,7 +162,8 @@ exports.login = async (req, res) => {
         id: user.id,
         payroll_number: user.payroll_number,
         first_name: user.first_name,
-        last_name: user.last_name
+        other_names: user.other_names,
+        surname: user.surname
       }
     });
 
@@ -240,9 +220,9 @@ exports.getMe = async (req, res) => {
         id, 
         payroll_number, 
         first_name, 
-        last_name, 
+        other_names,
+        surname,  
         email, 
-        phone,
         DATE_FORMAT(birthdate, '%d/%m/%Y') as birthdate 
        FROM users 
        WHERE id = ?`,
@@ -271,29 +251,18 @@ exports.getMe = async (req, res) => {
 // @access  Public
 exports.checkPasswordStatus = async (req, res) => {
   try {
-    const { payrollNumber, birthdate } = req.body;
-    if (!payrollNumber || !birthdate) {
-      return res.status(400).json({ message: 'Payroll number and birthdate are required.' });
+    const { payrollNumber } = req.body;
+    if (!payrollNumber) {
+      return res.status(400).json({ message: 'Payroll number is required.' });
     }
-    // Convert birthdate to YYYY-MM-DD
-    const convertDateFormat = (ddmmyyyy) => {
-      if (!ddmmyyyy) return null;
-      const [day, month, year] = ddmmyyyy.split('/');
-      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-    };
-    const formattedBirthdate = convertDateFormat(birthdate);
     const [users] = await pool.query(
-      'SELECT password_changed, birthdate FROM users WHERE payroll_number = ?',
+      'SELECT password_changed FROM users WHERE payroll_number = ?',
       [payrollNumber]
     );
     if (users.length === 0) {
       return res.json({ password_changed: false });
     }
     const user = users[0];
-    if (user.birthdate !== formattedBirthdate) {
-      return res.json({ password_changed: false });
-    }
-    // Check if password_changed > 0
     return res.json({ password_changed: user.password_changed > 0 });
   } catch (error) {
     console.error('Check password status error:', error);
