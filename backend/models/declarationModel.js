@@ -5,6 +5,7 @@ const Declaration = {
   async create(declarationData) {
     const {
       user_id,
+      department,
       marital_status,
       declaration_date,
       annual_income,
@@ -14,16 +15,21 @@ const Declaration = {
       signature_path,
       witness_signed,
       witness_name,
-      witness_address
+      witness_address,
+      declaration_type,
+      status = 'pending',
+      correction_message = null
     } = declarationData;
 
-    // Ensure assets and liabilities are stored as JSON strings if needed
+    // Store annual_income as JSON string
+    const annualIncomeJson = (typeof annual_income === 'string') ? annual_income : JSON.stringify(annual_income || []);
     const assetsJson = (typeof assets === 'object') ? JSON.stringify(assets) : assets;
     const liabilitiesJson = (typeof liabilities === 'object') ? JSON.stringify(liabilities) : liabilities;
 
     const [result] = await pool.query(
       `INSERT INTO declarations (
         user_id,
+        department,
         marital_status,
         declaration_date,
         annual_income,
@@ -33,20 +39,27 @@ const Declaration = {
         signature_path,
         witness_signed,
         witness_name,
-        witness_address
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        witness_address,
+        declaration_type,
+        status,
+        correction_message
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         user_id,
+        department,
         marital_status,
         declaration_date,
-        annual_income,
+        annualIncomeJson,
         assetsJson,
         liabilitiesJson,
         other_financial_info,
         signature_path,
         witness_signed,
         witness_name,
-        witness_address
+        witness_address,
+        declaration_type,
+        status,
+        correction_message
       ]
     );
 
@@ -61,16 +74,17 @@ const Declaration = {
   // Create spouse records
   async createSpouses(declarationId, spouses) {
     if (!spouses || spouses.length === 0) return;
-    // Accept financials from spouse objects if present
+    // Store annual_income as JSON string
     const values = spouses.map(spouse => {
       const fullName = spouse.full_name || `${spouse.first_name || ''} ${spouse.surname || ''} ${spouse.other_names || ''}`.trim();
+      const incomeJson = (typeof spouse.annual_income === 'string') ? spouse.annual_income : JSON.stringify(spouse.annual_income || []);
       return [
         declarationId,
         spouse.first_name,
         spouse.other_names,
         spouse.surname,
         fullName,
-        spouse.annual_income ? JSON.stringify(spouse.annual_income) : '[]',
+        incomeJson,
         spouse.assets ? JSON.stringify(spouse.assets) : '[]',
         spouse.liabilities ? JSON.stringify(spouse.liabilities) : '[]',
         spouse.other_financial_info || ''
@@ -95,16 +109,17 @@ const Declaration = {
   // Create children records
   async createChildren(declarationId, children) {
     if (!children || children.length === 0) return;
-    // Accept financials from child objects if present
+    // Store annual_income as JSON string
     const values = children.map(child => {
-  const fullName = child.full_name || `${child.first_name || ''} ${child.other_names || ''} ${child.surname || ''}`.trim();
+      const fullName = child.full_name || `${child.first_name || ''} ${child.other_names || ''} ${child.surname || ''}`.trim();
+      const incomeJson = (typeof child.annual_income === 'string') ? child.annual_income : JSON.stringify(child.annual_income || []);
       return [
         declarationId,
         child.first_name,
         child.other_names,
         child.surname,
         fullName,
-        child.annual_income ? JSON.stringify(child.annual_income) : '[]',
+        incomeJson,
         child.assets ? JSON.stringify(child.assets) : '[]',
         child.liabilities ? JSON.stringify(child.liabilities) : '[]',
         child.other_financial_info || ''
@@ -131,6 +146,7 @@ const Declaration = {
     const [rows] = await pool.query(
       `SELECT 
         d.id,
+        d.department,
         d.marital_status,
         DATE_FORMAT(d.declaration_date, '%d/%m/%Y') as declaration_date,
         d.annual_income,
@@ -138,6 +154,8 @@ const Declaration = {
         d.liabilities,
         d.other_financial_info,
         d.signature_path,
+        d.status,
+        d.correction_message,
         DATE_FORMAT(d.submitted_at, '%d/%m/%Y %H:%i') as submitted_at,
         (SELECT COUNT(*) FROM spouses WHERE declaration_id = d.id) as spouse_count,
         (SELECT COUNT(*) FROM children WHERE declaration_id = d.id) as children_count
@@ -160,7 +178,10 @@ const Declaration = {
         u.first_name,
         u.other_names,
         u.surname,
-        u.payroll_number
+        u.payroll_number,
+        u.department,
+        d.status,
+        d.correction_message
        FROM declarations d
        JOIN users u ON d.user_id = u.id
        WHERE d.id = ?`,
@@ -211,13 +232,16 @@ const Declaration = {
       `SELECT 
         d.id,
         d.user_id,
-  CONCAT(u.first_name, ' ', u.other_names, ' ', u.surname) as user_name,
+        CONCAT(u.first_name, ' ', u.other_names, ' ', u.surname) as user_name,
         u.payroll_number,
+        u.department,
         d.marital_status,
         DATE_FORMAT(d.declaration_date, '%d/%m/%Y') as declaration_date,
         d.annual_income,
         d.assets,
         d.liabilities,
+        d.status,
+        d.correction_message,
         DATE_FORMAT(d.submitted_at, '%d/%m/%Y %H:%i') as submitted_at,
         (SELECT COUNT(*) FROM spouses WHERE declaration_id = d.id) as spouse_count,
         (SELECT COUNT(*) FROM children WHERE declaration_id = d.id) as children_count
@@ -226,6 +250,16 @@ const Declaration = {
        ORDER BY d.submitted_at DESC`
     );
     return rows;
+
+  },
+
+  // Admin: update declaration status
+  async updateStatus(declarationId, status, correctionMessage = null) {
+    const [result] = await pool.query(
+      'UPDATE declarations SET status = ?, correction_message = ? WHERE id = ?',
+      [status, correctionMessage, declarationId]
+    );
+    return result;
   }
 };
 

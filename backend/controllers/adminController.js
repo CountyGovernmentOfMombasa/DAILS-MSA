@@ -1,3 +1,37 @@
+// Approve or reject a declaration
+exports.updateDeclarationStatus = async (req, res) => {
+  try {
+    const { declarationId } = req.params;
+    const { status, correction_message } = req.body;
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status' });
+    }
+    const Declaration = require('../models/declarationModel');
+    await Declaration.updateStatus(declarationId, status, correction_message || null);
+
+    // Notify user if rejected
+    if (status === 'rejected') {
+      // Get user email
+      const [rows] = await pool.query(
+        'SELECT u.email, u.first_name FROM declarations d JOIN users u ON d.user_id = u.id WHERE d.id = ?',
+        [declarationId]
+      );
+      if (rows.length > 0) {
+        const sendEmail = require('../util/sendEmail');
+        await sendEmail({
+          to: rows[0].email,
+          subject: 'Declaration Rejected',
+          text: `Dear ${rows[0].first_name},\n\nYour declaration was rejected. Please correct the following: ${correction_message || ''}`,
+          html: `<p>Dear ${rows[0].first_name},</p><p>Your declaration was <b>rejected</b>.</p><p>Please correct the following:</p><p>${correction_message || ''}</p>`
+        });
+      }
+    }
+    return res.json({ success: true, message: `Declaration ${status}` });
+  } catch (error) {
+    console.error('Update declaration status error:', error);
+    return res.status(500).json({ success: false, message: 'Server error updating declaration status', error: error.message });
+  }
+};
 const pool = require('../config/db');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');

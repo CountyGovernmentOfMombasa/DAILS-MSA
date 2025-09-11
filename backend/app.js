@@ -9,7 +9,10 @@ const declarationRoutes = require('./routes/declarationRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const userRoutes = require('./routes/userRoutes');
 
+
 const app = express();
+// Trust first proxy (needed for express-rate-limit with X-Forwarded-For)
+app.set('trust proxy', 1);
 
 // Security middleware
 app.use(helmet());
@@ -46,6 +49,13 @@ app.get('/api/server-date', (req, res) => {
     const formattedDate = `${day}/${month}/${year}`;
     res.json({ date: formattedDate });
 });
+
+// Public endpoint for biennial lock status (no admin auth)
+const adminRoutesModule = require('./routes/adminRoutes');
+app.get('/api/biennial-lock', (req, res) => {
+    res.json({ locked: adminRoutesModule.biennialLocked });
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/declarations', declarationRoutes);
 app.use('/api/admin', adminRoutes);

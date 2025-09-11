@@ -26,6 +26,7 @@ router.get('/verify', adminAuth, verifyAdmin); // Verify admin (auth required)
 
 // --- Declaration Management ---
 router.get('/declarations', adminAuth, getAllDeclarations); // Get all declarations (auth required)
+router.put('/declarations/:declarationId/status', adminAuth, require('../controllers/adminController').updateDeclarationStatus); // Approve/reject declaration
 
 // --- User Management ---
 router.get('/users', adminAuth, getAllUsers); // Get all users

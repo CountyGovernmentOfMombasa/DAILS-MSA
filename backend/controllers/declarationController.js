@@ -16,6 +16,7 @@ exports.submitDeclaration = async (req, res) => {
         const {
             marital_status,
             declaration_date,
+            department,
             annual_income,
             assets,
             liabilities,
@@ -82,6 +83,7 @@ exports.submitDeclaration = async (req, res) => {
                 const Declaration = require('../models/declarationModel');
                 const declaration = await Declaration.create({
                     user_id,
+                    department,
                     marital_status,
                     declaration_date: isoDeclarationDate,
                     annual_income: validAnnualIncome,
