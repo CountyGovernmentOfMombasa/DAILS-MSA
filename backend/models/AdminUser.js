@@ -10,12 +10,13 @@ class AdminUser {
         this.first_name = data.first_name;
         this.other_names = data.other_names;
         this.surname = data.surname;
-        this.is_active = data.is_active;
-        this.created_at = data.created_at;
-        this.updated_at = data.updated_at;
-        this.last_login = data.last_login;
-        this.password = data.password;
-        this.created_by = data.created_by;
+    this.department = data.department;
+    this.is_active = data.is_active;
+    this.created_at = data.created_at;
+    this.updated_at = data.updated_at;
+    this.last_login = data.last_login;
+    this.password = data.password;
+    this.created_by = data.created_by;
     }
     // Find admin by username
     static async findByUsername(username) {
@@ -49,7 +50,7 @@ class AdminUser {
     static async getAllActive() {
         try {
             const [rows] = await pool.query(
-                'SELECT id, username, email, role, first_name, other_names, surname, created_at, updated_at, last_login FROM admin_users WHERE is_active = TRUE ORDER BY created_at DESC'
+                'SELECT id, username, email, role, department, first_name, other_names, surname, created_at, updated_at, last_login FROM admin_users WHERE is_active = TRUE ORDER BY created_at DESC'
             );
             return rows.map(row => new AdminUser(row));
         } catch (error) {
@@ -60,7 +61,7 @@ class AdminUser {
     // Create new admin with enhanced validation
     static async create(adminData) {
         try {
-            let { username, password, email, role, first_name, other_names, surname, created_by, is_active } = adminData;
+            let { username, password, email, role, department, first_name, other_names, surname, created_by, is_active } = adminData;
             // Validate role enum
             const allowedRoles = ['super_admin', 'hr_admin', 'finance_admin'];
             if (!role || !allowedRoles.includes(role)) {
@@ -73,8 +74,8 @@ class AdminUser {
             // Hash password
             const hashedPassword = await bcrypt.hash(password, 10);
             const [result] = await pool.query(
-                'INSERT INTO admin_users (username, password, email, role, first_name, other_names, surname, created_by, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [username, hashedPassword, email, role, first_name, other_names, surname, created_by, is_active]
+                'INSERT INTO admin_users (username, password, email, role, department, first_name, other_names, surname, created_by, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [username, hashedPassword, email, role, department, first_name, other_names, surname, created_by, is_active]
             );
             return await AdminUser.findById(result.insertId);
         } catch (error) {
@@ -151,6 +152,7 @@ class AdminUser {
             username: this.username,
             email: this.email,
             role: this.role,
+            department: this.department,
             first_name: this.first_name,
             other_names: this.other_names,
             surname: this.surname,

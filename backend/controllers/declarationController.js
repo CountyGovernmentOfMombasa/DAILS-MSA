@@ -1,3 +1,4 @@
+const Declaration = require('../models/declarationModel');
 // Get all declarations for a user
 exports.getDeclarations = async (req, res) => {
     try {
@@ -27,8 +28,50 @@ exports.submitDeclaration = async (req, res) => {
             financialDeclarations,
             spouse_financials,
             child_financials,
-            witness
+            witness,
+            declaration_type // <-- new field
         } = req.body;
+        // --- Declaration type logic ---
+        const allowedTypes = ['First', 'Bienniel', 'Final'];
+        if (!declaration_type || !allowedTypes.includes(declaration_type)) {
+            return res.status(400).json({ success: false, message: 'Invalid or missing declaration type.' });
+        }
+
+    // Fetch user's previous declarations
+    const previousDeclarations = await Declaration.findByUserId(req.user.id);
+
+        // Check for existing 'First' or 'Final' declaration
+        if ((declaration_type === 'First' || declaration_type === 'Final') && previousDeclarations.some(d => d.declaration_type === declaration_type)) {
+            return res.status(400).json({ success: false, message: `You can only submit a ${declaration_type} declaration once.` });
+        }
+
+        // Bienniel logic: only allowed every two years, Nov 1 - Dec 31, starting 2025
+        if (declaration_type === 'Bienniel') {
+            // Parse date
+            let decDate = declaration_date;
+            if (typeof decDate === 'string' && decDate.includes('/')) {
+                // Convert DD/MM/YYYY to YYYY-MM-DD
+                const [day, month, year] = decDate.split('/');
+                decDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+            }
+            const dateObj = new Date(decDate);
+            const year = dateObj.getFullYear();
+            const month = dateObj.getMonth() + 1; // 1-based
+            const day = dateObj.getDate();
+            // Only allow odd years >= 2025
+            if (year < 2025 || year % 2 === 0) {
+                return res.status(400).json({ success: false, message: 'Bienniel declaration is only allowed every two years starting 2025.' });
+            }
+            // Only allow between Nov 1 and Dec 31
+            const isAllowedWindow = (month === 11 && day >= 1) || (month === 12 && day <= 31);
+            if (!isAllowedWindow) {
+                return res.status(400).json({ success: false, message: 'Bienniel declaration is only allowed between Nov 1 and Dec 31 of the allowed year.' });
+            }
+            // Only one bienniel per allowed year
+            if (previousDeclarations.some(d => d.declaration_type === 'Bienniel' && d.declaration_date && new Date(d.declaration_date).getFullYear() === year)) {
+                return res.status(400).json({ success: false, message: 'You have already submitted a Bienniel declaration for this period.' });
+            }
+        }
 
                 // Merge spouse_financials into spouses
                 let mergedSpouses = spouses;
@@ -80,7 +123,6 @@ exports.submitDeclaration = async (req, res) => {
                 const isoDeclarationDate = convertDateToISO(declaration_date);
 
                 // Use model for declaration creation
-                const Declaration = require('../models/declarationModel');
                 const declaration = await Declaration.create({
                     user_id,
                     department,
@@ -91,6 +133,7 @@ exports.submitDeclaration = async (req, res) => {
                     liabilities,
                     other_financial_info,
                     signature_path,
+                    declaration_type,
                     status: req.body.status || 'pending'
                 });
                 const declarationId = declaration.id;

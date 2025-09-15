@@ -1,0 +1,1 @@
+ALTER TABLE admin_users ADD COLUMN department VARCHAR(100) DEFAULT NULL;

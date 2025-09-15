@@ -1,3 +1,4 @@
+
 const pool = require('../config/db');
 
 // Utility functions
@@ -24,17 +25,34 @@ const User = {
       other_names,
       surname,
       email,
+      national_id = null,
       place_of_birth = null,
+      marital_status = null,
       postal_address = null,
       physical_address = null,
       designation = null,
       department = null,
-      employment_nature = 'permanent' // default
+      nature_of_employment = null
     } = userData;
 
-    // Validate employment_nature
-    const allowedEmployment = ['permanent', 'temporary', 'contract', 'casual'];
-    const validEmploymentNature = allowedEmployment.includes(employment_nature) ? employment_nature : 'permanent';
+    // Validate nature_of_employment
+    const allowedEmployment = ['Permanent', 'Contract', 'Temporary'];
+    const validNatureOfEmployment = allowedEmployment.includes(nature_of_employment) ? nature_of_employment : null;
+
+    // Validate department
+    const allowedDepartments = [
+      'Department of Transport, Infrastructure and Governance',
+      'Department of Trade, Tourism and Culture',
+      'Department of Education and Vocational Training',
+      'Department of Environment and Water',
+      'Department of Lands, Urban Planning,Housing and Serikali Mtaani',
+      'Department of Health',
+      'Department of Public Service Administration, Youth, Gender and Sports',
+      'Department of Finance, Economic Planning and Digital Transformation',
+      'Department of Blue Economy ,Cooperatives, Agriculture and Livestock',
+      'Department of Climate Change,Energy and Natural Resources'
+    ];
+    const validDepartment = allowedDepartments.includes(department) ? department : null;
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -42,35 +60,39 @@ const User = {
     const [result] = await pool.query(
       `INSERT INTO users (
         payroll_number,
+        surname,
+        first_name,
+        other_names,
+        email,
         birthdate,
         password,
-        first_name,
-        other_names,
-        surname,
-        email,
         password_changed,
+        national_id,
         place_of_birth,
+        marital_status,
         postal_address,
         physical_address,
         designation,
         department,
-        employment_nature
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        nature_of_employment
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         payroll_number,
-        formatBirthdate(birthdate),
-        hashedPassword,
+        surname,
         first_name,
         other_names,
-        surname,
         email,
+        formatBirthdate(birthdate),
+        hashedPassword,
         0, // password_changed default to 0
+        national_id,
         place_of_birth,
+        marital_status,
         postal_address,
         physical_address,
         designation,
-        department,
-        validEmploymentNature
+        validDepartment,
+        validNatureOfEmployment
       ]
     );
 
@@ -86,6 +108,14 @@ const User = {
     return rows[0];
   },
 
+  async findByNationalId(national_id) {
+    const [rows] = await pool.query(
+      'SELECT * FROM users WHERE national_id = ?',
+      [national_id]
+    );
+    return rows[0];
+  },
+
   // Find user by ID
   async findById(id) {
     const [rows] = await pool.query(
@@ -96,7 +126,15 @@ const User = {
         other_names, 
         surname, 
         email, 
+        national_id,
         DATE_FORMAT(birthdate, '%d/%m/%Y') as birthdate,
+        place_of_birth,
+        marital_status,
+        postal_address,
+        physical_address,
+        designation,
+        department,
+        nature_of_employment,
         password_changed
        FROM users 
        WHERE id = ?`,
@@ -113,11 +151,11 @@ const User = {
     );
   },
 
-  // Check if payroll number or email exists
-  async exists(payroll_number, email) {
+  // Check if national_id or email exists
+  async existsByNationalIdOrEmail(national_id, email) {
     const [rows] = await pool.query(
-      'SELECT id FROM users WHERE payroll_number = ? OR email = ?',
-      [payroll_number, email]
+      'SELECT id FROM users WHERE national_id = ? OR email = ?',
+      [national_id, email]
     );
     return rows.length > 0;
   }

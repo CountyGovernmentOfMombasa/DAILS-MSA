@@ -7,6 +7,8 @@ require('dotenv').config();
 const authRoutes = require('./routes/authRoutes');
 const declarationRoutes = require('./routes/declarationRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+
+const draftRoutes = require('./routes/draftRoutes');
 const userRoutes = require('./routes/userRoutes');
 
 
@@ -56,10 +58,12 @@ app.get('/api/biennial-lock', (req, res) => {
     res.json({ locked: adminRoutesModule.biennialLocked });
 });
 
+
 app.use('/api/auth', authRoutes);
 app.use('/api/declarations', declarationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/drafts', draftRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

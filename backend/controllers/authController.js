@@ -15,7 +15,8 @@ exports.register = async (req, res) => {
 
   // Destructure all possible fields
   const {
-    payroll_number,
+    national_id,
+    payroll_number = null,
     birthdate,
     first_name,
     surname,
@@ -26,24 +27,25 @@ exports.register = async (req, res) => {
     physical_address,
     designation,
     department,
-    employment_nature
+  nature_of_employment
   } = req.body;
 
   try {
     // Check if user exists
-    const exists = await User.exists(payroll_number, email);
+    const exists = await User.existsByNationalIdOrEmail(national_id, email);
     if (exists) {
       return res.status(400).json({ 
-        message: 'User already exists with this payroll number or email' 
+        message: 'User already exists with this National ID or email' 
       });
     }
 
     // Hash password
     const hashedPassword = await bcrypt.hash(birthdate, 10);
-    const validEmploymentNature = employment_nature || '';
+  const validNatureOfEmployment = nature_of_employment || '';
 
     // Create user
     const userId = await User.create({
+      national_id,
       payroll_number,
       birthdate,
       password: hashedPassword,
@@ -56,7 +58,7 @@ exports.register = async (req, res) => {
       physical_address,
       designation,
       department,
-      employment_nature: validEmploymentNature
+      nature_of_employment: validNatureOfEmployment
     });
 
     // Send notification email
@@ -81,6 +83,7 @@ exports.register = async (req, res) => {
       token,
       user: {
         id: userId,
+        national_id,
         payroll_number,
         first_name,
         surname,
@@ -111,12 +114,12 @@ const convertDateFormat = (ddmmyyyy) => {
 // Update the database query to format the date as string
 exports.login = async (req, res) => {
   try {
-    const { payrollNumber, password } = req.body;
+    const { nationalId, password, phoneNumber } = req.body;
 
-    // Find user by payroll number
+    // Find user by national ID
     const [users] = await pool.query(
-      'SELECT id, payroll_number, first_name, other_names, surname, email, password, password_changed FROM users WHERE payroll_number = ?',
-      [payrollNumber]
+      'SELECT id, national_id, payroll_number, first_name, other_names, surname, email, password, password_changed, phone_number FROM users WHERE national_id = ?',
+      [nationalId]
     );
 
     if (users.length === 0) {
@@ -125,9 +128,18 @@ exports.login = async (req, res) => {
 
     const user = users[0];
 
-    // If password hasn't been changed, allow payroll number as password
+    // If phone number is missing, require it and update
+    if (!user.phone_number) {
+      if (!phoneNumber) {
+        return res.status(400).json({ message: 'Phone number required', requirePhone: true });
+      }
+      await pool.query('UPDATE users SET phone_number = ? WHERE id = ?', [phoneNumber, user.id]);
+      user.phone_number = phoneNumber;
+    }
+
+    // If password hasn't been changed, require 'Change@001' as default password
     if (!user.password_changed) {
-      if (password !== user.payroll_number) {
+      if (password !== 'Change@001') {
         return res.status(401).json({ message: 'Invalid credentials' });
       }
       const changePasswordToken = jwt.sign(
@@ -160,7 +172,9 @@ exports.login = async (req, res) => {
       token,
       user: {
         id: user.id,
+        national_id: user.national_id,
         payroll_number: user.payroll_number,
+        phone_number: user.phone_number,
         first_name: user.first_name,
         other_names: user.other_names,
         surname: user.surname
@@ -183,6 +197,37 @@ exports.changePassword = async (req, res) => {
   const { newPassword } = req.body;
   const userId = req.user.id;
   try {
+    // Password policy: min 8 chars, upper, lower, number, symbol
+    const policy = {
+      minLength: 8,
+      upper: /[A-Z]/,
+      lower: /[a-z]/,
+      number: /[0-9]/,
+      symbol: /[^A-Za-z0-9]/
+    };
+    if (
+      newPassword.length < policy.minLength ||
+      !policy.upper.test(newPassword) ||
+      !policy.lower.test(newPassword) ||
+      !policy.number.test(newPassword) ||
+      !policy.symbol.test(newPassword)
+    ) {
+      return res.status(400).json({
+        message: 'Password must be at least 8 characters and include uppercase, lowercase, number, and symbol.'
+      });
+    }
+
+    // Get current password hash
+    const [users] = await pool.query('SELECT password FROM users WHERE id = ?', [userId]);
+    if (!users.length) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    const bcrypt = require('bcryptjs');
+    const isSame = await bcrypt.compare(newPassword, users[0].password);
+    if (isSame) {
+      return res.status(400).json({ message: 'You cannot reuse your previous password.' });
+    }
+
     // Hash new password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     // Increment password_changed by 1
@@ -223,7 +268,15 @@ exports.getMe = async (req, res) => {
         other_names,
         surname,  
         email, 
-        DATE_FORMAT(birthdate, '%d/%m/%Y') as birthdate 
+        national_id,
+        DATE_FORMAT(birthdate, '%d/%m/%Y') as birthdate,
+        place_of_birth,
+        marital_status,
+        postal_address,
+        physical_address,
+        designation,
+        department,
+  nature_of_employment
        FROM users 
        WHERE id = ?`,
       [req.user.id]
@@ -234,9 +287,7 @@ exports.getMe = async (req, res) => {
         message: 'User not found' 
       });
     }
-
     res.json(users[0]);
-    
   } catch (error) {
     console.error('Get profile error:', error);
     res.status(500).json({ 
@@ -246,24 +297,54 @@ exports.getMe = async (req, res) => {
   }
 };
 
+// @desc    Update user profile
+// @route   PUT /api/auth/me
+// @access  Private
+exports.updateMe = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const fields = [
+      'surname', 'first_name', 'other_names', 'birthdate', 'place_of_birth', 'marital_status',
+      'postal_address', 'physical_address', 'email', 'payroll_number', 'designation', 'department', 'nature_of_employment'
+    ];
+    const updates = [];
+    const values = [];
+    fields.forEach(field => {
+      if (req.body[field] !== undefined) {
+        updates.push(`${field} = ?`);
+        values.push(req.body[field]);
+      }
+    });
+    if (updates.length === 0) {
+      return res.status(400).json({ message: 'No fields to update.' });
+    }
+    values.push(userId);
+    await pool.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
+    res.json({ success: true, message: 'Profile updated successfully.' });
+  } catch (error) {
+    console.error('Update profile error:', error);
+    res.status(500).json({ message: 'Server error while updating profile', error: error.message });
+  }
+};
+
 // @desc    Check if user has changed password
 // @route   POST /api/auth/check-password-status
 // @access  Public
 exports.checkPasswordStatus = async (req, res) => {
   try {
-    const { payrollNumber } = req.body;
-    if (!payrollNumber) {
-      return res.status(400).json({ message: 'Payroll number is required.' });
+    const { nationalId } = req.body;
+    if (!nationalId) {
+      return res.status(400).json({ message: 'National ID is required.' });
     }
     const [users] = await pool.query(
-      'SELECT password_changed FROM users WHERE payroll_number = ?',
-      [payrollNumber]
+      'SELECT password_changed, phone_number FROM users WHERE national_id = ?',
+      [nationalId]
     );
     if (users.length === 0) {
-      return res.json({ password_changed: false });
+      return res.json({ password_changed: false, phone_number: null });
     }
     const user = users[0];
-    return res.json({ password_changed: user.password_changed > 0 });
+    return res.json({ password_changed: user.password_changed > 0, phone_number: user.phone_number });
   } catch (error) {
     console.error('Check password status error:', error);
     return res.status(500).json({ message: 'Server error', error: error.message });

@@ -39,6 +39,12 @@ const AdminUser = require('../models/AdminUser');
 
 exports.getAllDeclarations = async (req, res) => {
   try {
+    let departmentFilter = '';
+    let params = [];
+    if (req.admin && req.admin.department) {
+      departmentFilter = 'AND u.department = ?';
+      params.push(req.admin.department);
+    }
     const [declarations] = await pool.query(`
       SELECT 
         d.*,
@@ -46,11 +52,13 @@ exports.getAllDeclarations = async (req, res) => {
         u.other_names,
         u.surname,
         u.payroll_number,
-        u.email
+        u.email,
+        u.department
       FROM declarations d
       JOIN users u ON d.user_id = u.id
+      WHERE 1=1 ${departmentFilter}
       ORDER BY d.declaration_date DESC
-    `);
+    `, params);
 
     // For each declaration, fetch spouses and children
     const declarationIds = declarations.map(d => d.id);
@@ -156,16 +164,22 @@ exports.getAllUsers = async (req, res) => {
     const offset = (page - 1) * limit;
 
     let whereClause = '';
+    let params = [];
     if (emailFilter === 'with-email') {
       whereClause = 'WHERE email IS NOT NULL AND email != ""';
     } else if (emailFilter === 'without-email') {
       whereClause = 'WHERE email IS NULL OR email = ""';
     }
+    // Departmental admin filter
+    if (req.admin && req.admin.department) {
+      whereClause += (whereClause ? ' AND ' : 'WHERE ') + 'department = ?';
+      params.push(req.admin.department);
+    }
 
     // Get total count
     const [countResult] = await pool.query(`
       SELECT COUNT(*) as total FROM users ${whereClause}
-    `);
+    `, params);
     const total = countResult[0].total;
 
     // Get users with pagination
@@ -175,7 +189,7 @@ exports.getAllUsers = async (req, res) => {
       ${whereClause}
       ORDER BY payroll_number
       LIMIT ? OFFSET ?
-    `, [parseInt(limit), parseInt(offset)]);
+    `, [...params, parseInt(limit), parseInt(offset)]);
 
     res.json({
       users,

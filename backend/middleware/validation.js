@@ -17,8 +17,7 @@ exports.validateRegister = [
         .withMessage('First name must contain only letters'),
 
     body('other_names')
-        .notEmpty()
-        .withMessage('Other names are required')
+        .optional({ checkFalsy: true })
         .isLength({ min: 2, max: 100 })
         .withMessage('Other names must be between 2 and 100 characters')
         .isAlpha('en-US', { ignore: ' ' })

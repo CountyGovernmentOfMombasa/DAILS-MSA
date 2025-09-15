@@ -29,7 +29,6 @@ const Declaration = {
     const [result] = await pool.query(
       `INSERT INTO declarations (
         user_id,
-        department,
         marital_status,
         declaration_date,
         annual_income,
@@ -43,10 +42,9 @@ const Declaration = {
         declaration_type,
         status,
         correction_message
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         user_id,
-        department,
         marital_status,
         declaration_date,
         annualIncomeJson,
@@ -146,9 +144,9 @@ const Declaration = {
     const [rows] = await pool.query(
       `SELECT 
         d.id,
-        d.department,
         d.marital_status,
-        DATE_FORMAT(d.declaration_date, '%d/%m/%Y') as declaration_date,
+        d.declaration_type,
+        d.declaration_date,
         d.annual_income,
         d.assets,
         d.liabilities,
