@@ -4,6 +4,7 @@ class FinancialItem {
   static async create({
     financial_declaration_id,
     item_type,
+    type,
     description,
     value
   }) {
@@ -13,11 +14,12 @@ class FinancialItem {
 
     const [result] = await pool.query(
       `INSERT INTO financial_items (
-        financial_declaration_id, item_type, description, value
-      ) VALUES (?, ?, ?, ?)`,
+        financial_declaration_id, item_type, type, description, value
+      ) VALUES (?, ?, ?, ?, ?)`,
       [
         financial_declaration_id,
         validType,
+        type || '',
         description,
         value
       ]

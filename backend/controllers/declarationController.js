@@ -207,8 +207,8 @@ exports.submitDeclaration = async (req, res) => {
                 // Save witness data if provided
                 if (witness) {
                     await pool.query(
-                        'UPDATE declarations SET witness_signed = ?, witness_name = ?, witness_address = ? WHERE id = ?',
-                        [witness.signed ? 1 : 0, witness.name, witness.address, declarationId]
+                        'UPDATE declarations SET witness_signed = ?, witness_name = ?, witness_address = ?, witness_phone = ? WHERE id = ?',
+                        [witness.signed ? 1 : 0, witness.name, witness.address, witness.phone || '', declarationId]
                     );
                 }
                 // Send confirmation email to user
