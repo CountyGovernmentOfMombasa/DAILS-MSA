@@ -1,6 +1,11 @@
+const settingsLocksController = require('../controllers/settingsLocksController');
+const consentLogAdminController = require('../controllers/consentLogAdminController');
 const express = require('express');
+const router = express.Router();
+const settingsController = require('../controllers/settingsController');
+const adminController = require('../controllers/adminController');
+const declarationController = require('../controllers/declarationController');
 const { 
-  getAllDeclarations, 
   adminLogin, 
   verifyAdmin, 
   getAllUsers, 
@@ -11,37 +16,46 @@ const {
   updateAdmin,
   deleteAdmin,
   changeAdminPassword
-} = require('../controllers/adminController');
-const adminAuth = require('../middleware/adminMiddleware');
+} = adminController;
+const { verifyAdminToken } = require('../middleware/adminMiddleware');
 const upload = require('../middleware/fileUpload');
 
-const router = express.Router();
+// --- Declaration Locks Management ---
+router.get('/declaration-locks', verifyAdminToken, settingsController.getDeclarationLocks);
+router.put('/declaration-locks', verifyAdminToken, settingsController.setDeclarationLock);
 
+// Settings Locks Management
+router.get('/settings/locks', verifyAdminToken, settingsLocksController.getAllLocks);
+router.post('/settings/locks', verifyAdminToken, settingsLocksController.setLocks);
+
+// Consent Logs (Admin)
+router.get('/consent-logs', verifyAdminToken, consentLogAdminController.getConsentLogs);
 
 // --- Admin Authentication ---
 router.post('/login', adminLogin); // Login (no auth required)
 
 // --- Admin Verification ---
-router.get('/verify', adminAuth, verifyAdmin); // Verify admin (auth required)
+router.get('/verify', verifyAdminToken, verifyAdmin); // Verify admin (auth required)
 
 // --- Declaration Management ---
-router.get('/declarations', adminAuth, getAllDeclarations); // Get all declarations (auth required)
-router.put('/declarations/:declarationId/status', adminAuth, require('../controllers/adminController').updateDeclarationStatus); // Approve/reject declaration
+// Use declarationController.getAllDeclarations to ensure all user fields are included in admin export
+router.get('/declarations', verifyAdminToken, declarationController.getAllDeclarations); // Get all declarations (auth required)
+router.put('/declarations/:declarationId/status', verifyAdminToken, adminController.updateDeclarationStatus); // Approve/reject declaration
 
 // --- User Management ---
-router.get('/users', adminAuth, getAllUsers); // Get all users
-router.put('/users/:userId/email', adminAuth, updateUserEmail); // Update user email
-router.put('/users/bulk-email', adminAuth, bulkUpdateEmails); // Bulk update emails
+router.get('/users', verifyAdminToken, getAllUsers); // Get all users
+router.put('/users/:userId/email', verifyAdminToken, updateUserEmail); // Update user email
+router.put('/users/bulk-email', verifyAdminToken, bulkUpdateEmails); // Bulk update emails
 
 // --- Admin Management ---
-router.get('/admins', adminAuth, getAllAdmins); // Get all admins
-router.post('/admins', adminAuth, createAdmin); // Create admin
-router.put('/admins/:adminId', adminAuth, updateAdmin); // Update admin
-router.delete('/admins/:adminId', adminAuth, deleteAdmin); // Delete admin
-router.put('/change-password', adminAuth, changeAdminPassword); // Change admin password
+router.get('/admins', verifyAdminToken, getAllAdmins); // Get all admins
+router.post('/admins', verifyAdminToken, createAdmin); // Create admin
+router.put('/admins/:adminId', verifyAdminToken, updateAdmin); // Update admin
+router.delete('/admins/:adminId', verifyAdminToken, deleteAdmin); // Delete admin
+router.put('/change-password', verifyAdminToken, changeAdminPassword); // Change admin password
 
 // Upload admin signature
-router.post('/admins/:adminId/upload-signature', adminAuth, upload.single('signature'), async (req, res) => {
+router.post('/admins/:adminId/upload-signature', verifyAdminToken, upload.single('signature'), async (req, res) => {
   try {
     const adminId = req.params.adminId;
     // Only allow admin to upload their own signature
@@ -66,12 +80,12 @@ let biennialLocked = false;
 router.biennialLocked = biennialLocked;
 
 // Get biennial lock status
-router.get('/biennial-lock', adminAuth, (req, res) => {
+router.get('/biennial-lock', verifyAdminToken, (req, res) => {
   res.json({ locked: biennialLocked });
 });
 
 // Set biennial lock status
-router.post('/biennial-lock', adminAuth, (req, res) => {
+router.post('/biennial-lock', verifyAdminToken, (req, res) => {
   biennialLocked = !!req.body.locked;
   router.biennialLocked = biennialLocked;
   res.json({ locked: biennialLocked });

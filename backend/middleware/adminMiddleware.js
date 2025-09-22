@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const AdminUser = require('../models/AdminUser'); // Fixed: Changed from adminUserModel to AdminUser
 
-const adminAuth = async (req, res, next) => {
+const verifyAdminToken = async (req, res, next) => {
   try {
     const token = req.header('Authorization')?.replace('Bearer ', '');
     
@@ -36,4 +36,4 @@ const adminAuth = async (req, res, next) => {
   }
 };
 
-module.exports = adminAuth;
+exports.verifyAdminToken = verifyAdminToken;

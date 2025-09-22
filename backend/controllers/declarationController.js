@@ -1,10 +1,261 @@
+// --- Update Declaration (PUT) ---
+exports.updateDeclaration = async (req, res) => {
+    try {
+        const declarationId = req.params.id;
+        const userId = req.user.id;
+        const {
+            surname, first_name, other_names, email, marital_status, payroll_number, birthdate, place_of_birth, department,
+            spouses, children, financial_declarations, witness_signed, witness_name, witness_address, witness_phone, declaration_checked,
+            biennial_income, assets, liabilities, other_financial_info, declaration_date, period_start_date, period_end_date
+        } = req.body;
+
+        // Update main declaration fields including financial data
+        await db.execute(
+            `UPDATE declarations SET 
+                surname=?, first_name=?, other_names=?, email=?, marital_status=?, payroll_number=?, 
+                birthdate=?, place_of_birth=?, department=?, witness_signed=?, witness_name=?, 
+                witness_address=?, witness_phone=?, declaration_checked=?, biennial_income=?, 
+                assets=?, liabilities=?, other_financial_info=?, declaration_date=?, 
+                period_start_date=?, period_end_date=?, updated_at=CURRENT_TIMESTAMP 
+             WHERE id=? AND user_id=?`,
+            [
+                surname, first_name, other_names, email, marital_status, payroll_number, 
+                birthdate, place_of_birth, department, witness_signed ? 1 : 0, witness_name, 
+                witness_address, witness_phone, declaration_checked ? 1 : 0, 
+                JSON.stringify(biennial_income || []), assets || '', liabilities || '', 
+                other_financial_info || '', declaration_date, period_start_date, period_end_date,
+                declarationId, userId
+            ]
+        );
+
+        // Update spouses
+        await db.execute('DELETE FROM spouses WHERE declaration_id = ?', [declarationId]);
+        if (Array.isArray(spouses) && spouses.length > 0) {
+            for (const spouse of spouses) {
+                const fullName = `${spouse.first_name || ''} ${spouse.other_names || ''} ${spouse.surname || ''}`.trim();
+                await db.execute(
+                    'INSERT INTO spouses (declaration_id, first_name, other_names, surname, full_name, biennial_income, assets, liabilities, other_financial_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [
+                        declarationId, 
+                        spouse.first_name || '', 
+                        spouse.other_names || '', 
+                        spouse.surname || '',
+                        fullName,
+                        JSON.stringify(spouse.biennial_income || []),
+                        spouse.assets || '',
+                        spouse.liabilities || '',
+                        spouse.other_financial_info || ''
+                    ]
+                );
+            }
+        }
+
+        // Update children
+        await db.execute('DELETE FROM children WHERE declaration_id = ?', [declarationId]);
+        if (Array.isArray(children) && children.length > 0) {
+            for (const child of children) {
+                const fullName = `${child.first_name || ''} ${child.other_names || ''} ${child.surname || ''}`.trim();
+                await db.execute(
+                    'INSERT INTO children (declaration_id, first_name, other_names, surname, full_name, biennial_income, assets, liabilities, other_financial_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [
+                        declarationId, 
+                        child.first_name || '', 
+                        child.other_names || '', 
+                        child.surname || '',
+                        fullName,
+                        JSON.stringify(child.biennial_income || []),
+                        child.assets || '',
+                        child.liabilities || '',
+                        child.other_financial_info || ''
+                    ]
+                );
+            }
+        }
+
+        // Update financial declarations and financial items
+        // First, delete existing financial items (cascade will handle this, but be explicit)
+        const [existingFinDecls] = await db.execute('SELECT id FROM financial_declarations WHERE declaration_id = ?', [declarationId]);
+        if (existingFinDecls.length > 0) {
+            const finDeclIds = existingFinDecls.map(fd => fd.id);
+            await db.execute(`DELETE FROM financial_items WHERE financial_declaration_id IN (${finDeclIds.map(() => '?').join(',')})`, finDeclIds);
+        }
+        
+        // Delete existing financial declarations
+        await db.execute('DELETE FROM financial_declarations WHERE declaration_id = ?', [declarationId]);
+        
+        // Insert new financial declarations and items
+        if (Array.isArray(financial_declarations) && financial_declarations.length > 0) {
+            const FinancialDeclaration = require('../models/financialDeclaration');
+            const FinancialItem = require('../models/financialItem');
+            
+            for (const finDecl of financial_declarations) {
+                // Validate member_type
+                const allowedTypes = ['user', 'spouse', 'child'];
+                const validType = allowedTypes.includes(finDecl.member_type?.toLowerCase()) ? finDecl.member_type.toLowerCase() : 'user';
+
+                // Create the financial declaration
+                const financialDeclaration = await FinancialDeclaration.create({
+                    declaration_id: declarationId,
+                    member_type: validType,
+                    member_name: finDecl.member_name || 'Unknown',
+                    declaration_date: finDecl.declaration_date || new Date().toISOString().split('T')[0],
+                    period_start_date: finDecl.period_start_date || '',
+                    period_end_date: finDecl.period_end_date || '',
+                    other_financial_info: finDecl.other_financial_info || ''
+                });
+
+                // Insert financial items for biennial_income
+                if (Array.isArray(finDecl.biennial_income) && finDecl.biennial_income.length > 0) {
+                    for (const item of finDecl.biennial_income) {
+                        await FinancialItem.create({
+                            financial_declaration_id: financialDeclaration.id,
+                            item_type: 'income',
+                            type: item.type || 'income',
+                            description: item.description || '',
+                            value: item.value || 0
+                        });
+                    }
+                }
+
+                // Insert financial items for assets
+                if (Array.isArray(finDecl.assets) && finDecl.assets.length > 0) {
+                    for (const item of finDecl.assets) {
+                        await FinancialItem.create({
+                            financial_declaration_id: financialDeclaration.id,
+                            item_type: 'asset',
+                            type: item.type || 'asset',
+                            description: item.description || '',
+                            value: item.value || 0
+                        });
+                    }
+                }
+
+                // Insert financial items for liabilities
+                if (Array.isArray(finDecl.liabilities) && finDecl.liabilities.length > 0) {
+                    for (const item of finDecl.liabilities) {
+                        await FinancialItem.create({
+                            financial_declaration_id: financialDeclaration.id,
+                            item_type: 'liability',
+                            type: item.type || 'liability',
+                            description: item.description || '',
+                            value: item.value || 0
+                        });
+                    }
+                }
+            }
+        }
+
+        res.json({ success: true, message: 'Declaration updated successfully.' });
+    } catch (err) {
+        console.error('Error updating declaration:', err);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Failed to update declaration.', 
+            error: err.message 
+        });
+    }
+};
+// --- Edit Request Handler (Direct SQL) ---
+const db = require('../config/db');
+exports.requestEdit = async (req, res) => {
+    try {
+        const declarationId = req.params.id;
+        const userId = req.user.id;
+        const { reason, date } = req.body;
+        if (!reason) return res.status(400).json({ message: 'Reason is required.' });
+        await db.execute(
+            'INSERT INTO declaration_edit_requests (declarationId, userId, reason, requestedAt) VALUES (?, ?, ?, ?)',
+            [declarationId, userId, reason, date || new Date()]
+        );
+        res.json({ message: 'Edit request recorded.' });
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to record edit request.' });
+    }
+};
+
+// --- View All Edit Requests (Admin, Direct SQL) ---
+exports.getAllEditRequests = async (req, res) => {
+    try {
+        const [requests] = await db.execute(
+            'SELECT * FROM declaration_edit_requests ORDER BY requestedAt DESC'
+        );
+        res.json({ success: true, data: requests });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Failed to fetch edit requests.' });
+    }
+};
+// Get a single declaration by ID for the logged-in user (with full financial data)
+exports.getDeclarationById = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const declarationId = req.params.id;
+        const db = require('../config/db');
+        const [rows] = await db.execute('SELECT * FROM declarations WHERE id = ? AND user_id = ?', [declarationId, userId]);
+        if (rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Declaration not found' });
+        }
+        // Fetch related spouses and children
+        const [spouses] = await db.execute('SELECT * FROM spouses WHERE declaration_id = ?', [declarationId]);
+        const [children] = await db.execute('SELECT * FROM children WHERE declaration_id = ?', [declarationId]);
+        // Fetch related financial_declarations
+        const [financialDeclarations] = await db.execute('SELECT * FROM financial_declarations WHERE declaration_id = ?', [declarationId]);
+        // Fetch financial items for each declaration
+        const [financialItems] = await db.execute('SELECT * FROM financial_items WHERE financial_declaration_id IN (' + (financialDeclarations.map(fd => fd.id).join(',') || '0') + ')');
+        // Attach items to each financial declaration
+        const financialsWithItems = financialDeclarations.map(fd => {
+            const items = financialItems.filter(item => item.financial_declaration_id === fd.id);
+            return {
+                ...fd,
+                biennial_income: items.filter(i => i.item_type === 'income'),
+                assets: items.filter(i => i.item_type === 'asset'),
+                liabilities: items.filter(i => i.item_type === 'liability'),
+            };
+        });
+        res.json({
+            success: true,
+            declaration: {
+                ...rows[0],
+                spouses,
+                children,
+                financial_declarations: financialsWithItems
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching declaration by ID:', error);
+        res.status(500).json({ success: false, message: 'Server error fetching declaration' });
+    }
+};
 const Declaration = require('../models/declarationModel');
+
+// Get all declarations for admin (with debug log)
+exports.getAllDeclarations = async (req, res) => {
+    try {
+        const rows = await Declaration.findAll();
+        // Debug log: print first row to verify all fields
+        if (rows && rows.length > 0) {
+            console.log('Admin Declarations API - First row:', rows[0]);
+        } else {
+            console.log('Admin Declarations API - No rows returned');
+        }
+        res.json({ success: true, data: rows });
+    } catch (error) {
+        console.error('Error fetching all admin declarations:', error);
+        res.status(500).json({ success: false, message: 'Server error fetching admin declarations' });
+    }
+};
 // Get all declarations for a user
 exports.getDeclarations = async (req, res) => {
     try {
         const userId = req.user.id;
         const db = require('../config/db');
         const [rows] = await db.execute('SELECT * FROM declarations WHERE user_id = ?', [userId]);
+        // For each declaration, fetch spouses and children
+        for (const decl of rows) {
+            const [spouses] = await db.execute('SELECT * FROM spouses WHERE declaration_id = ?', [decl.id]);
+            const [children] = await db.execute('SELECT * FROM children WHERE declaration_id = ?', [decl.id]);
+            decl.spouses = spouses;
+            decl.children = children;
+        }
         res.json({ success: true, declarations: rows });
     } catch (error) {
         console.error('Error fetching declarations:', error);
@@ -18,7 +269,7 @@ exports.submitDeclaration = async (req, res) => {
             marital_status,
             declaration_date,
             department,
-            annual_income,
+            biennial_income,
             assets,
             liabilities,
             other_financial_info,
@@ -29,7 +280,11 @@ exports.submitDeclaration = async (req, res) => {
             spouse_financials,
             child_financials,
             witness,
-            declaration_type // <-- new field
+            declaration_type,
+            periodStart,
+            periodEnd,
+            period_start_date,
+            period_end_date
         } = req.body;
         // --- Declaration type logic ---
         const allowedTypes = ['First', 'Bienniel', 'Final'];
@@ -110,17 +365,21 @@ exports.submitDeclaration = async (req, res) => {
                     return dateStr;
                 }
 
-                // Validate annual_income: must be a positive number
-                let validAnnualIncome = Number(annual_income);
-                if (isNaN(validAnnualIncome) || validAnnualIncome <= 0) {
+                // Validate biennial_income: must be an array of objects with type, description, value
+                let validBiennialIncome = biennial_income;
+                if (!Array.isArray(validBiennialIncome) || !validBiennialIncome.every(item => item && typeof item === 'object' && 'type' in item && 'description' in item && 'value' in item)) {
                     return res.status(400).json({
                         success: false,
-                        message: "Annual income must be a positive number."
+                        message: "Biennial income must be an array of objects with type, description, and value."
                     });
                 }
 
+
                 // Convert date to ISO format for DB
                 const isoDeclarationDate = convertDateToISO(declaration_date);
+                // Support both camelCase and snake_case for period start/end
+                const isoPeriodStart = convertDateToISO(periodStart || period_start_date || '');
+                const isoPeriodEnd = convertDateToISO(periodEnd || period_end_date || '');
 
                 // Use model for declaration creation
                 const declaration = await Declaration.create({
@@ -128,7 +387,9 @@ exports.submitDeclaration = async (req, res) => {
                     department,
                     marital_status,
                     declaration_date: isoDeclarationDate,
-                    annual_income: validAnnualIncome,
+                    period_start_date: isoPeriodStart,
+                    period_end_date: isoPeriodEnd,
+                    biennial_income: validBiennialIncome,
                     assets,
                     liabilities,
                     other_financial_info,
@@ -181,8 +442,8 @@ exports.submitDeclaration = async (req, res) => {
                             member_type: validType,
                             member_name: memberName,
                             declaration_date: finDecl.declaration_date || declaration_date,
-                            period_start_date: finDecl.period_start_date || declaration_date || '',
-                            period_end_date: finDecl.period_end_date || declaration_date || '',
+                            period_start_date: finDecl.period_start_date || isoPeriodStart || declaration_date || '',
+                            period_end_date: finDecl.period_end_date || isoPeriodEnd || declaration_date || '',
                             other_financial_info: finDecl.other_financial_info || '',
                             status: finDecl.status || undefined
                         });

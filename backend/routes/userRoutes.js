@@ -3,7 +3,9 @@ const router = express.Router();
 const db = require('../config/db');
 const { verifyToken } = require('../middleware/authMiddleware');
 const { body, validationResult, param } = require('express-validator');
-
+const upload = require('../middleware/fileUpload');
+const { getFamily } = require('../controllers/userController');
+const { getFinancialData } = require('../controllers/financialController');
 
 // --- Validation Middleware ---
 const emailValidation = [
@@ -15,12 +17,16 @@ const emailValidation = [
 ];
 
 // --- Profile Management ---
+// Family info (spouses & children) for current user
+router.get('/family', verifyToken, getFamily);
+
+// Financial data for current user
+router.get('/financial-data', verifyToken, getFinancialData);
+
 // Get user profile
 router.get('/profile/:userId', verifyToken, async (req, res) => {
     try {
         const userId = req.params.userId;
-        
-const upload = require('../middleware/fileUpload');
         // Verify user can only access their own profile or admin can access any
         if (req.user.userId !== parseInt(userId) && req.user.role !== 'admin') {
             return res.status(403).json({ message: 'Access denied' });

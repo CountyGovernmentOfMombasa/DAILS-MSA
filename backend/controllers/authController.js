@@ -269,14 +269,15 @@ exports.getMe = async (req, res) => {
         surname,  
         email, 
         national_id,
-        DATE_FORMAT(birthdate, '%d/%m/%Y') as birthdate,
+        phone_number,
+        DATE_FORMAT(birthdate, '%Y-%m-%d') as birthdate,
         place_of_birth,
         marital_status,
         postal_address,
         physical_address,
         designation,
         department,
-  nature_of_employment
+        nature_of_employment
        FROM users 
        WHERE id = ?`,
       [req.user.id]
@@ -305,22 +306,54 @@ exports.updateMe = async (req, res) => {
     const userId = req.user.id;
     const fields = [
       'surname', 'first_name', 'other_names', 'birthdate', 'place_of_birth', 'marital_status',
-      'postal_address', 'physical_address', 'email', 'payroll_number', 'designation', 'department', 'nature_of_employment'
+      'postal_address', 'physical_address', 'email', 'payroll_number', 'designation', 'department', 'nature_of_employment', 'phone_number'
     ];
     const updates = [];
     const values = [];
     fields.forEach(field => {
       if (req.body[field] !== undefined) {
+        let value = req.body[field];
+        if (field === 'nature_of_employment') {
+          console.log('Received nature_of_employment:', value);
+        }
+        if (field === 'nature_of_employment' && typeof value === 'string' && value.length > 0) {
+          // Capitalize first letter, lowercase the rest
+          value = value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+        }
         updates.push(`${field} = ?`);
-        values.push(req.body[field]);
+        values.push(value);
       }
     });
+    console.log('Update values for user:', values);
     if (updates.length === 0) {
       return res.status(400).json({ message: 'No fields to update.' });
     }
     values.push(userId);
     await pool.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
-    res.json({ success: true, message: 'Profile updated successfully.' });
+    // Return updated profile (same as getMe)
+    const [users] = await pool.query(
+      `SELECT 
+        id, 
+        payroll_number, 
+        first_name, 
+        other_names,
+        surname,  
+        email, 
+        national_id,
+        phone_number,
+        DATE_FORMAT(birthdate, '%Y-%m-%d') as birthdate,
+        place_of_birth,
+        marital_status,
+        postal_address,
+        physical_address,
+        designation,
+        department,
+        nature_of_employment
+       FROM users 
+       WHERE id = ?`,
+      [userId]
+    );
+    res.json({ success: true, message: 'Profile updated successfully.', profile: users[0] });
   } catch (error) {
     console.error('Update profile error:', error);
     res.status(500).json({ message: 'Server error while updating profile', error: error.message });

@@ -1,9 +1,10 @@
 const express = require('express');
-const { submitDeclaration, getDeclarations } = require('../controllers/declarationController');
+const { submitDeclaration, getDeclarations, requestEdit, getAllEditRequests } = require('../controllers/declarationController');
 const { verifyToken } = require('../middleware/authMiddleware');
 const upload = require('../middleware/fileUpload');
 const { validateDeclaration } = require('../middleware/validation');
 const router = express.Router();
+const { getDeclarationById } = require('../controllers/declarationController');
 
 // --- Declaration Submission ---
 // Biennial lock check middleware
@@ -12,6 +13,9 @@ let biennialLocked = false;
 try {
 	biennialLocked = require('./adminRoutes').biennialLocked;
 } catch {}
+
+// Admin: View all edit requests
+router.get('/edit-requests/all', verifyToken, getAllEditRequests);
 
 router.post('/', verifyToken, validateDeclaration, async (req, res, next) => {
 	// Block biennial declaration if locked
@@ -29,6 +33,19 @@ router.post('/', verifyToken, validateDeclaration, async (req, res, next) => {
 
 // --- Declaration Retrieval ---
 router.get('/', verifyToken, getDeclarations); // Get all declarations for user
+
+router.get('/:id', verifyToken, getDeclarationById);
+
+
+// Update a declaration (edit)
+const { updateDeclaration } = require('../controllers/declarationController');
+router.put('/:id', verifyToken, updateDeclaration);
+
+// Record an edit request for a declaration
+router.post('/:id/edit-request', verifyToken, requestEdit);
+
+// Get a single declaration by ID for the logged-in user
+router.get('/:id', verifyToken, getDeclarationById);
 
 // Upload declaration document
 router.post('/:declarationId/upload-document', verifyToken, upload.single('document'), async (req, res) => {

@@ -63,7 +63,7 @@ class AdminUser {
         try {
             let { username, password, email, role, department, first_name, other_names, surname, created_by, is_active } = adminData;
             // Validate role enum
-            const allowedRoles = ['super_admin', 'hr_admin', 'finance_admin'];
+            const allowedRoles = ['super_admin', 'hr_admin', 'finance_admin', 'it_admin'];
             if (!role || !allowedRoles.includes(role)) {
                 role = 'hr_admin'; // default
             }

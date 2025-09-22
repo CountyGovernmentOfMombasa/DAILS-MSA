@@ -8,7 +8,7 @@ const Declaration = {
       department,
       marital_status,
       declaration_date,
-      annual_income,
+  biennial_income,
       assets,
       liabilities,
       other_financial_info,
@@ -21,8 +21,8 @@ const Declaration = {
       correction_message = null
     } = declarationData;
 
-    // Store annual_income as JSON string
-    const annualIncomeJson = (typeof annual_income === 'string') ? annual_income : JSON.stringify(annual_income || []);
+  // Store biennial_income as JSON string
+  const biennialIncomeJson = (typeof biennial_income === 'string') ? biennial_income : JSON.stringify(biennial_income || []);
     const assetsJson = (typeof assets === 'object') ? JSON.stringify(assets) : assets;
     const liabilitiesJson = (typeof liabilities === 'object') ? JSON.stringify(liabilities) : liabilities;
 
@@ -31,7 +31,7 @@ const Declaration = {
         user_id,
         marital_status,
         declaration_date,
-        annual_income,
+  biennial_income,
         assets,
         liabilities,
         other_financial_info,
@@ -47,7 +47,7 @@ const Declaration = {
         user_id,
         marital_status,
         declaration_date,
-        annualIncomeJson,
+  biennialIncomeJson,
         assetsJson,
         liabilitiesJson,
         other_financial_info,
@@ -72,10 +72,10 @@ const Declaration = {
   // Create spouse records
   async createSpouses(declarationId, spouses) {
     if (!spouses || spouses.length === 0) return;
-    // Store annual_income as JSON string
+    // Store biennial_income as JSON string
     const values = spouses.map(spouse => {
       const fullName = spouse.full_name || `${spouse.first_name || ''} ${spouse.surname || ''} ${spouse.other_names || ''}`.trim();
-      const incomeJson = (typeof spouse.annual_income === 'string') ? spouse.annual_income : JSON.stringify(spouse.annual_income || []);
+      const incomeJson = (typeof spouse.biennial_income === 'string') ? spouse.biennial_income : JSON.stringify(spouse.biennial_income || []);
       return [
         declarationId,
         spouse.first_name,
@@ -95,7 +95,7 @@ const Declaration = {
         other_names,
         surname,
         full_name,
-        annual_income,
+        biennial_income,
         assets,
         liabilities,
         other_financial_info
@@ -107,10 +107,10 @@ const Declaration = {
   // Create children records
   async createChildren(declarationId, children) {
     if (!children || children.length === 0) return;
-    // Store annual_income as JSON string
+    // Store biennial_income as JSON string
     const values = children.map(child => {
       const fullName = child.full_name || `${child.first_name || ''} ${child.other_names || ''} ${child.surname || ''}`.trim();
-      const incomeJson = (typeof child.annual_income === 'string') ? child.annual_income : JSON.stringify(child.annual_income || []);
+      const incomeJson = (typeof child.biennial_income === 'string') ? child.biennial_income : JSON.stringify(child.biennial_income || []);
       return [
         declarationId,
         child.first_name,
@@ -130,7 +130,7 @@ const Declaration = {
         other_names,
         surname,
         full_name,
-        annual_income,
+        biennial_income,
         assets,
         liabilities,
         other_financial_info
@@ -147,7 +147,7 @@ const Declaration = {
         d.marital_status,
         d.declaration_type,
         d.declaration_date,
-        d.annual_income,
+  d.biennial_income,
         d.assets,
         d.liabilities,
         d.other_financial_info,
@@ -178,6 +178,15 @@ const Declaration = {
         u.surname,
         u.payroll_number,
         u.department,
+        u.phone_number,
+        u.designation,
+        u.national_id,
+        DATE_FORMAT(u.birthdate, '%d/%m/%Y') as birthdate,
+        u.email,
+        u.place_of_birth,
+        u.postal_address,
+        u.physical_address,
+        u.nature_of_employment,
         d.status,
         d.correction_message
        FROM declarations d
@@ -197,8 +206,7 @@ const Declaration = {
         first_name,
         other_names,
         surname,
-        full_name,
-        occupation
+        full_name
        FROM spouses
        WHERE declaration_id = ?`,
       [declarationId]
@@ -231,16 +239,30 @@ const Declaration = {
         d.id,
         d.user_id,
         CONCAT(u.first_name, ' ', u.other_names, ' ', u.surname) as user_name,
-        u.payroll_number,
-        u.department,
+        u.payroll_number AS payroll_number,
+        u.first_name AS first_name,
+        u.other_names AS other_names,
+        u.surname AS surname,
+        u.email AS email,
+        u.phone_number AS phone_number,
+        u.department AS department,
+        u.designation AS designation,
+        u.national_id AS national_id,
+        DATE_FORMAT(u.birthdate, '%Y-%m-%d') AS birthdate,
+        u.place_of_birth AS place_of_birth,
+        u.marital_status AS user_marital_status,
+        u.postal_address AS postal_address,
+        u.physical_address AS physical_address,
+        u.nature_of_employment AS nature_of_employment,
         d.marital_status,
-        DATE_FORMAT(d.declaration_date, '%d/%m/%Y') as declaration_date,
-        d.annual_income,
+        d.declaration_type,
+        DATE_FORMAT(d.declaration_date, '%Y-%m-%d') as declaration_date,
+  d.biennial_income,
         d.assets,
         d.liabilities,
         d.status,
         d.correction_message,
-        DATE_FORMAT(d.submitted_at, '%d/%m/%Y %H:%i') as submitted_at,
+        DATE_FORMAT(d.submitted_at, '%Y-%m-%dT%H:%i:%s.000Z') as submitted_at,
         (SELECT COUNT(*) FROM spouses WHERE declaration_id = d.id) as spouse_count,
         (SELECT COUNT(*) FROM children WHERE declaration_id = d.id) as children_count
        FROM declarations d

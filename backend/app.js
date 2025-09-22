@@ -6,10 +6,16 @@ const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 const authRoutes = require('./routes/authRoutes');
 const declarationRoutes = require('./routes/declarationRoutes');
+
 const adminRoutes = require('./routes/adminRoutes');
+const hrAdminRoutes = require('./routes/hrAdminRoutes');
+const itAdminRoutes = require('./routes/itAdminRoutes');
+const financeAdminRoutes = require('./routes/financeAdminRoutes');
+
 
 const draftRoutes = require('./routes/draftRoutes');
 const userRoutes = require('./routes/userRoutes');
+const consentRoutes = require('./routes/consentRoutes');
 
 
 const app = express();
@@ -59,11 +65,16 @@ app.get('/api/biennial-lock', (req, res) => {
 });
 
 
+
 app.use('/api/auth', authRoutes);
 app.use('/api/declarations', declarationRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/hr-admin', hrAdminRoutes);
+app.use('/api/it-admin', itAdminRoutes);
+app.use('/api/finance-admin', financeAdminRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/drafts', draftRoutes);
+app.use('/api/admin/consent', consentRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

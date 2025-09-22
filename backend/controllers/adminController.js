@@ -112,14 +112,25 @@ exports.adminLogin = async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // Update last login
-    await admin.updateLastLogin();
+
+    // Map DB roles to frontend roles
+    if (admin.role === 'hr_admin') {
+      admin.role = 'hr';
+    } else if (admin.role === 'it_admin') {
+      admin.role = 'it';
+    } else if (admin.role === 'finance_admin') {
+      admin.role = 'finance';
+    } else if (admin.role === 'super_admin') {
+      admin.role = 'super';
+    } else {
+      admin.role = 'super';
+    }
 
     // Generate admin token
     const adminToken = jwt.sign(
-      { 
-        adminId: admin.id, 
-        username: admin.username, 
+      {
+        adminId: admin.id,
+        username: admin.username,
         role: admin.role,
         isAdmin: true
       },
@@ -170,8 +181,8 @@ exports.getAllUsers = async (req, res) => {
     } else if (emailFilter === 'without-email') {
       whereClause = 'WHERE email IS NULL OR email = ""';
     }
-    // Departmental admin filter
-    if (req.admin && req.admin.department) {
+    // Departmental admin filter (only for finance_admin)
+    if (req.admin && req.admin.department && req.admin.role === 'finance') {
       whereClause += (whereClause ? ' AND ' : 'WHERE ') + 'department = ?';
       params.push(req.admin.department);
     }
@@ -184,7 +195,7 @@ exports.getAllUsers = async (req, res) => {
 
     // Get users with pagination
     const [users] = await pool.query(`
-      SELECT id, payroll_number, first_name, other_names, surname, email, department, birthdate
+      SELECT id, payroll_number, first_name, other_names, surname, email, department, birthdate, national_id
       FROM users 
       ${whereClause}
       ORDER BY payroll_number
