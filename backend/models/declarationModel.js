@@ -199,27 +199,35 @@ const Declaration = {
 
     const declaration = declarations[0];
 
-    // Get spouses
+    // Get spouses (include financial fields for admin details view)
     const [spouses] = await pool.query(
       `SELECT 
         id,
         first_name,
         other_names,
         surname,
-        full_name
+        full_name,
+        biennial_income,
+        assets,
+        liabilities,
+        other_financial_info
        FROM spouses
        WHERE declaration_id = ?`,
       [declarationId]
     );
 
-    // Get children
+    // Get children (include financial fields for admin details view)
     const [children] = await pool.query(
       `SELECT 
         id,
         first_name,
         other_names,
         surname,
-        full_name
+        full_name,
+        biennial_income,
+        assets,
+        liabilities,
+        other_financial_info
        FROM children
        WHERE declaration_id = ?`,
       [declarationId]

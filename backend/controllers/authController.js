@@ -108,6 +108,15 @@ const convertDateFormat = (ddmmyyyy) => {
   return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
 };
 
+const sendSMS = require('../util/sendSMS');
+
+// Generate a 6-digit OTP and expiry 10 minutes from now
+function createOtp() {
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const expires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+  return { code, expires };
+}
+
 // @desc    Login user
 // @route   POST /api/auth/login
 // @access  Public
@@ -137,20 +146,31 @@ exports.login = async (req, res) => {
       user.phone_number = phoneNumber;
     }
 
-    // If password hasn't been changed, require 'Change@001' as default password
+    // If password hasn't been changed, trigger OTP to phone and require OTP verification
     if (!user.password_changed) {
+      // Require default password for first step
       if (password !== 'Change@001') {
         return res.status(401).json({ message: 'Invalid credentials' });
       }
-      const changePasswordToken = jwt.sign(
-        { id: user.id, changePassword: true },
+      // Generate and store OTP
+      const { code, expires } = createOtp();
+      await pool.query('UPDATE users SET otp_code = ?, otp_expires_at = ? WHERE id = ?', [code, expires, user.id]);
+      // Send OTP via SMS
+      try {
+        await sendSMS({ to: user.phone_number, body: `Your WDP one-time code is ${code}. It expires in 10 minutes.` });
+      } catch (e) {
+        console.error('Failed to send OTP SMS:', e.message);
+      }
+      // Short-lived token to allow OTP verification
+      const otpToken = jwt.sign(
+        { id: user.id, otp: true },
         process.env.JWT_SECRET,
         { expiresIn: '15m' }
       );
       return res.json({
-        changePasswordRequired: true,
-        token: changePasswordToken,
-        message: 'Please set a new password'
+        otpRequired: true,
+        token: otpToken,
+        message: 'Enter the OTP sent to your phone to continue'
       });
     }
 
@@ -187,6 +207,68 @@ exports.login = async (req, res) => {
       message: 'Server error during login',
       error: error.message 
     });
+  }
+};
+
+// @desc    Resend OTP for first-time login
+// @route   POST /api/auth/resend-otp
+// @access  Public (needs nationalId and default password)
+exports.resendOtp = async (req, res) => {
+  try {
+    const { nationalId, password } = req.body;
+    if (!nationalId || !password) {
+      return res.status(400).json({ message: 'nationalId and password are required' });
+    }
+    const [users] = await pool.query('SELECT id, phone_number, password_changed FROM users WHERE national_id = ?', [nationalId]);
+    if (!users.length) return res.status(404).json({ message: 'User not found' });
+    const user = users[0];
+    if (user.password_changed) {
+      return res.status(400).json({ message: 'OTP not required. Please login normally.' });
+    }
+    if (password !== 'Change@001') {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+    const { code, expires } = createOtp();
+    await pool.query('UPDATE users SET otp_code = ?, otp_expires_at = ? WHERE id = ?', [code, expires, user.id]);
+    try {
+      await sendSMS({ to: user.phone_number, body: `Your WDP one-time code is ${code}. It expires in 10 minutes.` });
+    } catch (e) {
+      console.error('Failed to send OTP SMS:', e.message);
+    }
+    return res.json({ success: true, message: 'OTP resent' });
+  } catch (error) {
+    console.error('Resend OTP error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// @desc    Verify OTP and require immediate password change
+// @route   POST /api/auth/verify-otp
+// @access  Private (token from login with otp: true)
+exports.verifyOtp = async (req, res) => {
+  try {
+    const { otp } = req.body;
+    if (!otp) return res.status(400).json({ message: 'OTP is required' });
+    const userId = req.user.id;
+    const [rows] = await pool.query('SELECT otp_code, otp_expires_at FROM users WHERE id = ?', [userId]);
+    if (!rows.length) return res.status(404).json({ message: 'User not found' });
+    const { otp_code, otp_expires_at } = rows[0];
+    if (!otp_code || !otp_expires_at) return res.status(400).json({ message: 'No OTP generated. Please login again.' });
+    const now = new Date();
+    const expiry = new Date(otp_expires_at);
+    if (now > expiry) return res.status(400).json({ message: 'OTP expired. Please request a new one.' });
+    if (String(otp) !== String(otp_code)) return res.status(400).json({ message: 'Invalid OTP' });
+    // Clear OTP and create short-lived change-password token
+    await pool.query('UPDATE users SET otp_code = NULL, otp_expires_at = NULL WHERE id = ?', [userId]);
+    const changePasswordToken = jwt.sign(
+      { id: userId, changePassword: true },
+      process.env.JWT_SECRET,
+      { expiresIn: '15m' }
+    );
+    return res.json({ changePasswordRequired: true, token: changePasswordToken, message: 'OTP verified. Please set a new password.' });
+  } catch (error) {
+    console.error('Verify OTP error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 

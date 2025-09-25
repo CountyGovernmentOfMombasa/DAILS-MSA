@@ -9,21 +9,37 @@ exports.updateDeclarationStatus = async (req, res) => {
     const Declaration = require('../models/declarationModel');
     await Declaration.updateStatus(declarationId, status, correction_message || null);
 
-    // Notify user if rejected
-    if (status === 'rejected') {
-      // Get user email
+    // Notify user by email and SMS
+    {
       const [rows] = await pool.query(
-        'SELECT u.email, u.first_name FROM declarations d JOIN users u ON d.user_id = u.id WHERE d.id = ?',
+        'SELECT u.email, u.first_name, u.phone_number FROM declarations d JOIN users u ON d.user_id = u.id WHERE d.id = ?',
         [declarationId]
       );
       if (rows.length > 0) {
         const sendEmail = require('../util/sendEmail');
-        await sendEmail({
-          to: rows[0].email,
-          subject: 'Declaration Rejected',
-          text: `Dear ${rows[0].first_name},\n\nYour declaration was rejected. Please correct the following: ${correction_message || ''}`,
-          html: `<p>Dear ${rows[0].first_name},</p><p>Your declaration was <b>rejected</b>.</p><p>Please correct the following:</p><p>${correction_message || ''}</p>`
-        });
+        const sendSMS = require('../util/sendSMS');
+        const firstName = rows[0].first_name;
+        if (status === 'rejected') {
+          await sendEmail({
+            to: rows[0].email,
+            subject: 'Declaration Rejected',
+            text: `Dear ${firstName},\n\nYour declaration was rejected. Please correct the following: ${correction_message || ''}`,
+            html: `<p>Dear ${firstName},</p><p>Your declaration was <b>rejected</b>.</p><p>Please correct the following:</p><p>${correction_message || ''}</p>`
+          });
+          if (rows[0].phone_number) {
+            try { await sendSMS({ to: rows[0].phone_number, body: 'WDP: Your declaration was rejected. Please check the portal for details.' }); } catch {}
+          }
+        } else if (status === 'approved') {
+          await sendEmail({
+            to: rows[0].email,
+            subject: 'Declaration Approved',
+            text: `Dear ${firstName},\n\nYour declaration has been approved.`,
+            html: `<p>Dear ${firstName},</p><p>Your declaration has been <b>approved</b>.</p>`
+          });
+          if (rows[0].phone_number) {
+            try { await sendSMS({ to: rows[0].phone_number, body: 'WDP: Your declaration has been approved.' }); } catch {}
+          }
+        }
       }
     }
     return res.json({ success: true, message: `Declaration ${status}` });
@@ -439,5 +455,26 @@ exports.changeAdminPassword = async (req, res) => {
   } catch (error) {
     console.error('Change admin password error:', error);
     res.status(500).json({ message: 'Server error while changing password' });
+  }
+};
+
+// Send a test email to verify MAIL_* configuration. Requires admin auth.
+exports.sendTestEmail = async (req, res) => {
+  try {
+    const sendEmail = require('../util/sendEmail');
+    const to = req.query.to || process.env.MAIL_FROM_ADDR || process.env.MAIL_USERNAME;
+    if (!to) {
+      return res.status(400).json({ success: false, message: 'No destination email specified and no default configured.' });
+    }
+    const info = await sendEmail({
+      to,
+      subject: 'Admin Test Email',
+      text: 'This is a test email confirming that the MAIL_* configuration works.',
+      html: '<p><strong>Success!</strong> Your admin test email was delivered using the configured MAIL_* settings.</p>'
+    });
+    return res.json({ success: true, message: 'Test email dispatched', messageId: info.messageId, to });
+  } catch (error) {
+    console.error('Test email send error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to send test email', error: error.message });
   }
 };

@@ -40,6 +40,7 @@ router.get('/verify', verifyAdminToken, verifyAdmin); // Verify admin (auth requ
 // --- Declaration Management ---
 // Use declarationController.getAllDeclarations to ensure all user fields are included in admin export
 router.get('/declarations', verifyAdminToken, declarationController.getAllDeclarations); // Get all declarations (auth required)
+router.get('/declarations/:id', verifyAdminToken, declarationController.getAdminDeclarationById); // Get single declaration details with relations
 router.put('/declarations/:declarationId/status', verifyAdminToken, adminController.updateDeclarationStatus); // Approve/reject declaration
 
 // --- User Management ---
@@ -53,6 +54,9 @@ router.post('/admins', verifyAdminToken, createAdmin); // Create admin
 router.put('/admins/:adminId', verifyAdminToken, updateAdmin); // Update admin
 router.delete('/admins/:adminId', verifyAdminToken, deleteAdmin); // Delete admin
 router.put('/change-password', verifyAdminToken, changeAdminPassword); // Change admin password
+
+// --- Utility / Diagnostics ---
+router.post('/test-email', verifyAdminToken, adminController.sendTestEmail); // Send test email (optional ?to=address)
 
 // Upload admin signature
 router.post('/admins/:adminId/upload-signature', verifyAdminToken, upload.single('signature'), async (req, res) => {
@@ -73,22 +77,6 @@ router.post('/admins/:adminId/upload-signature', verifyAdminToken, upload.single
     console.error('Error uploading admin signature:', error);
     res.status(500).json({ message: 'Server error during file upload' });
   }
-});
-
-// Biennial Declaration Lock (in-memory for demo; use DB for production)
-let biennialLocked = false;
-router.biennialLocked = biennialLocked;
-
-// Get biennial lock status
-router.get('/biennial-lock', verifyAdminToken, (req, res) => {
-  res.json({ locked: biennialLocked });
-});
-
-// Set biennial lock status
-router.post('/biennial-lock', verifyAdminToken, (req, res) => {
-  biennialLocked = !!req.body.locked;
-  router.biennialLocked = biennialLocked;
-  res.json({ locked: biennialLocked });
 });
 
 module.exports = router;

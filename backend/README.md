@@ -56,12 +56,19 @@ A Node.js/Express backend API for managing employee financial declarations.
 | PORT | Server port | 5000 |
 | NODE_ENV | Environment | development |
 | FRONTEND_URL | Frontend URL for CORS | http://localhost:3000 |
+| SMS_ENABLED | Enable/disable SMS sending | true |
+| TOLCLIN_BASE_URL | Tolclin BulkSms URL | https://tolclin.com/tolclin/sms/BulkSms |
+| TOLCLIN_CLIENT_ID | Tolclin client id (integer) | 254 |
+| TOLCLIN_SENDER_ID | SMS Sender ID | COUNTY-MSA |
+| TOLCLIN_CALLBACK_URL | SMS callback URL | |
 
 ## API Endpoints
 
 ### Authentication
 - `POST /api/auth/register` - Register new user
 - `POST /api/auth/login` - User login
+- `POST /api/auth/resend-otp` - Resend first-time login OTP (requires nationalId and default password)
+- `POST /api/auth/verify-otp` - Verify OTP (Authorization: Bearer otp token)
 - `PUT /api/auth/change-password` - Change password
 - `GET /api/auth/me` - Get user profile
 

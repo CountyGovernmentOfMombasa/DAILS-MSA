@@ -16,6 +16,7 @@ const financeAdminRoutes = require('./routes/financeAdminRoutes');
 const draftRoutes = require('./routes/draftRoutes');
 const userRoutes = require('./routes/userRoutes');
 const consentRoutes = require('./routes/consentRoutes');
+const progressRoutes = require('./routes/progressRoutes');
 
 
 const app = express();
@@ -58,12 +59,6 @@ app.get('/api/server-date', (req, res) => {
     res.json({ date: formattedDate });
 });
 
-// Public endpoint for biennial lock status (no admin auth)
-const adminRoutesModule = require('./routes/adminRoutes');
-app.get('/api/biennial-lock', (req, res) => {
-    res.json({ locked: adminRoutesModule.biennialLocked });
-});
-
 
 
 app.use('/api/auth', authRoutes);
@@ -75,6 +70,7 @@ app.use('/api/finance-admin', financeAdminRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/drafts', draftRoutes);
 app.use('/api/admin/consent', consentRoutes);
+app.use('/api/progress', progressRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

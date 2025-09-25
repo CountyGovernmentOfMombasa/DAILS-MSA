@@ -46,9 +46,9 @@ exports.validateRegister = [
 
 // Validation for user login
 exports.validateLogin = [
-    body('payroll_number')
+    body('nationalId')
         .notEmpty()
-        .withMessage('Payroll number is required'),
+        .withMessage('National ID is required'),
     body('password')
         .notEmpty()
         .withMessage('Password is required')

@@ -12,6 +12,8 @@ const router = express.Router();
 // --- Registration & Login ---
 router.post('/register', validateRegister, authController.register); // Register new user
 router.post('/login', validateLogin, authController.login); // Login user
+router.post('/resend-otp', authController.resendOtp); // Resend OTP for first-time login
+router.post('/verify-otp', verifyToken, authController.verifyOtp); // Verify OTP (requires otp token)
 
 // --- Password Management ---
 router.put('/change-password', verifyToken, validatePasswordChange, authController.changePassword); // Change password

@@ -4,7 +4,7 @@ const { verifyToken } = require('../middleware/authMiddleware');
 const upload = require('../middleware/fileUpload');
 const { validateDeclaration } = require('../middleware/validation');
 const router = express.Router();
-const { getDeclarationById } = require('../controllers/declarationController');
+const { getDeclarationById, getDeclarationFinancialUnified, updateUnifiedFinancial } = require('../controllers/declarationController');
 
 // --- Declaration Submission ---
 // Biennial lock check middleware
@@ -34,7 +34,12 @@ router.post('/', verifyToken, validateDeclaration, async (req, res, next) => {
 // --- Declaration Retrieval ---
 router.get('/', verifyToken, getDeclarations); // Get all declarations for user
 
+// Single declaration (with embedded unified financial)
 router.get('/:id', verifyToken, getDeclarationById);
+// Unified financial data only (read)
+router.get('/:id/financial-unified', verifyToken, getDeclarationFinancialUnified);
+// Unified financial batch update (write)
+router.put('/:id/financial-unified', verifyToken, updateUnifiedFinancial);
 
 
 // Update a declaration (edit)
@@ -44,8 +49,7 @@ router.put('/:id', verifyToken, updateDeclaration);
 // Record an edit request for a declaration
 router.post('/:id/edit-request', verifyToken, requestEdit);
 
-// Get a single declaration by ID for the logged-in user
-router.get('/:id', verifyToken, getDeclarationById);
+// (Duplicate route removed)
 
 // Upload declaration document
 router.post('/:declarationId/upload-document', verifyToken, upload.single('document'), async (req, res) => {

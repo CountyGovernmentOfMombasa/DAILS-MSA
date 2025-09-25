@@ -1,27 +1,20 @@
 require('dotenv').config();
-const nodemailer = require('nodemailer');
+const sendEmail = require('./util/sendEmail');
 
 async function testEmail() {
-  let transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: process.env.SMTP_PORT,
-    secure: false, // use TLS
-    requireTLS: true,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS
-    }
-  });
-
+  const to = process.env.MAIL_FROM_ADDR || process.env.MAIL_USERNAME;
+  if (!to) {
+    console.error('No MAIL_FROM_ADDR or MAIL_USERNAME set');
+    process.exit(1);
+  }
   try {
-    let info = await transporter.sendMail({
-      from: process.env.SMTP_USER,
-      to: process.env.SMTP_USER, // send to yourself for test
-      subject: 'SMTP Test Email',
-      text: 'This is a test email from Nodemailer using Outlook SMTP.',
-      html: '<b>This is a test email from Nodemailer using Outlook SMTP.</b>'
+    const info = await sendEmail({
+      to,
+      subject: 'MAIL_* Configuration Test',
+      text: 'If you received this, the new MAIL_* environment configuration works.',
+      html: '<p><strong>Success!</strong> The new <code>MAIL_*</code> variables are functioning.</p>'
     });
-    console.log('Test email sent:', info.messageId);
+    console.log('Test email accepted by transporter:', info.messageId);
   } catch (err) {
     console.error('Error sending test email:', err);
   }
