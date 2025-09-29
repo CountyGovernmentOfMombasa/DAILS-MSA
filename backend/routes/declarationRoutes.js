@@ -4,7 +4,7 @@ const { verifyToken } = require('../middleware/authMiddleware');
 const upload = require('../middleware/fileUpload');
 const { validateDeclaration } = require('../middleware/validation');
 const router = express.Router();
-const { getDeclarationById, getDeclarationFinancialUnified, updateUnifiedFinancial } = require('../controllers/declarationController');
+const { getDeclarationById, getDeclarationFinancialUnified, updateUnifiedFinancial, downloadDeclarationPDF } = require('../controllers/declarationController');
 
 // --- Declaration Submission ---
 // Biennial lock check middleware
@@ -14,8 +14,11 @@ try {
 	biennialLocked = require('./adminRoutes').biennialLocked;
 } catch {}
 
-// Admin: View all edit requests
-router.get('/edit-requests/all', verifyToken, getAllEditRequests);
+// Admin / IT Admin: View all edit requests
+const { verifyAdminToken } = require('../middleware/adminMiddleware');
+// Legacy path (user token) retained if needed for future; restrict new simpler path to admin tokens
+router.get('/edit-requests/all', verifyAdminToken, getAllEditRequests);
+router.get('/edit-requests', verifyAdminToken, getAllEditRequests);
 
 router.post('/', verifyToken, validateDeclaration, async (req, res, next) => {
 	// Block biennial declaration if locked
@@ -40,6 +43,8 @@ router.get('/:id', verifyToken, getDeclarationById);
 router.get('/:id/financial-unified', verifyToken, getDeclarationFinancialUnified);
 // Unified financial batch update (write)
 router.put('/:id/financial-unified', verifyToken, updateUnifiedFinancial);
+// On-demand PDF download
+router.get('/:id/download-pdf', verifyToken, downloadDeclarationPDF);
 
 
 // Update a declaration (edit)

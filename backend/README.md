@@ -8,8 +8,14 @@ A Node.js/Express backend API for managing employee financial declarations.
 - Employee registration and login
 - Declaration management (CRUD operations)
 - Admin panel for viewing all declarations
+- Department-based data scoping: all non-super admins only see users & declarations within their assigned department
+- Super admin has unrestricted visibility across all departments
 - Input validation and security middleware
 - MySQL database integration
+
+## Removed / Deprecated Features
+
+- The separate "departmental admin" login & dashboard flow has been removed. Department filtering is now applied automatically for every non-super admin role (HR, Finance, IT). Any existing references to deprecated departmental components should be cleaned up; placeholder files may remain temporarily for build stability until fully pruned.
 
 ## Prerequisites
 
@@ -22,26 +28,28 @@ A Node.js/Express backend API for managing employee financial declarations.
 1. Clone the repository
 2. Navigate to the backend directory
 3. Install dependencies:
-   ```bash
-   npm install
-   ```
 
-4. Set up environment variables:
+```bash
+npm install
+```
+
+1. Set up environment variables:
    - Copy `.env.example` to `.env`
    - Update the values in `.env` with your configuration
 
-5. Set up the database:
+2. Set up the database:
    - Create a MySQL database
    - Run the schema from `database/schema.sql`
 
-6. Start the server:
-   ```bash
-   # Development mode
-   npm run dev
+3. Start the server:
 
-   # Production mode
-   npm start
-   ```
+```bash
+# Development mode
+npm run dev
+
+# Production mode
+npm start
+```
 
 ## Environment Variables
 
@@ -55,9 +63,9 @@ A Node.js/Express backend API for managing employee financial declarations.
 | JWT_EXPIRES_IN | JWT expiration time | 7d |
 | PORT | Server port | 5000 |
 | NODE_ENV | Environment | development |
-| FRONTEND_URL | Frontend URL for CORS | http://localhost:3000 |
+| FRONTEND_URL | Frontend URL for CORS | <http://localhost:3000> |
 | SMS_ENABLED | Enable/disable SMS sending | true |
-| TOLCLIN_BASE_URL | Tolclin BulkSms URL | https://tolclin.com/tolclin/sms/BulkSms |
+| TOLCLIN_BASE_URL | Tolclin BulkSms URL | <https://tolclin.com/tolclin/sms/BulkSms> |
 | TOLCLIN_CLIENT_ID | Tolclin client id (integer) | 254 |
 | TOLCLIN_SENDER_ID | SMS Sender ID | COUNTY-MSA |
 | TOLCLIN_CALLBACK_URL | SMS callback URL | |
@@ -65,6 +73,7 @@ A Node.js/Express backend API for managing employee financial declarations.
 ## API Endpoints
 
 ### Authentication
+
 - `POST /api/auth/register` - Register new user
 - `POST /api/auth/login` - User login
 - `POST /api/auth/resend-otp` - Resend first-time login OTP (requires nationalId and default password)
@@ -73,13 +82,16 @@ A Node.js/Express backend API for managing employee financial declarations.
 - `GET /api/auth/me` - Get user profile
 
 ### Declarations
+
 - `POST /api/declarations` - Submit declaration
 - `GET /api/declarations` - Get user declarations
 
 ### Admin
-- `GET /api/admin/declarations` - Get all declarations (admin)
+
+- `GET /api/admin/declarations` - Get all declarations (scoped to department unless super admin)
 
 ### Health Check
+
 - `GET /api/health` - Service health check
 
 ## Security Features
@@ -107,6 +119,7 @@ The API returns consistent error responses:
 ## Database Schema
 
 The application uses the following main tables:
+
 - `users` - User information and credentials
 - `declarations` - Financial declarations
 - `spouses` - Spouse information
@@ -117,7 +130,8 @@ See `database/schema.sql` for the complete schema.
 ## Development
 
 ### Code Structure
-```
+
+```text
 backend/
 ├── config/         # Database configuration
 ├── controllers/    # Route controllers
@@ -129,11 +143,13 @@ backend/
 ```
 
 ### Running Tests
+
 ```bash
 npm test
 ```
 
 ### Linting
+
 ```bash
 npm run lint
 ```

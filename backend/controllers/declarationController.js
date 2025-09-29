@@ -49,7 +49,7 @@ exports.updateDeclaration = async (req, res) => {
                 }
                 const fullName = parts.join(' ') || 'an employee';
                 const sendSMS = require('../util/sendSMS');
-                await sendSMS({ to: witness_phone, body: `WDP: You have been selected as a witness by ${fullName} for a declaration.` });
+                await sendSMS({ to: witness_phone, body: `You have been selected as a witness by ${fullName} in their DIALs.` });
             }
         } catch (e) {
             console.error('Witness change SMS notify error:', e.message);
@@ -322,110 +322,83 @@ exports.updateUnifiedFinancial = async (req, res) => {
         conn.release();
     }
 };
-// --- Edit Request Handler (Direct SQL) ---
+// --- Edit Request & Retrieval Handlers ---
 const db = require('../config/db');
+
+// Record an edit request for a declaration
 exports.requestEdit = async (req, res) => {
     try {
         const declarationId = req.params.id;
         const userId = req.user.id;
-        const { reason, date } = req.body;
-        if (!reason) return res.status(400).json({ message: 'Reason is required.' });
+        const { reason, date } = req.body || {};
+        if (!reason) return res.status(400).json({ success: false, message: 'Reason is required.' });
         await db.execute(
             'INSERT INTO declaration_edit_requests (declarationId, userId, reason, requestedAt) VALUES (?, ?, ?, ?)',
             [declarationId, userId, reason, date || new Date()]
         );
-        res.json({ message: 'Edit request recorded.' });
+        return res.json({ success: true, message: 'Edit request submitted.' });
     } catch (err) {
-        res.status(500).json({ message: 'Failed to record edit request.' });
+        console.error('Error submitting edit request:', err);
+        return res.status(500).json({ success: false, message: 'Failed to submit edit request' });
     }
 };
 
-// --- View All Edit Requests (Admin, Direct SQL) ---
+// List all edit requests (admin usage)
 exports.getAllEditRequests = async (req, res) => {
     try {
-        const [requests] = await db.execute(
-            'SELECT * FROM declaration_edit_requests ORDER BY requestedAt DESC'
-        );
-        res.json({ success: true, data: requests });
+        const [rows] = await db.execute('SELECT * FROM declaration_edit_requests ORDER BY requestedAt DESC');
+        return res.json({ success: true, data: rows });
     } catch (err) {
-        res.status(500).json({ success: false, message: 'Failed to fetch edit requests.' });
+        console.error('Error fetching edit requests:', err);
+        return res.status(500).json({ success: false, message: 'Failed to fetch edit requests' });
     }
 };
-// Get a single declaration by ID for the logged-in user (with full financial data)
+
+// Get a single declaration (owner) with nested financial + unified structure
 exports.getDeclarationById = async (req, res) => {
     try {
         const userId = req.user.id;
         const declarationId = req.params.id;
-        const db = require('../config/db');
-        // Join with users table so frontend edit forms can auto-populate personal details
-        const [rows] = await db.execute(`
-            SELECT d.*,
-                   u.surname,
-                   u.first_name,
-                   u.other_names,
-                   u.birthdate,
-                   u.place_of_birth,
-                   u.postal_address,
-                   u.physical_address,
-                   u.email,
-                   u.national_id,
-                   u.payroll_number,
-                   u.designation,
-                   u.department,
-                   u.nature_of_employment AS nature_of_employment
-            FROM declarations d
-            INNER JOIN users u ON d.user_id = u.id
-            WHERE d.id = ? AND d.user_id = ?
-        `, [declarationId, userId]);
-        if (rows.length === 0) {
+        const [declRows] = await db.execute('SELECT * FROM declarations WHERE id = ? AND user_id = ?', [declarationId, userId]);
+        if (declRows.length === 0) {
             return res.status(404).json({ success: false, message: 'Declaration not found' });
         }
-        // Fetch related spouses and children
+        const rootDecl = declRows[0];
         const [spouses] = await db.execute('SELECT * FROM spouses WHERE declaration_id = ?', [declarationId]);
         const [children] = await db.execute('SELECT * FROM children WHERE declaration_id = ?', [declarationId]);
-        // Fetch related financial_declarations
         const [financialDeclarations] = await db.execute('SELECT * FROM financial_declarations WHERE declaration_id = ?', [declarationId]);
-        // Fetch financial items for each declaration
-        const [financialItems] = await db.execute('SELECT * FROM financial_items WHERE financial_declaration_id IN (' + (financialDeclarations.map(fd => fd.id).join(',') || '0') + ')');
-        // Attach items to each financial declaration
-        const shapeItem = (i) => ({
-            ...i,
-            type: i.type || i.item_type || i.description || ''
-        });
+        let financialItems = [];
+        if (financialDeclarations.length) {
+            const ids = financialDeclarations.map(fd => fd.id);
+            const placeholders = ids.map(() => '?').join(',');
+            const [items] = await db.execute(`SELECT * FROM financial_items WHERE financial_declaration_id IN (${placeholders})`, ids);
+            financialItems = items;
+        }
+        const shapeItem = (i) => ({ ...i, type: i.type || i.item_type || i.description || '' });
         const financialsWithItems = financialDeclarations.map(fd => {
-            const items = financialItems.filter(item => item.financial_declaration_id === fd.id);
-            // Ensure member_name present for frontend mapping (fallback using member_type + index)
-            let member_name = fd.member_name;
-            if (!member_name || !member_name.trim()) {
-                if (fd.member_type === 'user') {
-                    member_name = rows[0].first_name ? `${rows[0].first_name} ${rows[0].surname || ''}`.trim() : 'User';
-                } else {
-                    member_name = (fd.member_type || 'member') + '_' + fd.id;
-                }
-            }
+            const items = financialItems.filter(it => it.financial_declaration_id === fd.id);
             return {
                 ...fd,
-                member_name,
+                member_name: fd.member_name || (fd.member_type === 'user' ? 'User' : (fd.member_type || 'member') + '_' + fd.id),
                 biennial_income: items.filter(i => i.item_type === 'income').map(shapeItem),
                 assets: items.filter(i => i.item_type === 'asset').map(shapeItem),
-                liabilities: items.filter(i => i.item_type === 'liability').map(shapeItem),
+                liabilities: items.filter(i => i.item_type === 'liability').map(shapeItem)
             };
         });
-
-        const financial_unified = buildUnifiedFinancial(rows[0], financialsWithItems, spouses, children);
-        res.json({
+        const financial_unified = buildUnifiedFinancial(rootDecl, financialsWithItems, spouses, children);
+        return res.json({
             success: true,
             declaration: {
-                ...rows[0],
+                ...rootDecl,
                 spouses,
                 children,
                 financial_declarations: financialsWithItems,
                 financial_unified
             }
         });
-    } catch (error) {
-        console.error('Error fetching declaration by ID:', error);
-        res.status(500).json({ success: false, message: 'Server error fetching declaration' });
+    } catch (err) {
+        console.error('Error fetching declaration by ID:', err);
+        return res.status(500).json({ success: false, message: 'Server error fetching declaration' });
     }
 };
 
@@ -503,6 +476,29 @@ function buildUnifiedFinancial(rootDecl, financialsWithItems, spouses, children)
     });
     return Array.from(dedupMap.values());
 }
+
+// On-demand PDF download (owner or super_admin)
+exports.downloadDeclarationPDF = async (req, res) => {
+    try {
+        const declarationId = req.params.id;
+        const userId = req.user.id;
+        const [rows] = await db.query('SELECT user_id FROM declarations WHERE id = ?', [declarationId]);
+        if (!rows.length) return res.status(404).json({ success: false, message: 'Declaration not found' });
+        if (rows[0].user_id !== userId && req.user.role !== 'super_admin') {
+            return res.status(403).json({ success: false, message: 'Not authorized to download this declaration' });
+        }
+        const { generateDeclarationPDF } = require('../util/pdfBuilder');
+        const { buffer, base } = await generateDeclarationPDF(declarationId);
+        const safeNatId = (base.national_id || 'declaration').toString().replace(/[^A-Za-z0-9_-]/g, '_');
+        const filename = `${safeNatId} DAILs Form.pdf`;
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        return res.send(buffer);
+    } catch (err) {
+        console.error('On-demand PDF generation failed:', err);
+        return res.status(500).json({ success: false, message: 'Failed to generate PDF', error: err.message });
+    }
+};
 
 // New endpoint: only unified financial data (rebuilds fresh)
 exports.getDeclarationFinancialUnified = async (req, res) => {
@@ -812,214 +808,58 @@ exports.submitDeclaration = async (req, res) => {
                             const fullName = nameParts.join(' ') || 'an employee';
                             await sendSMS({
                                 to: witness.phone,
-                                body: `WDP: You have been selected as a witness by ${fullName} for a declaration.`
+                                body: `You have been selected as a witness by ${fullName} in their DIALs.`
                             });
                         }
                     } catch (e) {
                         console.error('Witness SMS notify error:', e.message);
                     }
                 }
-                // Send confirmation email to user with PDF attachment
+                // Send confirmation email to user with PDF attachment via shared builder
                 try {
                     const sendEmail = require('../util/sendEmail');
                     const sendSMS = require('../util/sendSMS');
-                    // Fetch a snapshot of the declaration with related entities for PDF
-                    let snapshot = {};
-                    try {
-                        const [declRows] = await pool.query('SELECT * FROM declarations WHERE id = ?', [declarationId]);
-                        snapshot = declRows[0] || {};
-                        const [spousesRows] = await pool.query('SELECT first_name, other_names, surname FROM spouses WHERE declaration_id = ?', [declarationId]);
-                        const [childrenRows] = await pool.query('SELECT first_name, other_names, surname FROM children WHERE declaration_id = ?', [declarationId]);
-                        const [finDecls] = await pool.query('SELECT id, member_type, member_name, period_start_date, period_end_date FROM financial_declarations WHERE declaration_id = ?', [declarationId]);
-                        let items = [];
-                        if (finDecls.length > 0) {
-                            const finIds = finDecls.map(f=>f.id);
-                            const placeholders = finIds.map(()=>'?').join(',');
-                            const [itRows] = await pool.query(`SELECT financial_declaration_id, item_type, description, value FROM financial_items WHERE financial_declaration_id IN (${placeholders}) LIMIT 300`, finIds);
-                            items = itRows;
-                        }
-                        snapshot._spouses = spousesRows;
-                        snapshot._children = childrenRows;
-                        snapshot._finDecls = finDecls;
-                        snapshot._finItems = items;
-                    } catch (snapErr) {
-                        console.error('PDF snapshot fetch error:', snapErr.message);
-                    }
+                    const { generateDeclarationPDF } = require('../util/pdfBuilder');
+                    const { buffer: pdfBuffer, base } = await generateDeclarationPDF(declarationId);
 
-                    // Generate PDF buffer with pdfkit (full itemization + pagination + logo)
-                    const PDFDocument = require('pdfkit');
-                    const fs = require('fs');
-                    const path = require('path');
-                    const pdfBuffers = [];
-                    const doc = new PDFDocument({ margin: 40 });
-                    doc.on('data', chunk => pdfBuffers.push(chunk));
-                    const pdfPromise = new Promise(resolve => doc.on('end', () => resolve(Buffer.concat(pdfBuffers))));
-
-                    // Helper: safe page break before writing a block
-                    const ensureSpace = (required = 20) => {
-                        if (doc.y + required > doc.page.height - doc.page.margins.bottom) {
-                            doc.addPage();
-                        }
-                    };
-                    const heading = (text) => { ensureSpace(30); doc.moveDown(0.5); doc.fontSize(13).fillColor('#0a0a0a').text(text); doc.moveDown(0.2); doc.fontSize(10).fillColor('#000'); };
-                    const field = (label, value) => { ensureSpace(14); doc.font('Helvetica-Bold').text(label + ': ', { continued: true }); doc.font('Helvetica').text(value || ''); };
-
-                    // Try to embed logo (frontend logo path reused)
-                    try {
-                        const logoPath = path.resolve(__dirname, '../../my-app/public/logo192.png');
-                        if (fs.existsSync(logoPath)) {
-                            const img = fs.readFileSync(logoPath);
-                            doc.image(img, (doc.page.width/2) - 40, 20, { width: 80 });
-                            doc.moveDown(5);
-                        }
-                    } catch (logoErr) {
-                        console.warn('Logo embed failed:', logoErr.message);
-                        doc.moveDown(2);
-                    }
-
-                    // Title
-                    doc.fontSize(16).text('DECLARATION OF INCOME, ASSETS AND LIABILITIES', { align: 'center' });
-                    doc.moveDown(0.3).fontSize(12).text('County Government of Mombasa', { align: 'center' });
-                    doc.moveDown();
-                    doc.fontSize(10).fillColor('#555');
-                    field('Declaration ID', String(declarationId));
-                    field('Submitted At', snapshot.submitted_at || snapshot.created_at || '');
-                    field('Declaration Type', snapshot.declaration_type || '');
-                    doc.moveDown(0.5);
-
-                    heading('Employee Details');
-                    const nameLine = `${snapshot.surname || ''}, ${snapshot.first_name || ''} ${snapshot.other_names || ''}`.trim();
-                    field('Name', nameLine);
-                    field('National ID', snapshot.national_id || '');
-                    field('Payroll Number', snapshot.payroll_number || '');
-                    field('Department', snapshot.department || '');
-                    field('Designation', snapshot.designation || '');
-                    field('Marital Status', snapshot.marital_status || '');
-                    field('Birthdate', snapshot.birthdate || '');
-                    field('Place of Birth', snapshot.place_of_birth || '');
-                    field('Email', snapshot.email || req.user.email || '');
-
-                    heading('Financial Period');
-                    field('Period Start Date', snapshot.period_start_date || '');
-                    field('Period End Date', snapshot.period_end_date || '');
-
-                    heading('Family');
-                    field('Spouses', (snapshot._spouses||[]).map(s=>[s.first_name,s.other_names,s.surname].filter(Boolean).join(' ')).join('; ') || 'None');
-                    field('Children', (snapshot._children||[]).map(c=>[c.first_name,c.other_names,c.surname].filter(Boolean).join(' ')).join('; ') || 'None');
-
-                    heading('Financial Declarations');
-                    if ((snapshot._finDecls||[]).length === 0) {
-                        field('Info', 'No financial declarations');
-                    } else {
-                        snapshot._finDecls.forEach(fd => {
-                            ensureSpace(40);
-                            doc.font('Helvetica-Bold').text(`• ${fd.member_type.toUpperCase()} - ${fd.member_name}`);
-                            doc.font('Helvetica').text(`  Period: ${(fd.period_start_date || '')} -> ${(fd.period_end_date || '')}`);
-                        });
-                    }
-
-                    heading('Financial Items (Full Listing)');
-                    const items = snapshot._finItems || [];
-                    if (items.length === 0) {
-                        field('Info', 'No financial items recorded');
-                    } else {
-                        // Group by declaration id then list
-                        const itemsByDecl = items.reduce((acc,it)=>{ (acc[it.financial_declaration_id] = acc[it.financial_declaration_id] || []).push(it); return acc; },{});
-                        Object.entries(itemsByDecl).forEach(([finId, list]) => {
-                            ensureSpace(24);
-                            doc.font('Helvetica-Bold').text(`Declaration #${finId}`);
-                            list.forEach(it => {
-                                ensureSpace(14);
-                                doc.font('Helvetica').text(`  - [${it.item_type}] ${it.description || 'No description'} : ${it.value || 0}`);
-                            });
-                        });
-                    }
-
-                    doc.moveDown();
-                    // Signatures / Witness Block
-                    heading('Signatures');
-                    ensureSpace(80);
-                    // Declarant signature placeholders
-                    doc.font('Helvetica-Bold').text('Declarant Acknowledgement');
-                    doc.font('Helvetica').moveDown(0.3).text('I hereby declare that the information provided herein is true, complete and accurate to the best of my knowledge.', { width: doc.page.width - doc.page.margins.left - doc.page.margins.right });
-                    doc.moveDown(0.8);
-                    const startY = doc.y;
-                    const col1X = doc.x;
-                    const colWidth = (doc.page.width - doc.page.margins.left - doc.page.margins.right) / 2 - 10;
-                    // Declarant signature line
-                    doc.text('Signature: _______________________________', col1X, startY);
-                    doc.text('Date: ___________________', col1X, startY + 18);
-                    // Witness block (if any data) on right side
-                    const witnessX = col1X + colWidth + 20;
-                    if (snapshot.witness_name || snapshot.witness_address || snapshot.witness_phone) {
-                        doc.font('Helvetica-Bold').text('Witness', witnessX, startY);
-                        doc.font('Helvetica').text(`Name: ${snapshot.witness_name || ''}`, witnessX, startY + 14);
-                        doc.text(`Phone: ${snapshot.witness_phone || ''}`, witnessX, startY + 28);
-                        doc.text(`Address: ${snapshot.witness_address || ''}`, witnessX, startY + 42, { width: colWidth });
-                        doc.text('Signature: ___________________', witnessX, startY + 60);
-                        doc.text('Date: ___________________', witnessX, startY + 78);
-                        if (snapshot.witness_signed) {
-                            doc.font('Helvetica-Oblique').fillColor('#0a0').text('(Witness marked as signed in system)', witnessX, startY + 96);
-                            doc.fillColor('#000');
-                        }
-                        doc.moveDown(6);
-                    } else {
-                        doc.font('Helvetica-Oblique').fillColor('#555').text('No witness information provided.', col1X, startY + 40);
-                        doc.fillColor('#000');
-                        doc.moveDown(4);
-                    }
-
-                    // Optional digital signature placeholder (system could embed image later)
-                    ensureSpace(40);
-                    doc.font('Helvetica-Bold').text('Digital Signature (System Use)');
-                    doc.font('Helvetica').moveDown(0.3).text('If this document was signed electronically, a hash or signature reference may appear below:');
-                    doc.moveDown(0.5);
-                    doc.font('Courier').fontSize(8).text('[ Signature Hash Placeholder ]', { align: 'center' });
-                    doc.fontSize(10).font('Helvetica');
-
-                    doc.fontSize(9).fillColor('#666').text('Automatically generated PDF – retain for your records.', { align: 'center' });
-                    doc.end();
-                    const pdfBuffer = await pdfPromise;
-
-                    // Ensure we have recipient email (JWT payload may not include it)
-                    let recipientEmail = req.user && req.user.email;
-                    if (!recipientEmail && req.user && req.user.id) {
+                    // Ensure recipient email
+                    let recipientEmail = req.user?.email;
+                    if (!recipientEmail) {
                         try {
                             const getCurrentUser = require('../util/currentUser');
                             const fullUser = await getCurrentUser(req.user.id, { refresh: true });
                             recipientEmail = fullUser?.email;
                         } catch (e) {
-                            console.warn('Fallback user fetch for email failed:', e.message);
+                            console.warn('Could not hydrate user email for PDF email:', e.message);
                         }
                     }
                     if (!recipientEmail) throw new Error('User email not found for confirmation email');
+
+                    const safeNatId = (base.national_id || 'declaration').toString().replace(/[^A-Za-z0-9_-]/g,'_');
+                    const filename = `${safeNatId} DAILs Form.pdf`;
+
                     await sendEmail({
                         to: recipientEmail,
                         subject: 'Declaration Submitted Successfully',
-                        text: `Dear ${req.user.first_name || 'Employee'},\n\nYour declaration form has been successfully submitted. A PDF summary is attached.\n\nThank you!`,
-                        html: `<p>Dear ${req.user.first_name || 'Employee'},</p><p>Your declaration form has been <b>successfully submitted</b>. A PDF summary is attached.</p><p>Thank you!</p>`,
+                        text: `Dear ${base.first_name || 'Employee'},\n\nYour declaration form has been successfully submitted. A PDF summary is attached.\n\nThank you!`,
+                        html: `<p>Dear ${base.first_name || 'Employee'},</p><p>Your declaration form has been <b>successfully submitted</b>. A PDF summary is attached.</p><p>Thank you!</p>`,
                         attachments: [
-                            {
-                                filename: `declaration_${declarationId}.pdf`,
-                                content: pdfBuffer,
-                                contentType: 'application/pdf'
-                            }
+                            { filename, content: pdfBuffer, contentType: 'application/pdf' }
                         ]
                     });
+
                     // SMS confirmation (best effort)
-                    if (req.user && req.user.id) {
-                        try {
-                            const [u] = await pool.query('SELECT phone_number FROM users WHERE id = ?', [req.user.id]);
-                            const phone = u[0]?.phone_number;
-                            if (phone) {
-                                await sendSMS({ to: phone, body: 'WDP: Your declaration was submitted successfully.' });
-                            }
-                        } catch (e) {
-                            console.error('SMS submit notify error:', e.message);
+                    try {
+                        const [u] = await pool.query('SELECT phone_number FROM users WHERE id = ?', [req.user.id]);
+                        const phone = u[0]?.phone_number;
+                        if (phone) {
+                            await sendSMS({ to: phone, body: 'Your declaration was submitted successfully.' });
                         }
+                    } catch (smsErr) {
+                        console.error('SMS submit notify error:', smsErr.message);
                     }
                 } catch (emailErr) {
-                    console.error('Error sending confirmation email:', emailErr);
+                    console.error('Error sending confirmation email (PDF generation step):', emailErr);
                 }
                 return res.status(201).json({
                     success: true,

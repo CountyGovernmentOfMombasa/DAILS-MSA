@@ -23,26 +23,63 @@ const app = express();
 // Trust first proxy (needed for express-rate-limit with X-Forwarded-For)
 app.set('trust proxy', 1);
 
-// Security middleware
+// Security middleware (put Helmet & logging first)
 app.use(helmet());
 app.use(morgan('combined'));
 
-// Rate limiting middleware
-const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // limit each IP to 100 requests per windowMs
-    message: {
-        success: false,
-        message: 'Too many requests, please try again later.'
+// CORS configuration early so even 429 responses include headers
+app.use(cors({
+        origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+        credentials: true
+}));
+
+// Rate limiting strategy:
+// 1. authLimiter: strict for authentication endpoints (login, register, OTP, etc.)
+// 2. generalLimiter: high ceiling for the rest of the API; skips /api/auth/* and OPTIONS
+// Avoid double limiting by skipping auth paths in general limiter.
+const authLimiter = rateLimit({
+    windowMs: parseInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000, 10),
+    max: parseInt(process.env.AUTH_RATE_LIMIT_MAX || 30, 10),
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => {
+        const crypto = require('crypto');
+        let idPart = '';
+        if (req.body && typeof req.body.nationalId === 'string') {
+            idPart = ':' + crypto.createHash('sha256').update(req.body.nationalId).digest('hex').slice(0, 16);
+        }
+        return req.ip + idPart;
+    },
+    // Only apply limiter to authentication-related endpoints
+    skip: (req) => {
+        if (req.method === 'OPTIONS') return true;
+        const url = req.originalUrl;
+        return !(url.startsWith('/api/auth') || url.startsWith('/api/admin/login'));
+    },
+    message: { success: false, message: 'Too many auth attempts, please wait.' },
+    handler: (req, res, next, options) => {
+        console.warn(`[RATE-LIMIT][AUTH] ip=${req.ip} path=${req.originalUrl}`);
+        res.status(options.statusCode).json(options.message);
     }
 });
-app.use(limiter);
 
-// CORS configuration
-app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-    credentials: true
-}));
+const generalLimiter = rateLimit({
+    windowMs: parseInt(process.env.GENERAL_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000, 10),
+    max: parseInt(process.env.GENERAL_RATE_LIMIT_MAX || 1500, 10),
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req, res) => req.ip, // Keep it simple for general traffic
+    skip: (req) => req.method === 'OPTIONS' || req.originalUrl.startsWith('/api/auth'),
+    message: { success: false, message: 'Too many requests, slow down.' },
+    handler: (req, res, next, options) => {
+        console.warn(`[RATE-LIMIT][GENERAL] ip=${req.ip} path=${req.originalUrl}`);
+        res.status(options.statusCode).json(options.message);
+    }
+});
+
+// Apply limiters
+app.use(authLimiter);       // applies to all, but only counts for /api/auth/* due to skip filters in generalLimiter
+app.use(generalLimiter);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));

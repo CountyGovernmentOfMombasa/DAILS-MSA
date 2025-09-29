@@ -32,11 +32,12 @@ const User = {
       physical_address = null,
       designation = null,
       department = null,
-      nature_of_employment = null
+      nature_of_employment = null,
+      phone_number = null
     } = userData;
 
     // Validate nature_of_employment
-    const allowedEmployment = ['Permanent', 'Contract', 'Temporary'];
+  const allowedEmployment = ['Permanent', 'Contract', 'Temporary', 'Casual'];
     const validNatureOfEmployment = allowedEmployment.includes(nature_of_employment) ? nature_of_employment : null;
 
     // Validate department
@@ -64,6 +65,7 @@ const User = {
         first_name,
         other_names,
         email,
+        phone_number,
         birthdate,
         password,
         password_changed,
@@ -75,13 +77,14 @@ const User = {
         designation,
         department,
         nature_of_employment
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         payroll_number,
         surname,
         first_name,
         other_names,
         email,
+        phone_number,
         formatBirthdate(birthdate),
         hashedPassword,
         0, // password_changed default to 0

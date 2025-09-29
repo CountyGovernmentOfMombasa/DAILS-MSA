@@ -66,7 +66,7 @@ exports.register = async (req, res) => {
   const registrationHtml = `<!DOCTYPE html><html><body style=\"font-family: Arial, sans-serif; background: #f7f7f7; padding: 20px;\"><div style=\"max-width: 500px; margin: auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #eee; padding: 24px;\"><h2 style=\"color: #2a7ae2;\">Welcome to WDP!</h2><p>Dear <strong>${first_name} ${surname} ${other_names || ''}</strong>,</p><p>Your registration was successful. You can now securely submit your financial declarations and manage your profile online.</p><p style=\"margin-top: 24px;\">Best regards,<br><strong>WDP Team</strong></p><hr><small style=\"color: #888;\">This is an automated message. Please do not reply.</small></div></body></html>`;
     await sendEmail({
       to: email,
-      subject: 'Welcome to WDP Employee Declaration Portal',
+      subject: 'Welcome to CGM Wealth Declaration Portal',
   text: `Hello ${first_name} ${surname} ${other_names || ''},\nYour registration was successful!`,
       html: registrationHtml
     });

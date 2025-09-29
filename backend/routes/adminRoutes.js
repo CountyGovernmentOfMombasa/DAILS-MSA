@@ -11,11 +11,15 @@ const {
   getAllUsers, 
   updateUserEmail, 
   bulkUpdateEmails,
+  getDistinctDepartments,
+  createUser,
+  deleteUser,
   getAllAdmins,
   createAdmin,
   updateAdmin,
   deleteAdmin,
-  changeAdminPassword
+  changeAdminPassword,
+  getDepartmentDeclarationStats
 } = adminController;
 const { verifyAdminToken } = require('../middleware/adminMiddleware');
 const upload = require('../middleware/fileUpload');
@@ -38,18 +42,33 @@ router.post('/login', adminLogin); // Login (no auth required)
 router.get('/verify', verifyAdminToken, verifyAdmin); // Verify admin (auth required)
 
 // --- Declaration Management ---
-// Use declarationController.getAllDeclarations to ensure all user fields are included in admin export
-router.get('/declarations', verifyAdminToken, declarationController.getAllDeclarations); // Get all declarations (auth required)
+// Use adminController.getAllDeclarations so spouses & children are attached and department scoping is enforced
+router.get('/declarations', verifyAdminToken, adminController.getAllDeclarations); // Get all declarations (auth required)
 router.get('/declarations/:id', verifyAdminToken, declarationController.getAdminDeclarationById); // Get single declaration details with relations
 router.put('/declarations/:declarationId/status', verifyAdminToken, adminController.updateDeclarationStatus); // Approve/reject declaration
+// List declaration edit requests
+router.get('/declarations/edit-requests', verifyAdminToken, declarationController.getAllEditRequests);
 
 // --- User Management ---
 router.get('/users', verifyAdminToken, getAllUsers); // Get all users
+router.get('/users/departments/distinct', verifyAdminToken, getDistinctDepartments); // Get distinct departments
 router.put('/users/:userId/email', verifyAdminToken, updateUserEmail); // Update user email
 router.put('/users/bulk-email', verifyAdminToken, bulkUpdateEmails); // Bulk update emails
+router.post('/users', verifyAdminToken, createUser); // Create user
+router.delete('/users/:userId', verifyAdminToken, deleteUser); // Delete user
+// Email audit
+router.get('/users/email-audit', verifyAdminToken, adminController.getEmailChangeAudit);
+router.get('/users/email-audit/export/pdf', verifyAdminToken, adminController.exportEmailChangeAuditPdf);
 
 // --- Admin Management ---
 router.get('/admins', verifyAdminToken, getAllAdmins); // Get all admins
+router.get('/admins/missing-department', verifyAdminToken, (req, res, next) => {
+  // Allow only super (raw or normalized) to view
+  if (!req.admin || !['super','super_admin'].includes(req.admin.role) && req.admin.normalizedRole !== 'super') {
+    return res.status(403).json({ message: 'Access denied' });
+  }
+  return adminController.getAdminsMissingDepartment(req, res, next);
+});
 router.post('/admins', verifyAdminToken, createAdmin); // Create admin
 router.put('/admins/:adminId', verifyAdminToken, updateAdmin); // Update admin
 router.delete('/admins/:adminId', verifyAdminToken, deleteAdmin); // Delete admin
@@ -78,5 +97,8 @@ router.post('/admins/:adminId/upload-signature', verifyAdminToken, upload.single
     res.status(500).json({ message: 'Server error during file upload' });
   }
 });
+
+// Reports
+router.get('/reports/departments', verifyAdminToken, getDepartmentDeclarationStats);
 
 module.exports = router;
