@@ -335,6 +335,173 @@ exports.getUserCreationAudit = async (req, res) => {
   }
 };
 
+// Retrieve admin creation audit log entries (IT / Super admins)
+exports.getAdminCreationAudit = async (req, res) => {
+  try {
+    const role = (req.admin && req.admin.role) || '';
+    if (!['it','it_admin','super','super_admin'].includes(role)) {
+      return res.status(403).json({ success: false, message: 'Insufficient role to view admin creation audit.' });
+    }
+    const {
+      page = 1,
+      limit = 50,
+      createdByAdminId,
+      adminId,
+      newRole,
+      department,
+      from,
+      to,
+      search = '',
+      sortBy = 'created_at',
+      sortDir = 'desc'
+    } = req.query;
+    const pageNum = parseInt(page) || 1;
+    const limitNum = Math.min(parseInt(limit) || 50, 500);
+    const offset = (pageNum - 1) * limitNum;
+    const conditions = [];
+    const params = [];
+    if (createdByAdminId) { conditions.push('aca.created_by_admin_id = ?'); params.push(createdByAdminId); }
+    if (adminId) { conditions.push('aca.admin_id = ?'); params.push(adminId); }
+    if (newRole) { conditions.push('aca.new_admin_role = ?'); params.push(newRole); }
+    if (department) { conditions.push('aca.new_admin_department = ?'); params.push(department); }
+    if (from) { conditions.push('aca.created_at >= ?'); params.push(from + ' 00:00:00'); }
+    if (to) { conditions.push('aca.created_at <= ?'); params.push(to + ' 23:59:59'); }
+    if (search && search.trim()) {
+      const term = '%' + search.toLowerCase().trim() + '%';
+      conditions.push('(LOWER(aca.new_admin_username) LIKE ? OR LOWER(aca.new_admin_role) LIKE ? OR LOWER(aca.new_admin_department) LIKE ? OR LOWER(aca.new_admin_first_name) LIKE ? OR LOWER(aca.new_admin_surname) LIKE ?)');
+      params.push(term, term, term, term, term);
+    }
+    const whereClause = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+    const sortable = new Set(['created_at','admin_id','created_by_admin_id','new_admin_role','new_admin_department','new_admin_username']);
+    const column = sortable.has(sortBy) ? sortBy : 'created_at';
+    const direction = String(sortDir).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+    const [countRows] = await pool.query(`SELECT COUNT(*) as total FROM admin_creation_audit aca ${whereClause}`, params);
+    const total = countRows[0]?.total || 0;
+    const [rows] = await pool.query(
+      `SELECT id, admin_id, created_by_admin_id, creator_role, ip_address, new_admin_username, new_admin_role, new_admin_department, new_admin_first_name, new_admin_surname, created_at
+       FROM admin_creation_audit aca
+       ${whereClause}
+       ORDER BY aca.${column} ${direction}, aca.id DESC
+       LIMIT ? OFFSET ?`,
+      [...params, limitNum, offset]
+    );
+    return res.json({ success: true, data: rows, total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) });
+  } catch (error) {
+    console.error('Get admin creation audit error:', error);
+    return res.status(500).json({ success: false, message: 'Server error fetching admin audit log', error: error.message });
+  }
+};
+
+// Export admin creation audit as CSV
+exports.exportAdminCreationAuditCsv = async (req, res) => {
+  try {
+    const role = (req.admin && req.admin.role) || '';
+    if (!['it','it_admin','super','super_admin'].includes(role)) return res.status(403).json({ success: false, message: 'Forbidden' });
+    const { from, to, department, createdByAdminId, newRole, search = '' } = req.query;
+    const conditions = [];
+    const params = [];
+    if (createdByAdminId) { conditions.push('aca.created_by_admin_id = ?'); params.push(createdByAdminId); }
+    if (department) { conditions.push('aca.new_admin_department = ?'); params.push(department); }
+    if (newRole) { conditions.push('aca.new_admin_role = ?'); params.push(newRole); }
+    if (from) { conditions.push('aca.created_at >= ?'); params.push(from + ' 00:00:00'); }
+    if (to) { conditions.push('aca.created_at <= ?'); params.push(to + ' 23:59:59'); }
+    if (search && search.trim()) {
+      const term = '%' + search.toLowerCase().trim() + '%';
+      conditions.push('(LOWER(aca.new_admin_username) LIKE ? OR LOWER(aca.new_admin_role) LIKE ? OR LOWER(aca.new_admin_department) LIKE ? OR LOWER(aca.new_admin_first_name) LIKE ? OR LOWER(aca.new_admin_surname) LIKE ?)');
+      params.push(term, term, term, term, term);
+    }
+    const whereClause = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+    const [rows] = await pool.query(
+      `SELECT id, admin_id, created_by_admin_id, creator_role, ip_address, new_admin_username, new_admin_role, new_admin_department, new_admin_first_name, new_admin_surname, created_at
+       FROM admin_creation_audit aca
+       ${whereClause}
+       ORDER BY aca.created_at DESC
+       LIMIT 10000`,
+      params
+    );
+    const header = ['id','admin_id','created_by_admin_id','creator_role','ip_address','new_admin_username','new_admin_role','new_admin_department','new_admin_first_name','new_admin_surname','created_at'];
+    const lines = [header.join(',')];
+    for (const r of rows) {
+      lines.push(header.map(k => {
+        const v = r[k];
+        if (v === null || v === undefined) return '';
+        const s = String(v).replace(/"/g,'""');
+        return /[",\n]/.test(s) ? '"' + s + '"' : s;
+      }).join(','));
+    }
+    const csv = lines.join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="admin_creation_audit.csv"');
+    return res.send(csv);
+  } catch (error) {
+    console.error('Export admin creation audit CSV error:', error);
+    return res.status(500).json({ success: false, message: 'Server error exporting CSV' });
+  }
+};
+
+// Export admin creation audit as PDF
+exports.exportAdminCreationAuditPdf = async (req, res) => {
+  try {
+    const role = (req.admin && req.admin.role) || '';
+    if (!['it','it_admin','super','super_admin'].includes(role)) return res.status(403).json({ success: false, message: 'Forbidden' });
+    const PDFDocument = require('pdfkit');
+    const { from, to, department, createdByAdminId, newRole, search = '' } = req.query;
+    const conditions = [];
+    const params = [];
+    if (createdByAdminId) { conditions.push('aca.created_by_admin_id = ?'); params.push(createdByAdminId); }
+    if (department) { conditions.push('aca.new_admin_department = ?'); params.push(department); }
+    if (newRole) { conditions.push('aca.new_admin_role = ?'); params.push(newRole); }
+    if (from) { conditions.push('aca.created_at >= ?'); params.push(from + ' 00:00:00'); }
+    if (to) { conditions.push('aca.created_at <= ?'); params.push(to + ' 23:59:59'); }
+    if (search && search.trim()) {
+      const term = '%' + search.toLowerCase().trim() + '%';
+      conditions.push('(LOWER(aca.new_admin_username) LIKE ? OR LOWER(aca.new_admin_role) LIKE ? OR LOWER(aca.new_admin_department) LIKE ? OR LOWER(aca.new_admin_first_name) LIKE ? OR LOWER(aca.new_admin_surname) LIKE ?)');
+      params.push(term, term, term, term, term);
+    }
+    const whereClause = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+    const [rows] = await pool.query(
+      `SELECT id, admin_id, created_by_admin_id, creator_role, ip_address, new_admin_username, new_admin_role, new_admin_department, new_admin_first_name, new_admin_surname, created_at
+       FROM admin_creation_audit aca
+       ${whereClause}
+       ORDER BY aca.created_at DESC
+       LIMIT 5000`,
+      params
+    );
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="admin_creation_audit.pdf"');
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    doc.pipe(res);
+    doc.fontSize(16).text('Admin Creation Audit Report', { align: 'center' });
+    doc.moveDown(0.5);
+    doc.fontSize(10).text(`Generated: ${new Date().toISOString()}`);
+    if (department) doc.text(`Department: ${department}`);
+    if (from || to) doc.text(`Range: ${from || '...'} to ${to || '...'}`);
+    if (search) doc.text(`Search: ${search}`);
+    doc.moveDown(0.5);
+    const headers = ['Created At','Admin ID','Username','Role','Dept','First Name','Surname','By Admin','Creator Role'];
+    doc.fontSize(9).text(headers.join(' | '));
+    doc.moveTo(doc.x, doc.y).lineTo(550, doc.y).stroke();
+    rows.forEach(r => {
+      const line = [
+        (r.created_at instanceof Date ? r.created_at.toISOString().replace('T',' ').substring(0,19) : r.created_at),
+        r.admin_id,
+        r.new_admin_username || '',
+        r.new_admin_role || '',
+        r.new_admin_department || '',
+        r.new_admin_first_name || '',
+        r.new_admin_surname || '',
+        r.created_by_admin_id || '',
+        r.creator_role || ''
+      ].join(' | ');
+      doc.text(line);
+    });
+    doc.end();
+  } catch (error) {
+    console.error('Export admin creation audit PDF error:', error);
+    return res.status(500).json({ success: false, message: 'Server error exporting PDF' });
+  }
+};
+
 // Export user creation audit as CSV
 exports.exportUserCreationAuditCsv = async (req, res) => {
   try {

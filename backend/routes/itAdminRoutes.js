@@ -17,4 +17,9 @@ router.get('/user-creation-audit', verifyAdminToken, itAdminController.getUserCr
 router.get('/user-creation-audit/export/csv', verifyAdminToken, itAdminController.exportUserCreationAuditCsv);
 router.get('/user-creation-audit/export/pdf', verifyAdminToken, itAdminController.exportUserCreationAuditPdf);
 
+// Admin creation audit
+router.get('/admin-creation-audit', verifyAdminToken, itAdminController.getAdminCreationAudit);
+router.get('/admin-creation-audit/export/csv', verifyAdminToken, itAdminController.exportAdminCreationAuditCsv);
+router.get('/admin-creation-audit/export/pdf', verifyAdminToken, itAdminController.exportAdminCreationAuditPdf);
+
 module.exports = router;
