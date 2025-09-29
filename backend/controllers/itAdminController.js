@@ -134,11 +134,13 @@ exports.createAdminUser = async (req, res) => {
     ];
 
     let inserted = false;
+    let newAdminId = null;
     for (let i = 0; i < insertAttempts.length; i++) {
       const attempt = insertAttempts[i];
       try {
-        await pool.query(attempt.sql, attempt.params);
+        const [result] = await pool.query(attempt.sql, attempt.params);
         inserted = true;
+        newAdminId = result.insertId || null;
         break;
       } catch (err) {
         if (!(err && err.code === 'ER_BAD_FIELD_ERROR') || i === insertAttempts.length - 1) {
@@ -153,7 +155,29 @@ exports.createAdminUser = async (req, res) => {
       }
     }
 
-    return res.json({ success: true, message: 'Admin user created successfully.' });
+    // Audit log (best effort)
+    if (inserted && newAdminId) {
+      try {
+        await pool.query(
+          'INSERT INTO admin_creation_audit (admin_id, created_by_admin_id, creator_role, ip_address, new_admin_username, new_admin_role, new_admin_department, new_admin_first_name, new_admin_surname) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [
+            newAdminId,
+            (req.admin && req.admin.adminId) || null,
+            (req.admin && req.admin.role) || null,
+            req.ip || req.headers['x-forwarded-for'] || null,
+            username,
+            role,
+            role === 'super_admin' ? null : department,
+            first_name,
+            surname
+          ]
+        );
+      } catch (auditErr) {
+        console.warn('Admin creation audit insert failed:', auditErr.message);
+      }
+    }
+
+    return res.json({ success: true, message: 'Admin user created successfully.', admin_id: newAdminId });
   } catch (error) {
     console.error('Create admin user error:', error);
     return res.status(500).json({
