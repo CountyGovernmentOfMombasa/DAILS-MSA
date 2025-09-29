@@ -1,10 +1,16 @@
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+const crypto = require('crypto');
 const PDFDocument = require('pdfkit');
-// Attempt to load encryption plugin (adds password + permission support to pdfkit)
-let encryptionPluginLoaded = false;
-try { require('pdfkit-encrypt'); encryptionPluginLoaded = true; } catch (e) {
-  // Plugin not installed; PDF will be generated without encryption.
+// We'll apply encryption after generating the PDF using hummus-recipe (writes to disk).
+let hummusAvailable = false;
+let HummusRecipe = null;
+try {
+  HummusRecipe = require('hummus-recipe');
+  hummusAvailable = true;
+} catch (e) {
+  hummusAvailable = false; // dependency missing, proceed without encryption
 }
 const pool = require('../config/db');
 
@@ -39,47 +45,8 @@ function normalizeData(full) {
 }
 
 function buildPDF({ declarationId, base, normalized }) {
-  // Build encryption/permission options if plugin is available and national ID present
-  const pdfOptions = { margin: 28 };
-
-  if (encryptionPluginLoaded && base && base.national_id) {
-    const parseBool = (v, def=false)=>{
-      if(v===undefined||v===null||v==='') return def; const s=String(v).trim().toLowerCase();
-      return ['1','true','yes','y','on','allow','allowed'].includes(s);
-    };
-    const printingEnv = process.env.PDF_PERMIT_PRINTING || 'high';
-    let printingPerm;
-    switch (printingEnv.toLowerCase()) {
-      case 'none':
-      case 'false':
-        printingPerm = false; break;
-      case 'low':
-      case 'lowres':
-      case 'lowresolution':
-        printingPerm = 'lowResolution'; break;
-      case 'high':
-      case 'hi':
-      case 'highres':
-      default:
-        printingPerm = 'highResolution';
-    }
-    const permissions = {
-      printing: printingPerm,
-      modifying: parseBool(process.env.PDF_ALLOW_MODIFY, false),
-      copying: parseBool(process.env.PDF_ALLOW_COPY, false),
-      annotating: parseBool(process.env.PDF_ALLOW_ANNOTATE, false),
-      fillingForms: parseBool(process.env.PDF_ALLOW_FILL_FORMS, false),
-      contentAccessibility: parseBool(process.env.PDF_ALLOW_CONTENT_ACCESS, false),
-      documentAssembly: parseBool(process.env.PDF_ALLOW_DOC_ASSEMBLY, false)
-    };
-    // Owner password can be provided via env for stronger control; fallback to same as user password
-    const ownerPassword = process.env.PDF_OWNER_PASSWORD || process.env.PDF_OWNER_SECRET || String(base.national_id);
-    pdfOptions.userPassword = String(base.national_id);
-    pdfOptions.ownerPassword = ownerPassword;
-    pdfOptions.permissions = permissions;
-  }
-
-  const doc = new PDFDocument(pdfOptions);
+  // Base PDF generation without encryption (will encrypt in a second pass if enabled)
+  const doc = new PDFDocument({ margin: 28 });
   const buffers=[]; doc.on('data',d=>buffers.push(d));
   const pageWidth=()=> doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const addHeader=()=>{ try{ const logo=path.resolve(__dirname,'../../my-app/public/logo192.png'); if(fs.existsSync(logo)) doc.image(logo, doc.page.margins.left, 20, { width:60 }); }catch{} doc.fontSize(14).font('Helvetica-Bold').text('DECLARATION OF INCOME, ASSETS AND LIABILITIES',{align:'center'}); doc.moveDown(0.2).fontSize(11).font('Helvetica').text('County Government of Mombasa',{align:'center'}); doc.moveDown(); };
@@ -104,11 +71,79 @@ function buildPDF({ declarationId, base, normalized }) {
   return new Promise(resolve => doc.on('end', ()=> resolve(Buffer.concat(buffers))));
 }
 
+function buildPermissionFlag(opts) {
+  // Map boolean style env to permission bits understood by hummus-recipe / PDF standard
+  // Bits: 4 print, 8 modify, 16 copy, 32 annotate, 256 fill forms, 512 content extraction, 1024 assemble, 2048 high quality print
+  let flag = 0;
+  if (opts.printing === 'low') flag |= 4; // low quality print
+  if (opts.printing === 'high') flag |= 2048; // high quality print (also implies print ability in most viewers)
+  if (opts.modifying) flag |= 8;
+  if (opts.copying) flag |= 16;
+  if (opts.annotating) flag |= 32;
+  if (opts.fillingForms) flag |= 256;
+  if (opts.contentAccessibility) flag |= 512;
+  if (opts.documentAssembly) flag |= 1024;
+  return flag;
+}
+
+function readEnvBool(name, def=false) {
+  const v = process.env[name];
+  if (v === undefined) return def;
+  const s = String(v).trim().toLowerCase();
+  return ['1','true','yes','y','on','allow','allowed'].includes(s);
+}
+
+function derivePermissionOptions() {
+  const printingRaw = (process.env.PDF_PERMIT_PRINTING || 'high').toLowerCase();
+  const printing = ['none','low','high'].includes(printingRaw) ? printingRaw : 'high';
+  return {
+    printing,
+    modifying: readEnvBool('PDF_ALLOW_MODIFY'),
+    copying: readEnvBool('PDF_ALLOW_COPY'),
+    annotating: readEnvBool('PDF_ALLOW_ANNOTATE'),
+    fillingForms: readEnvBool('PDF_ALLOW_FILL_FORMS'),
+    contentAccessibility: readEnvBool('PDF_ALLOW_CONTENT_ACCESS'),
+    documentAssembly: readEnvBool('PDF_ALLOW_DOC_ASSEMBLY')
+  };
+}
+
+async function applyEncryptionIfPossible(buffer, base) {
+  if (!hummusAvailable || !base?.national_id) {
+    return { buffer, applied: false, password: null };
+  }
+  try {
+    const tmpDir = os.tmpdir();
+    const id = crypto.randomBytes(8).toString('hex');
+    const srcPath = path.join(tmpDir, `decl-src-${id}.pdf`);
+    const outPath = path.join(tmpDir, `decl-out-${id}.pdf`);
+    fs.writeFileSync(srcPath, buffer);
+    const perms = derivePermissionOptions();
+    const userPassword = String(base.national_id);
+    const ownerPassword = process.env.PDF_OWNER_PASSWORD || process.env.PDF_OWNER_SECRET || userPassword;
+    const userProtectionFlag = buildPermissionFlag(perms);
+    const recipe = new HummusRecipe(srcPath, outPath, {
+      userPassword,
+      ownerPassword,
+      userProtectionFlag
+    });
+    recipe.endPDF();
+    const encrypted = fs.readFileSync(outPath);
+    // cleanup
+    try { fs.unlinkSync(srcPath); } catch {}
+    try { fs.unlinkSync(outPath); } catch {}
+    return { buffer: encrypted, applied: true, password: userPassword };
+  } catch (e) {
+    console.error('PDF encryption failed (continuing with unencrypted PDF):', e.message);
+    return { buffer, applied: false, password: null };
+  }
+}
+
 async function generateDeclarationPDF(declarationId) {
   const full = await fetchDeclarationFull(declarationId);
   const normalized = normalizeData(full);
-  const buffer = await buildPDF({ declarationId, base: full.base, normalized });
-  return { buffer, base: full.base, password: (encryptionPluginLoaded && full.base?.national_id) ? String(full.base.national_id) : null, encryptionApplied: encryptionPluginLoaded };
+  const rawBuffer = await buildPDF({ declarationId, base: full.base, normalized });
+  const { buffer, applied, password } = await applyEncryptionIfPossible(rawBuffer, full.base);
+  return { buffer, base: full.base, password, encryptionApplied: applied };
 }
 
 module.exports = { generateDeclarationPDF };
