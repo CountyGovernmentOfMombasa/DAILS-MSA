@@ -69,6 +69,14 @@ npm start
 | TOLCLIN_CLIENT_ID | Tolclin client id (integer) | 254 |
 | TOLCLIN_SENDER_ID | SMS Sender ID | COUNTY-MSA |
 | TOLCLIN_CALLBACK_URL | SMS callback URL | |
+| PDF_PERMIT_PRINTING | Printing permission: accepts values none, low, high | high |
+| PDF_ALLOW_MODIFY | Allow document modification (true/false) | false |
+| PDF_ALLOW_COPY | Allow copying text/images (true/false) | false |
+| PDF_ALLOW_ANNOTATE | Allow adding/removing annotations (true/false) | false |
+| PDF_ALLOW_FILL_FORMS | Allow form filling (true/false) | false |
+| PDF_ALLOW_CONTENT_ACCESS | Enable accessibility extraction (true/false) | false |
+| PDF_ALLOW_DOC_ASSEMBLY | Allow document assembly (true/false) | false |
+| PDF_OWNER_PASSWORD | Owner password override (optional) | (defaults to National ID) |
 
 ## API Endpoints
 
@@ -103,6 +111,17 @@ npm start
 - Helmet security headers
 - Request logging with Morgan
 - SQL injection protection
+
+### PDF Export Security
+
+Generated declaration PDFs are automatically password-protected (if the dependency `pdfkit-encrypt` is installed) using the employee's National ID as the user password. Owner password defaults to the same value unless overridden via `PDF_OWNER_PASSWORD`.
+
+You can control fine‑grained permissions via environment variables:
+
+- `PDF_PERMIT_PRINTING`: `none`, `low` (lowResolution), or `high` (highResolution). Defaults to `high`.
+- `PDF_ALLOW_MODIFY`, `PDF_ALLOW_COPY`, `PDF_ALLOW_ANNOTATE`, `PDF_ALLOW_FILL_FORMS`, `PDF_ALLOW_CONTENT_ACCESS`, `PDF_ALLOW_DOC_ASSEMBLY`: each boolean-like (true/false, 1/0, yes/no). Default `false`.
+
+If the encryption plugin is not available, the PDF is still generated but without password protection; the controller does not fail—log output can indicate the absence of encryption.
 
 ## Error Handling
 
