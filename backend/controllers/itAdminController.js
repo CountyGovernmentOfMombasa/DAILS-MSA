@@ -279,8 +279,8 @@ exports.createRegularUser = async (req, res) => {
 // Retrieve user creation audit log entries (IT / Super admins)
 exports.getUserCreationAudit = async (req, res) => {
   try {
-    const role = (req.admin && req.admin.role) || '';
-    if (!['it', 'super'].includes(role)) {
+    const role = (req.admin && (req.admin.role || req.admin.normalizedRole)) || '';
+    if (!['it','super','it_admin','super_admin'].includes(role)) {
       return res.status(403).json({ success: false, message: 'Insufficient role to view user creation audit.' });
     }
     const {
@@ -338,7 +338,7 @@ exports.getUserCreationAudit = async (req, res) => {
 // Retrieve admin creation audit log entries (IT / Super admins)
 exports.getAdminCreationAudit = async (req, res) => {
   try {
-    const role = (req.admin && req.admin.role) || '';
+    const role = (req.admin && (req.admin.role || req.admin.normalizedRole)) || '';
     if (!['it','it_admin','super','super_admin'].includes(role)) {
       return res.status(403).json({ success: false, message: 'Insufficient role to view admin creation audit.' });
     }
@@ -395,8 +395,8 @@ exports.getAdminCreationAudit = async (req, res) => {
 // Export admin creation audit as CSV
 exports.exportAdminCreationAuditCsv = async (req, res) => {
   try {
-    const role = (req.admin && req.admin.role) || '';
-    if (!['it','it_admin','super','super_admin'].includes(role)) return res.status(403).json({ success: false, message: 'Forbidden' });
+  const role = (req.admin && (req.admin.role || req.admin.normalizedRole)) || '';
+  if (!['it','it_admin','super','super_admin'].includes(role)) return res.status(403).json({ success: false, message: 'Forbidden' });
     const { from, to, department, createdByAdminId, newRole, search = '' } = req.query;
     const conditions = [];
     const params = [];
@@ -442,8 +442,8 @@ exports.exportAdminCreationAuditCsv = async (req, res) => {
 // Export admin creation audit as PDF
 exports.exportAdminCreationAuditPdf = async (req, res) => {
   try {
-    const role = (req.admin && req.admin.role) || '';
-    if (!['it','it_admin','super','super_admin'].includes(role)) return res.status(403).json({ success: false, message: 'Forbidden' });
+  const role = (req.admin && (req.admin.role || req.admin.normalizedRole)) || '';
+  if (!['it','it_admin','super','super_admin'].includes(role)) return res.status(403).json({ success: false, message: 'Forbidden' });
     const PDFDocument = require('pdfkit');
     const { from, to, department, createdByAdminId, newRole, search = '' } = req.query;
     const conditions = [];
@@ -505,8 +505,8 @@ exports.exportAdminCreationAuditPdf = async (req, res) => {
 // Export user creation audit as CSV
 exports.exportUserCreationAuditCsv = async (req, res) => {
   try {
-    const role = (req.admin && req.admin.role) || '';
-    if (!['it','super'].includes(role)) return res.status(403).json({ success: false, message: 'Forbidden' });
+  const role = (req.admin && (req.admin.role || req.admin.normalizedRole)) || '';
+  if (!['it','super','it_admin','super_admin'].includes(role)) return res.status(403).json({ success: false, message: 'Forbidden' });
     // Reuse filtering logic by calling getUserCreationAudit internals (duplicated minimal subset)
     const { from, to, department, adminId, employmentNature, search = '' } = req.query;
     const conditions = [];
@@ -552,8 +552,8 @@ exports.exportUserCreationAuditCsv = async (req, res) => {
 // Export user creation audit as PDF (simple list)
 exports.exportUserCreationAuditPdf = async (req, res) => {
   try {
-    const role = (req.admin && req.admin.role) || '';
-    if (!['it','super'].includes(role)) return res.status(403).json({ success: false, message: 'Forbidden' });
+  const role = (req.admin && (req.admin.role || req.admin.normalizedRole)) || '';
+  if (!['it','super','it_admin','super_admin'].includes(role)) return res.status(403).json({ success: false, message: 'Forbidden' });
     const PDFDocument = require('pdfkit');
     const { from, to, department, adminId, employmentNature, search = '' } = req.query;
     const conditions = [];
