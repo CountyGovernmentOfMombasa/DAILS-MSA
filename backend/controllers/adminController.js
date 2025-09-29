@@ -1071,3 +1071,93 @@ exports.deleteUser = async (req, res) => {
     res.status(500).json({ message: 'Server error while deleting user' });
   }
 };
+
+// Department user declaration status for IT / HR / Finance admins
+// GET /api/admin/department/users-status[?search=][&department=] (department param only honored for super admins, others locked to their own)
+exports.getDepartmentUserDeclarationStatus = async (req, res) => {
+  try {
+    // Accept roles: hr_admin, finance_admin, it_admin (raw) or normalized hr, finance, it. Super admin optional (can pass department)
+    const role = (req.admin && (req.admin.role || req.admin.normalizedRole)) || '';
+    const allowed = ['hr','hr_admin','finance','finance_admin','it','it_admin','super','super_admin'];
+    if (!allowed.includes(role)) {
+      return res.status(403).json({ success: false, message: 'Forbidden: role not allowed.' });
+    }
+    let department = req.query.department || null;
+    // Non-super must use their own department
+    const isSuper = ['super','super_admin'].includes(role);
+    if (!isSuper) {
+      department = req.admin.department || null;
+    }
+    if (!department) {
+      return res.status(400).json({ success: false, message: 'Department is required.' });
+    }
+    const search = (req.query.search || '').trim().toLowerCase();
+    const params = [department];
+    let searchClause = '';
+    if (search) {
+      // Search across first_name, other_names, surname/last_name, email, payroll_number, national_id
+      const term = '%' + search + '%';
+      searchClause = ` AND (LOWER(u.first_name) LIKE ? OR LOWER(u.other_names) LIKE ? OR LOWER(u.surname) LIKE ? OR LOWER(u.email) LIKE ? OR u.payroll_number LIKE ? OR u.national_id LIKE ? OR LOWER(u.last_name) LIKE ?)`;
+      params.push(term, term, term, term, '%' + (req.query.search || '').trim() + '%', '%' + (req.query.search || '').trim() + '%', term);
+    }
+    // Latest declaration per user (by max id as proxy for latest submission)
+    const sql = `
+      SELECT 
+        u.id,
+        u.payroll_number,
+        u.first_name,
+        u.other_names,
+        COALESCE(u.surname, u.last_name) AS surname,
+        u.email,
+        u.department,
+        dLatest.id AS latest_declaration_id,
+        dLatest.declaration_type AS latest_declaration_type,
+        dLatest.status AS latest_declaration_status,
+        dLatest.declaration_date AS latest_declaration_date,
+        dLatest.submitted_at AS latest_submitted_at
+      FROM users u
+      LEFT JOIN (
+        SELECT d.* FROM declarations d
+        JOIN (
+          SELECT user_id, MAX(id) AS max_id
+          FROM declarations
+          GROUP BY user_id
+        ) t ON t.max_id = d.id
+      ) dLatest ON dLatest.user_id = u.id
+      WHERE u.department = ? ${searchClause}
+      ORDER BY u.first_name ASC, u.surname ASC, u.id ASC
+      LIMIT 1500
+    `;
+    const [rows] = await pool.query(sql, params);
+    // Summary counts
+    let totalUsers = rows.length;
+    let withDeclaration = 0;
+    let withoutDeclaration = 0;
+    let approved = 0, pending = 0, rejected = 0;
+    for (const r of rows) {
+      if (r.latest_declaration_id) {
+        withDeclaration++;
+        if (r.latest_declaration_status === 'approved') approved++; else if (r.latest_declaration_status === 'rejected') rejected++; else pending++;
+      } else {
+        withoutDeclaration++;
+      }
+    }
+    return res.json({
+      success: true,
+      data: {
+        users: rows,
+        summary: {
+          totalUsers,
+          withDeclaration,
+            withoutDeclaration,
+          approved,
+          pending,
+          rejected
+        }
+      }
+    });
+  } catch (error) {
+    console.error('getDepartmentUserDeclarationStatus error:', error);
+    return res.status(500).json({ success: false, message: 'Server error fetching department user statuses' });
+  }
+};

@@ -100,5 +100,7 @@ router.post('/admins/:adminId/upload-signature', verifyAdminToken, upload.single
 
 // Reports
 router.get('/reports/departments', verifyAdminToken, getDepartmentDeclarationStats);
+// Department user declaration status (IT/HR/Finance & Super)
+router.get('/department/users-status', verifyAdminToken, adminController.getDepartmentUserDeclarationStatus);
 
 module.exports = router;
