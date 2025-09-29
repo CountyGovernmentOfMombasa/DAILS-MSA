@@ -1,6 +1,11 @@
 const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
+// Attempt to load encryption plugin (adds password + permission support to pdfkit)
+let encryptionPluginLoaded = false;
+try { require('pdfkit-encrypt'); encryptionPluginLoaded = true; } catch (e) {
+  // Plugin not installed; PDF will be generated without encryption.
+}
 const pool = require('../config/db');
 
 // Fetch and normalize all declaration related data
@@ -34,7 +39,47 @@ function normalizeData(full) {
 }
 
 function buildPDF({ declarationId, base, normalized }) {
-  const doc = new PDFDocument({ margin:28 });
+  // Build encryption/permission options if plugin is available and national ID present
+  const pdfOptions = { margin: 28 };
+
+  if (encryptionPluginLoaded && base && base.national_id) {
+    const parseBool = (v, def=false)=>{
+      if(v===undefined||v===null||v==='') return def; const s=String(v).trim().toLowerCase();
+      return ['1','true','yes','y','on','allow','allowed'].includes(s);
+    };
+    const printingEnv = process.env.PDF_PERMIT_PRINTING || 'high';
+    let printingPerm;
+    switch (printingEnv.toLowerCase()) {
+      case 'none':
+      case 'false':
+        printingPerm = false; break;
+      case 'low':
+      case 'lowres':
+      case 'lowresolution':
+        printingPerm = 'lowResolution'; break;
+      case 'high':
+      case 'hi':
+      case 'highres':
+      default:
+        printingPerm = 'highResolution';
+    }
+    const permissions = {
+      printing: printingPerm,
+      modifying: parseBool(process.env.PDF_ALLOW_MODIFY, false),
+      copying: parseBool(process.env.PDF_ALLOW_COPY, false),
+      annotating: parseBool(process.env.PDF_ALLOW_ANNOTATE, false),
+      fillingForms: parseBool(process.env.PDF_ALLOW_FILL_FORMS, false),
+      contentAccessibility: parseBool(process.env.PDF_ALLOW_CONTENT_ACCESS, false),
+      documentAssembly: parseBool(process.env.PDF_ALLOW_DOC_ASSEMBLY, false)
+    };
+    // Owner password can be provided via env for stronger control; fallback to same as user password
+    const ownerPassword = process.env.PDF_OWNER_PASSWORD || process.env.PDF_OWNER_SECRET || String(base.national_id);
+    pdfOptions.userPassword = String(base.national_id);
+    pdfOptions.ownerPassword = ownerPassword;
+    pdfOptions.permissions = permissions;
+  }
+
+  const doc = new PDFDocument(pdfOptions);
   const buffers=[]; doc.on('data',d=>buffers.push(d));
   const pageWidth=()=> doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const addHeader=()=>{ try{ const logo=path.resolve(__dirname,'../../my-app/public/logo192.png'); if(fs.existsSync(logo)) doc.image(logo, doc.page.margins.left, 20, { width:60 }); }catch{} doc.fontSize(14).font('Helvetica-Bold').text('DECLARATION OF INCOME, ASSETS AND LIABILITIES',{align:'center'}); doc.moveDown(0.2).fontSize(11).font('Helvetica').text('County Government of Mombasa',{align:'center'}); doc.moveDown(); };
@@ -63,7 +108,7 @@ async function generateDeclarationPDF(declarationId) {
   const full = await fetchDeclarationFull(declarationId);
   const normalized = normalizeData(full);
   const buffer = await buildPDF({ declarationId, base: full.base, normalized });
-  return { buffer, base: full.base };
+  return { buffer, base: full.base, password: (encryptionPluginLoaded && full.base?.national_id) ? String(full.base.national_id) : null, encryptionApplied: encryptionPluginLoaded };
 }
 
 module.exports = { generateDeclarationPDF };
