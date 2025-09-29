@@ -8,9 +8,10 @@ class AdminUser {
         this.email = data.email;
         this.role = data.role;
         this.first_name = data.first_name;
-        this.other_names = data.other_names;
-        this.surname = data.surname;
-    this.department = data.department;
+        // Handle legacy schema: may not have other_names, may have last_name instead of surname
+        this.other_names = Object.prototype.hasOwnProperty.call(data, 'other_names') ? data.other_names : null;
+        this.surname = data.surname || data.last_name || null;
+	this.department = data.department;
     this.is_active = data.is_active;
     this.created_at = data.created_at;
     this.updated_at = data.updated_at;
@@ -49,10 +50,21 @@ class AdminUser {
     // Get all active admins
     static async getAllActive() {
         try {
-            const [rows] = await pool.query(
-                'SELECT id, username, email, role, department, first_name, other_names, surname, created_at, updated_at, last_login FROM admin_users WHERE is_active = TRUE ORDER BY created_at DESC'
-            );
-            return rows.map(row => new AdminUser(row));
+            try {
+                const [rows] = await pool.query(
+                    'SELECT id, username, email, role, department, first_name, other_names, surname, created_at, updated_at, last_login FROM admin_users WHERE is_active = TRUE ORDER BY created_at DESC'
+                );
+                return rows.map(row => new AdminUser(row));
+            } catch (err) {
+                if (err && err.code === 'ER_BAD_FIELD_ERROR') {
+                    // Fallback for legacy schema (no surname/other_names columns; has last_name)
+                    const [legacyRows] = await pool.query(
+                        'SELECT id, username, email, role, department, first_name, last_name, created_at, updated_at, last_login FROM admin_users WHERE is_active = TRUE ORDER BY created_at DESC'
+                    );
+                    return legacyRows.map(row => new AdminUser(row));
+                }
+                throw err;
+            }
         } catch (error) {
             console.error('Error getting all active admins:', error);
             throw error;
@@ -73,11 +85,23 @@ class AdminUser {
             }
             // Hash password
             const hashedPassword = await bcrypt.hash(password, 10);
-            const [result] = await pool.query(
-                'INSERT INTO admin_users (username, password, email, role, department, first_name, other_names, surname, created_by, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [username, hashedPassword, email, role, department, first_name, other_names, surname, created_by, is_active]
-            );
-            return await AdminUser.findById(result.insertId);
+            try {
+                const [result] = await pool.query(
+                    'INSERT INTO admin_users (username, password, email, role, department, first_name, other_names, surname, created_by, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [username, hashedPassword, email, role, department, first_name, other_names, surname, created_by, is_active]
+                );
+                return await AdminUser.findById(result.insertId);
+            } catch (err) {
+                if (err && err.code === 'ER_BAD_FIELD_ERROR') {
+                    // Legacy schema insert (no surname/other_names; use last_name)
+                    const [legacyResult] = await pool.query(
+                        'INSERT INTO admin_users (username, password, email, role, department, first_name, last_name, created_by, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        [username, hashedPassword, email, role, department, first_name, surname, created_by, is_active]
+                    );
+                    return await AdminUser.findById(legacyResult.insertId);
+                }
+                throw err;
+            }
         } catch (error) {
             console.error('Error creating admin:', error);
             throw error;
