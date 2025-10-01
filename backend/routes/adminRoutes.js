@@ -2,6 +2,7 @@ const settingsLocksController = require('../controllers/settingsLocksController'
 const consentLogAdminController = require('../controllers/consentLogAdminController');
 const express = require('express');
 const router = express.Router();
+const rateLimit = require('express-rate-limit');
 const settingsController = require('../controllers/settingsController');
 const adminController = require('../controllers/adminController');
 const declarationController = require('../controllers/declarationController');
@@ -19,6 +20,10 @@ const {
   updateAdmin,
   deleteAdmin,
   changeAdminPassword,
+  getAdminPasswordChangeAudit,
+  requestAdminPasswordReset,
+  listAdminPasswordResetRequests,
+  resolveAdminPasswordResetRequest,
   getDepartmentDeclarationStats
 } = adminController;
 const { verifyAdminToken } = require('../middleware/adminMiddleware');
@@ -73,6 +78,18 @@ router.post('/admins', verifyAdminToken, createAdmin); // Create admin
 router.put('/admins/:adminId', verifyAdminToken, updateAdmin); // Update admin
 router.delete('/admins/:adminId', verifyAdminToken, deleteAdmin); // Delete admin
 router.put('/change-password', verifyAdminToken, changeAdminPassword); // Change admin password
+router.get('/password-change-audit', verifyAdminToken, getAdminPasswordChangeAudit); // Audit logs for admin password changes
+// Rate limit admin forgot password requests (public endpoint)
+const adminForgotPasswordRequestLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3, // limit each IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many admin password reset requests. Please try again later.' }
+});
+router.post('/forgot-password-request', adminForgotPasswordRequestLimiter, requestAdminPasswordReset); // Public request to reset admin password
+router.get('/password-reset-requests', verifyAdminToken, listAdminPasswordResetRequests); // View pending requests (super/it)
+router.post('/password-reset-requests/:id/resolve', verifyAdminToken, resolveAdminPasswordResetRequest); // Approve/reject/complete
 
 // --- Utility / Diagnostics ---
 router.post('/test-email', verifyAdminToken, adminController.sendTestEmail); // Send test email (optional ?to=address)
@@ -102,5 +119,7 @@ router.post('/admins/:adminId/upload-signature', verifyAdminToken, upload.single
 router.get('/reports/departments', verifyAdminToken, getDepartmentDeclarationStats);
 // Department user declaration status (IT/HR/Finance & Super)
 router.get('/department/users-status', verifyAdminToken, adminController.getDepartmentUserDeclarationStatus);
+// Super admin metrics
+router.get('/super/metrics', verifyAdminToken, adminController.getSuperAdminMetrics);
 
 module.exports = router;

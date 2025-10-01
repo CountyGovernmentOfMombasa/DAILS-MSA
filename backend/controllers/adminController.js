@@ -708,11 +708,61 @@ exports.changeAdminPassword = async (req, res) => {
       return res.status(400).json({ message: 'Current password is incorrect' });
     }
 
+    // Enforce password policy: min 8 chars, upper, lower, number, symbol
+    const policy = {
+      minLength: 8,
+      upper: /[A-Z]/,
+      lower: /[a-z]/,
+      number: /[0-9]/,
+      symbol: /[^A-Za-z0-9]/
+    };
+    if (
+      newPassword.length < policy.minLength ||
+      !policy.upper.test(newPassword) ||
+      !policy.lower.test(newPassword) ||
+      !policy.number.test(newPassword) ||
+      !policy.symbol.test(newPassword)
+    ) {
+      return res.status(400).json({
+        message: 'Password must be at least 8 characters and include uppercase, lowercase, number, and symbol.'
+      });
+    }
+
+    // Prevent reuse of the same password
+    const reuse = await bcrypt.compare(newPassword, admin.password);
+    if (reuse) {
+      return res.status(400).json({ message: 'You cannot reuse your previous password.' });
+    }
+
     await admin.updatePassword(newPassword);
+    // Audit log
+    try {
+      await pool.query(
+        'INSERT INTO admin_password_change_audit (admin_id, changed_by_admin_id, ip_address, user_agent) VALUES (?, ?, ?, ?)',
+        [admin.id, req.admin.adminId, req.ip || null, (req.headers['user-agent'] || '').substring(0,255)]
+      );
+    } catch (auditErr) {
+      console.error('Failed to write admin password change audit:', auditErr.message);
+    }
+    // Issue a fresh token so any stolen old token becomes less useful (best practice)
+    let refreshedToken = null;
+    try {
+      const mappedRole = admin.role === 'hr_admin' ? 'hr' : admin.role === 'it_admin' ? 'it' : admin.role === 'finance_admin' ? 'finance' : 'super';
+      refreshedToken = jwt.sign({
+        adminId: admin.id,
+        username: admin.username,
+        role: mappedRole,
+        department: admin.department || null,
+        isAdmin: true
+      }, process.env.JWT_SECRET, { expiresIn: '8h' });
+    } catch (e) {
+      // Non-fatal: continue without refreshed token
+    }
 
     res.json({
       success: true,
-      message: 'Password updated successfully'
+      message: 'Password updated successfully',
+      ...(refreshedToken ? { adminToken: refreshedToken } : {})
     });
 
   } catch (error) {
@@ -1091,30 +1141,79 @@ exports.getDepartmentUserDeclarationStatus = async (req, res) => {
     if (!department) {
       return res.status(400).json({ success: false, message: 'Department is required.' });
     }
+    // Parameter parsing
     const search = (req.query.search || '').trim().toLowerCase();
-    const params = [department];
-    let searchClause = '';
-    if (search) {
-      // Search across first_name, other_names, surname/last_name, email, payroll_number, national_id
-      const term = '%' + search + '%';
-      searchClause = ` AND (LOWER(u.first_name) LIKE ? OR LOWER(u.other_names) LIKE ? OR LOWER(u.surname) LIKE ? OR LOWER(u.email) LIKE ? OR u.payroll_number LIKE ? OR u.national_id LIKE ? OR LOWER(u.last_name) LIKE ?)`;
-      params.push(term, term, term, term, '%' + (req.query.search || '').trim() + '%', '%' + (req.query.search || '').trim() + '%', term);
+    const statusFilter = (req.query.status || '').toLowerCase(); // approved|rejected|pending|none
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(parseInt(req.query.limit) || 50, 500);
+    const offset = (page - 1) * limit;
+    const sortBy = (req.query.sortBy || 'first_name').toLowerCase();
+    const sortDir = (String(req.query.sortDir || 'asc').toLowerCase() === 'desc') ? 'DESC' : 'ASC';
+
+  // Introspect users table columns to safely build surname & national id expressions
+    const [userCols] = await pool.query('SHOW COLUMNS FROM users');
+    const colNames = userCols.map(c => c.Field.toLowerCase());
+    const hasSurname = colNames.includes('surname');
+    const hasLastName = colNames.includes('last_name');
+  const hasNat = colNames.includes('national_id');
+  const hasIdNumber = colNames.includes('id_number');
+  const hasIdNo = colNames.includes('id_no');
+    let surnameExprRaw;
+    if (hasSurname && hasLastName) {
+      surnameExprRaw = 'COALESCE(u.surname,u.last_name)';
+    } else if (hasSurname) {
+      surnameExprRaw = 'u.surname';
+    } else if (hasLastName) {
+      surnameExprRaw = 'u.last_name';
+    } else {
+      surnameExprRaw = "''"; // neither exists; provide empty string
     }
-    // Latest declaration per user (by max id as proxy for latest submission)
-    const sql = `
-      SELECT 
-        u.id,
-        u.payroll_number,
-        u.first_name,
-        u.other_names,
-        COALESCE(u.surname, u.last_name) AS surname,
-        u.email,
-        u.department,
-        dLatest.id AS latest_declaration_id,
-        dLatest.declaration_type AS latest_declaration_type,
-        dLatest.status AS latest_declaration_status,
-        dLatest.declaration_date AS latest_declaration_date,
-        dLatest.submitted_at AS latest_submitted_at
+    const surnameExprSelect = `${surnameExprRaw} AS surname`;
+    const surnameExprOrder = surnameExprRaw; // for ORDER BY
+    const surnameExprSearch = `LOWER(${surnameExprRaw})`;
+
+  // National ID expression (fallback through possible legacy column names)
+  const natCols = [];
+  if (hasNat) natCols.push('u.national_id');
+  if (hasIdNumber) natCols.push('u.id_number');
+  if (hasIdNo) natCols.push('u.id_no');
+  let natExprRaw;
+  if (natCols.length === 0) natExprRaw = "''"; else if (natCols.length === 1) natExprRaw = natCols[0]; else natExprRaw = `COALESCE(${natCols.join(',')})`;
+  const natExprSelect = `${natExprRaw} AS national_id`;
+  const natExprSearch = `LOWER(${natExprRaw})`;
+
+    const sortableMap = {
+      'first_name': 'u.first_name',
+      'surname': surnameExprOrder,
+      'payroll_number': 'u.payroll_number',
+      'email': 'u.email',
+      'latest_declaration_status': 'dLatest.status',
+      'latest_declaration_date': 'dLatest.declaration_date',
+      'latest_submitted_at': 'dLatest.submitted_at',
+      'national_id': natCols[0] || natExprRaw // allow sorting by the first available nat id column
+    };
+    const orderExpr = sortableMap[sortBy] || 'u.first_name';
+
+    const params = [department];
+    let whereExtra = '';
+    if (search) {
+      const term = '%' + search + '%';
+      whereExtra += ` AND (LOWER(u.first_name) LIKE ? OR LOWER(u.other_names) LIKE ? OR ${surnameExprSearch} LIKE ? OR LOWER(u.email) LIKE ? OR u.payroll_number LIKE ? OR ${natExprSearch} LIKE ?)`;
+      params.push(term, term, term, term, '%' + (req.query.search || '').trim() + '%', '%' + (req.query.search || '').trim() + '%');
+    }
+    if (statusFilter) {
+      if (statusFilter === 'none') {
+        whereExtra += ' AND dLatest.id IS NULL';
+      } else if (statusFilter === 'pending') {
+        whereExtra += " AND dLatest.id IS NOT NULL AND (dLatest.status NOT IN ('approved','rejected') OR dLatest.status IS NULL)";
+      } else if (['approved','rejected'].includes(statusFilter)) {
+        whereExtra += ' AND dLatest.status = ?';
+        params.push(statusFilter);
+      }
+    }
+
+    // Base select shared fragments
+    const baseSelect = `
       FROM users u
       LEFT JOIN (
         SELECT d.* FROM declarations d
@@ -1124,40 +1223,266 @@ exports.getDepartmentUserDeclarationStatus = async (req, res) => {
           GROUP BY user_id
         ) t ON t.max_id = d.id
       ) dLatest ON dLatest.user_id = u.id
-      WHERE u.department = ? ${searchClause}
-      ORDER BY u.first_name ASC, u.surname ASC, u.id ASC
-      LIMIT 1500
+      WHERE u.department = ? ${whereExtra}
     `;
-    const [rows] = await pool.query(sql, params);
-    // Summary counts
-    let totalUsers = rows.length;
-    let withDeclaration = 0;
-    let withoutDeclaration = 0;
-    let approved = 0, pending = 0, rejected = 0;
-    for (const r of rows) {
-      if (r.latest_declaration_id) {
-        withDeclaration++;
-        if (r.latest_declaration_status === 'approved') approved++; else if (r.latest_declaration_status === 'rejected') rejected++; else pending++;
-      } else {
-        withoutDeclaration++;
+
+    // Count total
+    const [countRows] = await pool.query(`SELECT COUNT(*) AS total ${baseSelect}`, params);
+    const totalUsers = countRows[0]?.total || 0;
+
+    // Aggregated summary across all filtered users
+    let summary = {
+      totalUsers: totalUsers,
+      withDeclaration: 0,
+      withoutDeclaration: 0,
+      approved: 0,
+      pending: 0,
+      rejected: 0,
+      byType: { first: 0, biennial: 0, final: 0, none: 0 }
+    };
+    if (totalUsers > 0) {
+      const aggSql = `SELECT 
+          COUNT(*) AS totalUsers,
+          SUM(CASE WHEN dLatest.id IS NOT NULL THEN 1 ELSE 0 END) AS withDeclaration,
+          SUM(CASE WHEN dLatest.id IS NULL THEN 1 ELSE 0 END) AS withoutDeclaration,
+          SUM(CASE WHEN dLatest.status = 'approved' THEN 1 ELSE 0 END) AS approved,
+          SUM(CASE WHEN dLatest.status = 'rejected' THEN 1 ELSE 0 END) AS rejected,
+          SUM(CASE WHEN dLatest.id IS NOT NULL AND dLatest.status NOT IN ('approved','rejected') THEN 1 ELSE 0 END) AS pending,
+          SUM(CASE WHEN dLatest.declaration_type LIKE 'first%' THEN 1 ELSE 0 END) AS firstType,
+          SUM(CASE WHEN dLatest.declaration_type LIKE 'bien%' THEN 1 ELSE 0 END) AS biennialType,
+          SUM(CASE WHEN dLatest.declaration_type LIKE 'final%' THEN 1 ELSE 0 END) AS finalType,
+          SUM(CASE WHEN dLatest.id IS NULL THEN 1 ELSE 0 END) AS noneType
+        ${baseSelect}`;
+      try {
+        const [aggRows] = await pool.query(aggSql, params);
+        if (aggRows.length) {
+          const a = aggRows[0];
+          summary = {
+            totalUsers: a.totalUsers || 0,
+            withDeclaration: a.withDeclaration || 0,
+            withoutDeclaration: a.withoutDeclaration || 0,
+            approved: a.approved || 0,
+            pending: a.pending || 0,
+            rejected: a.rejected || 0,
+            byType: {
+              first: a.firstType || 0,
+              biennial: a.biennialType || 0,
+              final: a.finalType || 0,
+              none: a.noneType || 0
+            }
+          };
+        }
+      } catch (err) {
+        console.warn('Aggregation failed (department users status):', err.message);
       }
     }
+
+    // Paged rows
+    let rows = [];
+  const pageSql = `SELECT 
+        u.id,
+        u.payroll_number,
+    ${natExprSelect},
+        u.first_name,
+        u.other_names,
+        ${surnameExprSelect},
+        u.email,
+        u.department,
+        dLatest.id AS latest_declaration_id,
+        dLatest.declaration_type AS latest_declaration_type,
+        dLatest.status AS latest_declaration_status,
+        dLatest.declaration_date AS latest_declaration_date,
+        dLatest.submitted_at AS latest_submitted_at
+      ${baseSelect}
+      ORDER BY ${orderExpr} ${sortDir}, u.id ASC
+      LIMIT ? OFFSET ?`;
+    const [pageRows] = await pool.query(pageSql, [...params, limit, offset]);
+    rows = pageRows;
+
     return res.json({
       success: true,
+      page,
+      limit,
+      total: totalUsers,
+      totalPages: Math.ceil(totalUsers / limit),
       data: {
         users: rows,
-        summary: {
-          totalUsers,
-          withDeclaration,
-            withoutDeclaration,
-          approved,
-          pending,
-          rejected
-        }
+        summary
       }
     });
   } catch (error) {
     console.error('getDepartmentUserDeclarationStatus error:', error);
     return res.status(500).json({ success: false, message: 'Server error fetching department user statuses' });
+  }
+};
+
+// Super Admin global metrics endpoint
+// GET /api/admin/super/metrics
+// Returns organization-wide aggregates (counts by declaration status, type, departments coverage, missing data indicators)
+exports.getSuperAdminMetrics = async (req, res) => {
+  try {
+    if (!req.admin || !['super','super_admin'].includes(req.admin.role) && req.admin.normalizedRole !== 'super') {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+    const metrics = {
+      generatedAt: new Date().toISOString(),
+      users: { total: 0, withoutDepartment: 0, withoutNationalId: 0 },
+      declarations: { total: 0, byStatus: {}, byType: {}, usersWithDeclaration: 0 },
+      departments: { totalDistinct: 0, coveragePercent: 0 },
+    };
+    const pool = require('../config/db');
+    // Users base stats
+    const [[uStats]] = await pool.query(`SELECT COUNT(*) AS total, SUM(CASE WHEN (department IS NULL OR department='') THEN 1 ELSE 0 END) AS withoutDept, SUM(CASE WHEN (national_id IS NULL OR national_id='') THEN 1 ELSE 0 END) AS withoutNat FROM users`);
+    metrics.users.total = uStats.total || 0;
+    metrics.users.withoutDepartment = uStats.withoutDept || 0;
+    metrics.users.withoutNationalId = uStats.withoutNat || 0;
+    // Distinct departments and coverage
+    const [deptRows] = await pool.query(`SELECT department, COUNT(*) AS c FROM users WHERE department IS NOT NULL AND department <> '' GROUP BY department`);
+    metrics.departments.totalDistinct = deptRows.length;
+    metrics.departments.coveragePercent = metrics.users.total ? Math.round(((metrics.users.total - metrics.users.withoutDepartment) / metrics.users.total) * 100) : 0;
+    // Declarations aggregates
+    const [[declTotals]] = await pool.query(`SELECT COUNT(*) AS total FROM declarations`);
+    metrics.declarations.total = declTotals.total || 0;
+    const [declStatus] = await pool.query(`SELECT status, COUNT(*) AS c FROM declarations GROUP BY status`);
+    metrics.declarations.byStatus = declStatus.reduce((acc,r)=>{ acc[r.status||'unknown']=r.c; return acc; }, {});
+    const [declType] = await pool.query(`SELECT declaration_type, COUNT(*) AS c FROM declarations GROUP BY declaration_type`);
+    metrics.declarations.byType = declType.reduce((acc,r)=>{ acc[r.declaration_type||'unknown']=r.c; return acc; }, {});
+    const [[withDecl]] = await pool.query(`SELECT COUNT(DISTINCT user_id) AS cnt FROM declarations`);
+    metrics.declarations.usersWithDeclaration = withDecl.cnt || 0;
+    return res.json({ success: true, data: metrics });
+  } catch (error) {
+    console.error('getSuperAdminMetrics error:', error);
+    return res.status(500).json({ success:false, message: 'Server error fetching metrics'});
+  }
+};
+
+// GET /api/admin/password-change-audit?adminId=&from=&to=&page=&limit=
+exports.getAdminPasswordChangeAudit = async (req, res) => {
+  try {
+    const { adminId, from, to, page = 1, limit = 50 } = req.query;
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit)));
+    const offset = (pageNum - 1) * limitNum;
+    const conditions = [];
+    const params = [];
+    if (adminId) { conditions.push('a.admin_id = ?'); params.push(adminId); }
+    if (from) { conditions.push('a.created_at >= ?'); params.push(from); }
+    if (to) { conditions.push('a.created_at <= ?'); params.push(to); }
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const [countRows] = await pool.query(`SELECT COUNT(*) as total FROM admin_password_change_audit a ${whereClause}`, params);
+    const total = countRows[0]?.total || 0;
+    const [rows] = await pool.query(`
+      SELECT a.id, a.admin_id, au.username AS admin_username, a.changed_by_admin_id,
+             au2.username AS changed_by_username, a.ip_address, a.user_agent, a.event_type, a.created_at
+      FROM admin_password_change_audit a
+      LEFT JOIN admin_users au ON a.admin_id = au.id
+      LEFT JOIN admin_users au2 ON a.changed_by_admin_id = au2.id
+      ${whereClause}
+      ORDER BY a.created_at DESC
+      LIMIT ? OFFSET ?
+    `, [...params, limitNum, offset]);
+    res.json({ success: true, total, page: pageNum, totalPages: Math.ceil(total / limitNum), data: rows });
+  } catch (error) {
+    console.error('Get admin password change audit error:', error);
+    res.status(500).json({ success: false, message: 'Server error fetching password change audit' });
+  }
+};
+
+// ---------------- ADMIN FORGOT PASSWORD REQUEST FLOW ----------------
+// @route POST /api/admin/forgot-password-request  (public - by username)
+exports.requestAdminPasswordReset = async (req, res) => {
+  try {
+    const { username } = req.body;
+    if (!username) return res.status(400).json({ message: 'Username required' });
+    const admin = await AdminUser.findByUsername(username);
+    if (!admin) return res.json({ success: true, message: 'If the account exists, a request has been logged.' });
+    // Insert pending request unless one already pending
+    try {
+      await pool.query(
+        'INSERT INTO admin_password_reset_requests (admin_id, username, ip_address, user_agent) VALUES (?, ?, ?, ?)',
+        [admin.id, admin.username, (req.ip || '').substring(0,64), (req.headers['user-agent'] || '').substring(0,255)]
+      );
+    } catch (e) {
+      if (!(e && e.code === 'ER_DUP_ENTRY')) {
+        console.error('Insert admin reset request error:', e.message);
+      }
+    }
+    return res.json({ success: true, message: 'If the account exists, a request has been logged.' });
+  } catch (error) {
+    console.error('requestAdminPasswordReset error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @route GET /api/admin/password-reset-requests (super & it only)
+exports.listAdminPasswordResetRequests = async (req, res) => {
+  try {
+    if (!req.admin || !['super','it','super_admin','it_admin'].includes(req.admin.normalizedRole)) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    const { status = 'pending' } = req.query;
+    const [rows] = await pool.query(`
+      SELECT r.*, au.username AS requester_username, au.role AS requester_role
+      FROM admin_password_reset_requests r
+      JOIN admin_users au ON r.admin_id = au.id
+      WHERE (? = 'all' OR r.status = ?)
+      ORDER BY r.requested_at DESC
+      LIMIT 200
+    `, [status, status]);
+    return res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('listAdminPasswordResetRequests error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @route POST /api/admin/password-reset-requests/:id/resolve  body: { action: 'approve'|'reject', notes?, newPassword? }
+exports.resolveAdminPasswordResetRequest = async (req, res) => {
+  try {
+    if (!req.admin || !['super','it','super_admin','it_admin'].includes(req.admin.normalizedRole)) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    const { id } = req.params;
+    const { action, notes, newPassword } = req.body;
+    if (!['approve','reject','complete'].includes(action)) {
+      return res.status(400).json({ message: 'Invalid action' });
+    }
+    const [rows] = await pool.query('SELECT * FROM admin_password_reset_requests WHERE id = ?', [id]);
+    if (!rows.length) return res.status(404).json({ message: 'Request not found' });
+    const reqRow = rows[0];
+    if (reqRow.status !== 'pending' && action !== 'complete') {
+      return res.status(400).json({ message: 'Request already processed' });
+    }
+    if (action === 'reject') {
+      await pool.query('UPDATE admin_password_reset_requests SET status = ?, resolution_notes = ?, resolved_at = NOW(), resolved_by_admin_id = ? WHERE id = ?', ['rejected', notes || null, req.admin.adminId, id]);
+      return res.json({ success: true, message: 'Request rejected' });
+    }
+    if (action === 'approve') {
+      await pool.query('UPDATE admin_password_reset_requests SET status = ?, resolution_notes = ?, resolved_at = NOW(), resolved_by_admin_id = ? WHERE id = ?', ['approved', notes || null, req.admin.adminId, id]);
+      return res.json({ success: true, message: 'Request approved. Set a new password using complete action.' });
+    }
+    if (action === 'complete') {
+      if (!newPassword) return res.status(400).json({ message: 'newPassword required for completion' });
+      // password policy reused
+      const policy = { min: 8, upper: /[A-Z]/, lower: /[a-z]/, number: /[0-9]/, symbol: /[^A-Za-z0-9]/ };
+      if (newPassword.length < policy.min || !policy.upper.test(newPassword) || !policy.lower.test(newPassword) || !policy.number.test(newPassword) || !policy.symbol.test(newPassword)) {
+        return res.status(400).json({ message: 'Password must be 8+ chars incl upper, lower, number, symbol.' });
+      }
+      const adminTarget = await AdminUser.findById(reqRow.admin_id);
+      if (!adminTarget) return res.status(404).json({ message: 'Admin not found' });
+      const bcrypt = require('bcryptjs');
+      const reuse = await bcrypt.compare(newPassword, adminTarget.password);
+      if (reuse) return res.status(400).json({ message: 'Cannot reuse previous password.' });
+      await adminTarget.updatePassword(newPassword);
+      await pool.query('UPDATE admin_password_reset_requests SET status = ?, resolution_notes = ?, resolved_at = NOW(), resolved_by_admin_id = ? WHERE id = ?', ['completed', notes || null, req.admin.adminId, id]);
+      // Audit (admin completed by privileged actor)
+      try {
+        await pool.query('INSERT INTO admin_password_change_audit (admin_id, changed_by_admin_id, ip_address, user_agent, event_type) VALUES (?,?,?,?,?)', [adminTarget.id, req.admin.adminId, (req.ip || '').substring(0,64), (req.headers['user-agent'] || '').substring(0,255), 'password_change']);
+      } catch (e) { console.error('Admin reset completion audit insert failed:', e.message); }
+      return res.json({ success: true, message: 'Password reset and request completed.' });
+    }
+  } catch (error) {
+    console.error('resolveAdminPasswordResetRequest error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 };

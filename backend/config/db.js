@@ -6,23 +6,35 @@ const pool = mysql.createPool({
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'employee_declarations',
+  port: parseInt(process.env.DB_PORT || '3306', 10),
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0
 });
 
-// Test the connection
-async function testConnection() {
-  try {
-    const connection = await pool.getConnection();
-    console.log('Successfully connected to the database');
-    connection.release();
-  } catch (error) {
-    console.error('Database connection failed:', error);
-    process.exit(1);
+// Connection tester with simple retry (handles XAMPP/MySQL cold starts)
+async function verifyConnectionWithRetry({ attempts = 5, delayMs = 1000 } = {}) {
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      const conn = await pool.getConnection();
+      await conn.query('SELECT 1');
+      conn.release();
+      console.log(`Database connected (attempt ${i}/${attempts})`);
+      return true;
+    } catch (err) {
+      const terminal = i === attempts;
+      console.error(`DB connection attempt ${i} failed${terminal ? '' : ', retrying...'} ->`, err.code || err.message);
+      if (terminal) {
+        console.error('Exhausted all retry attempts. Exiting.');
+        process.exit(1);
+      }
+      // Exponential-ish backoff but capped
+      const wait = Math.min(delayMs * i, 5000);
+      await new Promise(r => setTimeout(r, wait));
+    }
   }
 }
 
-testConnection();
+verifyConnectionWithRetry();
 
 module.exports = pool;

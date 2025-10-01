@@ -109,8 +109,32 @@ class AdminUser {
 
     async updatePassword(newPassword) {
         try {
+            // Fetch current hash for history & reuse checks
+            const [cur] = await pool.query('SELECT password FROM admin_users WHERE id = ?', [this.id]);
+            if (!cur.length) throw new Error('Admin not found for password update');
+            const currentHash = cur[0].password;
+            // Load last N (including current) from history + current
+            const HISTORY_LIMIT = 5; // configurable
+            const [hist] = await pool.query('SELECT password_hash FROM admin_password_history WHERE admin_id = ? ORDER BY created_at DESC LIMIT ?', [this.id, HISTORY_LIMIT]);
+            // Compare new password against history
+            for (const row of hist) {
+                const matchPrev = await bcrypt.compare(newPassword, row.password_hash);
+                if (matchPrev) {
+                    throw new Error('Cannot reuse a recent password');
+                }
+            }
+            // Also compare with current
+            const reuseCurrent = await bcrypt.compare(newPassword, currentHash);
+            if (reuseCurrent) throw new Error('Cannot reuse a recent password');
+
             const hashedPassword = await bcrypt.hash(newPassword, 10);
             await pool.query('UPDATE admin_users SET password = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [hashedPassword, this.id]);
+            // Insert old hash into history (only if we had one and different)
+            if (currentHash && currentHash !== hashedPassword) {
+                await pool.query('INSERT INTO admin_password_history (admin_id, password_hash) VALUES (?, ?)', [this.id, currentHash]);
+            }
+            // Enforce history limit (keep only last HISTORY_LIMIT)
+            await pool.query('DELETE FROM admin_password_history WHERE admin_id = ? AND id NOT IN (SELECT id FROM (SELECT id FROM admin_password_history WHERE admin_id = ? ORDER BY created_at DESC LIMIT ?) x)', [this.id, this.id, HISTORY_LIMIT]);
             return true;
         } catch (error) {
             console.error('Error updating admin password:', error);

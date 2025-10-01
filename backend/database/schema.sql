@@ -34,6 +34,35 @@ CREATE TABLE declarations (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- Audit log for declaration edits
+CREATE TABLE declaration_audit_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    declaration_id INT NOT NULL,
+    user_id INT NOT NULL,
+    action ENUM('CREATE','UPDATE','DELETE') NOT NULL DEFAULT 'UPDATE',
+    diff JSON NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (declaration_id) REFERENCES declarations(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_decl_audit_decl (declaration_id)
+);
+
+-- Audit log for financial declaration edits (aggregated diff per update)
+CREATE TABLE financial_audit_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    declaration_id INT NOT NULL,
+    user_id INT NOT NULL,
+    action ENUM('REPLACE','MERGE') NOT NULL DEFAULT 'REPLACE',
+    member_type VARCHAR(20),
+    member_name VARCHAR(200),
+    before_state JSON NULL,
+    after_state JSON NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (declaration_id) REFERENCES declarations(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_fin_audit_decl (declaration_id)
+);
+
 -- Spouses table
 CREATE TABLE spouses (
     id INT AUTO_INCREMENT PRIMARY KEY,

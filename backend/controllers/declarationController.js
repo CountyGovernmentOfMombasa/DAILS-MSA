@@ -4,9 +4,22 @@ exports.updateDeclaration = async (req, res) => {
         const declarationId = req.params.id;
         const userId = req.user.id;
         const {
-            surname, first_name, other_names, email, marital_status, payroll_number, birthdate, place_of_birth, department,
-            spouses, children, financial_declarations, witness_signed, witness_name, witness_address, witness_phone, declaration_checked,
-            biennial_income, assets, liabilities, other_financial_info, declaration_date, period_start_date, period_end_date
+            // Personal/user profile fields may be sent but declaration table does not store them; ignore or optionally update users table separately.
+            marital_status,
+            spouses,
+            children,
+            financial_declarations,
+            witness_signed,
+            witness_name,
+            witness_address,
+            witness_phone,
+            biennial_income,
+            assets,
+            liabilities,
+            other_financial_info,
+            declaration_date,
+            period_start_date,
+            period_end_date
         } = req.body;
 
         // Fetch existing witness info to detect changes
@@ -18,24 +31,43 @@ exports.updateDeclaration = async (req, res) => {
             console.warn('Could not fetch previous witness info for change detection:', e.message);
         }
 
-        // Update main declaration fields including financial data
+        // Fetch previous state for audit
+        let prevDeclaration = null;
+        let prevFinDecls = [];
+        try {
+            const [drows] = await db.execute('SELECT id, marital_status, declaration_date, biennial_income, assets, liabilities, other_financial_info, witness_signed, witness_name, witness_address, witness_phone FROM declarations WHERE id = ? AND user_id = ?', [declarationId, userId]);
+            if (drows && drows[0]) prevDeclaration = drows[0];
+            const [finRows] = await db.execute('SELECT id, member_type, member_name, declaration_date, period_start_date, period_end_date, other_financial_info FROM financial_declarations WHERE declaration_id = ?', [declarationId]);
+            prevFinDecls = finRows;
+        } catch (e) {
+            console.warn('Audit prefetch failed:', e.message);
+        }
+
+        // Update declaration table (limited to existing columns in schema)
         await db.execute(
             `UPDATE declarations SET 
-                surname=?, first_name=?, other_names=?, email=?, marital_status=?, payroll_number=?, 
-                birthdate=?, place_of_birth=?, department=?, witness_signed=?, witness_name=?, 
-                witness_address=?, witness_phone=?, declaration_checked=?, biennial_income=?, 
-                assets=?, liabilities=?, other_financial_info=?, declaration_date=?, 
-                period_start_date=?, period_end_date=?, updated_at=CURRENT_TIMESTAMP 
+                marital_status=?, 
+                witness_signed=?, witness_name=?, witness_address=?, witness_phone=?, 
+                biennial_income=?, assets=?, liabilities=?, other_financial_info=?, 
+                declaration_date=?, updated_at=CURRENT_TIMESTAMP 
              WHERE id=? AND user_id=?`,
             [
-                surname, first_name, other_names, email, marital_status, payroll_number, 
-                birthdate, place_of_birth, department, witness_signed ? 1 : 0, witness_name, 
-                witness_address, witness_phone, declaration_checked ? 1 : 0, 
-                JSON.stringify(biennial_income || []), assets || '', liabilities || '', 
-                other_financial_info || '', declaration_date, period_start_date, period_end_date,
-                declarationId, userId
+                marital_status,
+                witness_signed ? 1 : 0,
+                witness_name,
+                witness_address,
+                witness_phone,
+                JSON.stringify(biennial_income || []),
+                typeof assets === 'string' ? assets : JSON.stringify(assets || []),
+                typeof liabilities === 'string' ? liabilities : JSON.stringify(liabilities || []),
+                other_financial_info || '',
+                declaration_date,
+                declarationId,
+                userId
             ]
         );
+
+        // Note: period_start_date / period_end_date not in current schema (cannot update). If needed, add columns first.
 
         // If witness phone changed or newly added, notify the (new) witness
         try {
@@ -55,7 +87,7 @@ exports.updateDeclaration = async (req, res) => {
             console.error('Witness change SMS notify error:', e.message);
         }
 
-        // Update spouses
+    // Update spouses
         await db.execute('DELETE FROM spouses WHERE declaration_id = ?', [declarationId]);
         if (Array.isArray(spouses) && spouses.length > 0) {
             for (const spouse of spouses) {
@@ -77,8 +109,8 @@ exports.updateDeclaration = async (req, res) => {
             }
         }
 
-        // Update children
-        await db.execute('DELETE FROM children WHERE declaration_id = ?', [declarationId]);
+    // Update children
+    await db.execute('DELETE FROM children WHERE declaration_id = ?', [declarationId]);
         if (Array.isArray(children) && children.length > 0) {
             for (const child of children) {
                 const fullName = `${child.first_name || ''} ${child.other_names || ''} ${child.surname || ''}`.trim();
@@ -112,10 +144,12 @@ exports.updateDeclaration = async (req, res) => {
         
         // Insert new financial declarations and items
         if (Array.isArray(financial_declarations) && financial_declarations.length > 0) {
+            // Filter out obviously invalid placeholder objects
+            const cleanedFinancialDecls = financial_declarations.filter(fd => fd && (fd.member_type || fd.member_name || fd.biennial_income || fd.assets || fd.liabilities));
             const FinancialDeclaration = require('../models/financialDeclaration');
             const FinancialItem = require('../models/financialItem');
             
-            for (const finDecl of financial_declarations) {
+            for (const finDecl of cleanedFinancialDecls) {
                 // Validate member_type
                 const allowedTypes = ['user', 'spouse', 'child'];
                 const validType = allowedTypes.includes(finDecl.member_type?.toLowerCase()) ? finDecl.member_type.toLowerCase() : 'user';
@@ -170,6 +204,80 @@ exports.updateDeclaration = async (req, res) => {
                     }
                 }
             }
+        }
+
+        // Fetch new fin declarations for audit diff
+        let newFinDecls = [];
+        try {
+            const [finRowsNew] = await db.execute('SELECT id, member_type, member_name, declaration_date, period_start_date, period_end_date, other_financial_info FROM financial_declarations WHERE declaration_id = ?', [declarationId]);
+            newFinDecls = finRowsNew;
+        } catch (e) {
+            console.warn('Audit postfetch failed:', e.message);
+        }
+
+        // Compute diff (shallow) for declaration root
+        const computeShallowDiff = (beforeObj, afterObj) => {
+            const diff = { changed: {}, removed: [], added: {} };
+            if (!beforeObj) return { changed: afterObj || {}, removed: [], added: afterObj || {} };
+            const before = beforeObj || {};
+            const after = afterObj || {};
+            const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+            keys.forEach(k => {
+                if (!(k in after)) {
+                    diff.removed.push(k);
+                } else if (!(k in before)) {
+                    diff.added[k] = after[k];
+                } else if (JSON.stringify(before[k]) !== JSON.stringify(after[k])) {
+                    diff.changed[k] = { before: before[k], after: after[k] };
+                }
+            });
+            return diff;
+        };
+        let newDeclarationRow = null;
+        try {
+            const [drowsNew] = await db.execute('SELECT id, marital_status, declaration_date, biennial_income, assets, liabilities, other_financial_info, witness_signed, witness_name, witness_address, witness_phone FROM declarations WHERE id = ? AND user_id = ?', [declarationId, userId]);
+            if (drowsNew && drowsNew[0]) newDeclarationRow = drowsNew[0];
+        } catch (e) {
+            console.warn('Audit new declaration fetch failed:', e.message);
+        }
+        // Insert declaration audit log
+        try {
+            const diff = computeShallowDiff(prevDeclaration, newDeclarationRow);
+            await db.execute('INSERT INTO declaration_audit_logs (declaration_id, user_id, action, diff) VALUES (?, ?, ?, ?)', [declarationId, userId, 'UPDATE', JSON.stringify(diff)]);
+        } catch (e) {
+            console.warn('Audit log insert (declaration) failed:', e.message);
+        }
+
+        // Insert financial audit logs per member (match by member_type+member_name)
+        try {
+            const indexByKey = (arr) => {
+                const map = new Map();
+                (arr || []).forEach(r => map.set(`${r.member_type}|${r.member_name}`, r));
+                return map;
+            };
+            const beforeMap = indexByKey(prevFinDecls);
+            const afterMap = indexByKey(newFinDecls);
+            const keys = new Set([...beforeMap.keys(), ...afterMap.keys()]);
+            for (const key of keys) {
+                const before = beforeMap.get(key) || null;
+                const after = afterMap.get(key) || null;
+                if (JSON.stringify(before) !== JSON.stringify(after)) {
+                    await db.execute(
+                        'INSERT INTO financial_audit_logs (declaration_id, user_id, action, member_type, member_name, before_state, after_state) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        [
+                            declarationId,
+                            userId,
+                            'REPLACE',
+                            after?.member_type || before?.member_type || null,
+                            after?.member_name || before?.member_name || null,
+                            before ? JSON.stringify(before) : null,
+                            after ? JSON.stringify(after) : null
+                        ]
+                    );
+                }
+            }
+        } catch (e) {
+            console.warn('Audit log insert (financial) failed:', e.message);
         }
 
         res.json({ success: true, message: 'Declaration updated successfully.' });
@@ -354,19 +462,76 @@ exports.getAllEditRequests = async (req, res) => {
     }
 };
 
-// Get a single declaration (owner) with nested financial + unified structure
+// Get a single declaration (owner) with nested financial + unified structure INCLUDING freshest user profile data
 exports.getDeclarationById = async (req, res) => {
     try {
         const userId = req.user.id;
         const declarationId = req.params.id;
-        const [declRows] = await db.execute('SELECT * FROM declarations WHERE id = ? AND user_id = ?', [declarationId, userId]);
-        if (declRows.length === 0) {
+
+        // Join users to fetch the latest profile info instead of relying solely on declaration snapshot
+        const [declRows] = await db.execute(`
+            SELECT d.*, 
+                   u.payroll_number            AS user_payroll_number,
+                   u.first_name                AS user_first_name,
+                   u.other_names               AS user_other_names,
+                   u.surname                   AS user_surname,
+                   u.email                     AS user_email,
+                   u.national_id               AS user_national_id,
+                   DATE_FORMAT(u.birthdate, '%Y-%m-%d') AS user_birthdate,
+                   u.place_of_birth            AS user_place_of_birth,
+                   u.marital_status            AS user_marital_status,
+                   u.postal_address            AS user_postal_address,
+                   u.physical_address          AS user_physical_address,
+                   u.designation               AS user_designation,
+                   u.department                AS user_department,
+                   u.nature_of_employment      AS user_nature_of_employment
+            FROM declarations d
+            JOIN users u ON d.user_id = u.id
+            WHERE d.id = ? AND d.user_id = ?
+        `, [declarationId, userId]);
+
+        if (!declRows.length) {
             return res.status(404).json({ success: false, message: 'Declaration not found' });
         }
-        const rootDecl = declRows[0];
+
+        const row = declRows[0];
+
+        // Build a normalized user profile object
+        const userProfile = {
+            id: userId,
+            payroll_number: row.user_payroll_number || null,
+            first_name: row.user_first_name || '',
+            other_names: row.user_other_names || '',
+            surname: row.user_surname || '',
+            email: row.user_email || '',
+            national_id: row.user_national_id || null,
+            birthdate: row.user_birthdate || '',
+            place_of_birth: row.user_place_of_birth || '',
+            marital_status: row.user_marital_status || '',
+            postal_address: row.user_postal_address || '',
+            physical_address: row.user_physical_address || '',
+            designation: row.user_designation || '',
+            department: row.user_department || '',
+            nature_of_employment: row.user_nature_of_employment || ''
+        };
+
+        // Start with declaration record
+        const rootDecl = { ...row };
+
+        // Override declaration snapshot fields with freshest user profile values (preserve original via original_*)
+        const overrideFields = ['first_name', 'other_names', 'surname', 'marital_status', 'birthdate', 'place_of_birth', 'postal_address', 'physical_address', 'designation', 'department', 'nature_of_employment', 'email', 'national_id', 'payroll_number'];
+        overrideFields.forEach(f => {
+            const userVal = userProfile[f];
+            if (rootDecl[f] !== undefined && rootDecl[f] !== userVal) {
+                rootDecl[`original_${f}`] = rootDecl[f];
+            }
+            rootDecl[f] = userVal;
+        });
+
         const [spouses] = await db.execute('SELECT * FROM spouses WHERE declaration_id = ?', [declarationId]);
         const [children] = await db.execute('SELECT * FROM children WHERE declaration_id = ?', [declarationId]);
         const [financialDeclarations] = await db.execute('SELECT * FROM financial_declarations WHERE declaration_id = ?', [declarationId]);
+
         let financialItems = [];
         if (financialDeclarations.length) {
             const ids = financialDeclarations.map(fd => fd.id);
@@ -374,6 +539,7 @@ exports.getDeclarationById = async (req, res) => {
             const [items] = await db.execute(`SELECT * FROM financial_items WHERE financial_declaration_id IN (${placeholders})`, ids);
             financialItems = items;
         }
+
         const shapeItem = (i) => ({ ...i, type: i.type || i.item_type || i.description || '' });
         const financialsWithItems = financialDeclarations.map(fd => {
             const items = financialItems.filter(it => it.financial_declaration_id === fd.id);
@@ -385,11 +551,14 @@ exports.getDeclarationById = async (req, res) => {
                 liabilities: items.filter(i => i.item_type === 'liability').map(shapeItem)
             };
         });
+
         const financial_unified = buildUnifiedFinancial(rootDecl, financialsWithItems, spouses, children);
+
         return res.json({
             success: true,
             declaration: {
                 ...rootDecl,
+                user: userProfile, // explicit user object for frontend
                 spouses,
                 children,
                 financial_declarations: financialsWithItems,
@@ -488,11 +657,14 @@ exports.downloadDeclarationPDF = async (req, res) => {
             return res.status(403).json({ success: false, message: 'Not authorized to download this declaration' });
         }
         const { generateDeclarationPDF } = require('../util/pdfBuilder');
-        const { buffer, base } = await generateDeclarationPDF(declarationId);
+        const { buffer, base, password, encryptionApplied } = await generateDeclarationPDF(declarationId);
         const safeNatId = (base.national_id || 'declaration').toString().replace(/[^A-Za-z0-9_-]/g, '_');
         const filename = `${safeNatId} DAILs Form.pdf`;
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        if (encryptionApplied && password) {
+            res.setHeader('X-PDF-Password', password);
+        }
         return res.send(buffer);
     } catch (err) {
         console.error('On-demand PDF generation failed:', err);

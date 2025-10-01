@@ -34,10 +34,29 @@ exports.saveProgress = async (req, res) => {
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
     const { userKey, progress } = req.body || {};
     if (!userKey || !progress) {
+      console.warn('[progressController] 400 saveProgress missing fields', {
+        userId,
+        hasUserKey: !!userKey,
+        hasProgress: !!progress,
+        bodyKeys: Object.keys(req.body || {})
+      });
       return res.status(400).json({ success: false, message: 'userKey and progress required' });
     }
     const validationError = validateProgressShape(progress);
-    if (validationError) return res.status(400).json({ success: false, message: validationError });
+    if (validationError) {
+      // Avoid logging entire progress (could be large); log size + top-level keys only
+      let size = 0;
+      try { size = Buffer.byteLength(JSON.stringify(progress), 'utf8'); } catch (_) {}
+      console.warn('[progressController] 400 saveProgress validationError', {
+        userId,
+        userKey,
+        validationError,
+        size,
+        topLevelKeys: Object.keys(progress || {}),
+        snapshotKeys: progress && progress.stateSnapshot ? Object.keys(progress.stateSnapshot) : []
+      });
+      return res.status(400).json({ success: false, message: validationError });
+    }
     await Progress.upsert(userId, userKey, progress);
     return res.json({ success: true });
   } catch (e) {

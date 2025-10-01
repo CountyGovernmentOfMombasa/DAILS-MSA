@@ -123,11 +123,14 @@ function createOtp() {
 // Update the database query to format the date as string
 exports.login = async (req, res) => {
   try {
-    const { nationalId, password, phoneNumber } = req.body;
+  const { nationalId, password, phoneNumber } = req.body;
 
     // Find user by national ID
     const [users] = await pool.query(
-      'SELECT id, national_id, payroll_number, first_name, other_names, surname, email, password, password_changed, phone_number FROM users WHERE national_id = ?',
+      `SELECT id, national_id, payroll_number, first_name, other_names, surname, email, password,
+              password_changed, phone_number, failed_login_attempts, lock_until,
+              otp_request_count, otp_request_window_start
+         FROM users WHERE national_id = ?`,
       [nationalId]
     );
 
@@ -136,6 +139,18 @@ exports.login = async (req, res) => {
     }
 
     const user = users[0];
+
+    // Check lockout
+    if (user.lock_until && new Date(user.lock_until) > new Date()) {
+      const remainingMs = new Date(user.lock_until) - new Date();
+      const remainingMin = Math.ceil(remainingMs / 60000);
+      return res.status(423).json({ message: `Account locked. Try again in ${remainingMin} minute(s).` });
+    } else if (user.lock_until && new Date(user.lock_until) <= new Date()) {
+      // Auto clear expired lock
+      await pool.query('UPDATE users SET failed_login_attempts = 0, lock_until = NULL WHERE id = ?', [user.id]);
+      user.failed_login_attempts = 0;
+      user.lock_until = null;
+    }
 
     // If phone number is missing, require it and update
     if (!user.phone_number) {
@@ -150,10 +165,35 @@ exports.login = async (req, res) => {
     if (!user.password_changed) {
       // Require default password for first step
       if (password !== 'Change@001') {
-        return res.status(401).json({ message: 'Invalid credentials' });
+        // Increment failed attempts for wrong default password
+        await pool.query('UPDATE users SET failed_login_attempts = failed_login_attempts + 1 WHERE id = ?', [user.id]);
+        const [[fa]] = await pool.query('SELECT failed_login_attempts FROM users WHERE id = ?', [user.id]);
+        if (fa.failed_login_attempts >= 5) {
+          const lockUntil = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+          await pool.query('UPDATE users SET lock_until = ? WHERE id = ?', [lockUntil, user.id]);
+          return res.status(423).json({ message: 'Too many failed attempts. Account locked for 1 hour.' });
+        }
+        return res.status(401).json({ 
+          message: 'First-time login requires the default password Change@001',
+          code: 'FIRST_TIME_DEFAULT_PASSWORD_REQUIRED'
+        });
       }
       // Generate and store OTP
       const { code, expires } = createOtp();
+
+      // Rate limit OTP requests (first-time login): max 3 per rolling 1 hour window
+      let resetWindow = false;
+      if (!user.otp_request_window_start || (new Date() - new Date(user.otp_request_window_start)) > 60*60*1000) {
+        resetWindow = true;
+      }
+      if (resetWindow) {
+        await pool.query('UPDATE users SET otp_request_count = 1, otp_request_window_start = NOW() WHERE id = ?', [user.id]);
+      } else {
+        if (user.otp_request_count >= 3) {
+          return res.status(429).json({ message: 'OTP request limit reached. Try again later.'});
+        }
+        await pool.query('UPDATE users SET otp_request_count = otp_request_count + 1 WHERE id = ?', [user.id]);
+      }
       await pool.query('UPDATE users SET otp_code = ?, otp_expires_at = ? WHERE id = ?', [code, expires, user.id]);
       // Send OTP via SMS
       try {
@@ -178,7 +218,19 @@ exports.login = async (req, res) => {
     const bcrypt = require('bcryptjs');
     const passwordMatch = await bcrypt.compare(password, user.password);
     if (!passwordMatch) {
+      await pool.query('UPDATE users SET failed_login_attempts = failed_login_attempts + 1 WHERE id = ?', [user.id]);
+      const [[fa2]] = await pool.query('SELECT failed_login_attempts FROM users WHERE id = ?', [user.id]);
+      if (fa2.failed_login_attempts >= 5) {
+        const lockUntil = new Date(Date.now() + 60 * 60 * 1000);
+        await pool.query('UPDATE users SET lock_until = ? WHERE id = ?', [lockUntil, user.id]);
+        return res.status(423).json({ message: 'Too many failed attempts. Account locked for 1 hour.' });
+      }
       return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    // Successful login: clear failed attempts & lock
+    if (user.failed_login_attempts > 0 || user.lock_until) {
+      await pool.query('UPDATE users SET failed_login_attempts = 0, lock_until = NULL WHERE id = ?', [user.id]);
     }
 
     const token = jwt.sign(
@@ -215,11 +267,11 @@ exports.login = async (req, res) => {
 // @access  Public (needs nationalId and default password)
 exports.resendOtp = async (req, res) => {
   try {
-    const { nationalId, password } = req.body;
+  const { nationalId, password } = req.body;
     if (!nationalId || !password) {
       return res.status(400).json({ message: 'nationalId and password are required' });
     }
-    const [users] = await pool.query('SELECT id, phone_number, password_changed FROM users WHERE national_id = ?', [nationalId]);
+  const [users] = await pool.query('SELECT id, phone_number, password_changed, otp_request_count, otp_request_window_start FROM users WHERE national_id = ?', [nationalId]);
     if (!users.length) return res.status(404).json({ message: 'User not found' });
     const user = users[0];
     if (user.password_changed) {
@@ -227,6 +279,19 @@ exports.resendOtp = async (req, res) => {
     }
     if (password !== 'Change@001') {
       return res.status(401).json({ message: 'Invalid credentials' });
+    }
+    // Rate limit resend OTP (first-time login) - share same counters
+    let resetWindow = false;
+    if (!user.otp_request_window_start || (new Date() - new Date(user.otp_request_window_start)) > 60*60*1000) {
+      resetWindow = true;
+    }
+    if (resetWindow) {
+      await pool.query('UPDATE users SET otp_request_count = 1, otp_request_window_start = NOW() WHERE id = ?', [user.id]);
+    } else {
+      if (user.otp_request_count >= 3) {
+        return res.status(429).json({ message: 'OTP request limit reached. Try again later.'});
+      }
+      await pool.query('UPDATE users SET otp_request_count = otp_request_count + 1 WHERE id = ?', [user.id]);
     }
     const { code, expires } = createOtp();
     await pool.query('UPDATE users SET otp_code = ?, otp_expires_at = ? WHERE id = ?', [code, expires, user.id]);
@@ -309,6 +374,13 @@ exports.changePassword = async (req, res) => {
     if (isSame) {
       return res.status(400).json({ message: 'You cannot reuse your previous password.' });
     }
+    // Check against recent history
+    const HISTORY_LIMIT = 5;
+    const [uph] = await pool.query('SELECT password_hash FROM user_password_history WHERE user_id = ? ORDER BY created_at DESC LIMIT ?', [userId, HISTORY_LIMIT]);
+    for (const row of uph) {
+      const matchPrev = await bcrypt.compare(newPassword, row.password_hash);
+      if (matchPrev) return res.status(400).json({ message: 'You cannot reuse a recent password.' });
+    }
 
     // Hash new password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -317,6 +389,14 @@ exports.changePassword = async (req, res) => {
       'UPDATE users SET password = ?, password_changed = password_changed + 1 WHERE id = ?',
       [hashedPassword, userId]
     );
+    try {
+      await pool.query('INSERT INTO user_password_history (user_id, password_hash) VALUES (?, ?)', [userId, users[0].password]);
+      await pool.query('DELETE FROM user_password_history WHERE user_id = ? AND id NOT IN (SELECT id FROM (SELECT id FROM user_password_history WHERE user_id = ? ORDER BY created_at DESC LIMIT ?) t)', [userId, userId, HISTORY_LIMIT]);
+    } catch (e) { console.error('User password history maintenance failed:', e.message); }
+    // Audit (first change flow)
+    try {
+      await pool.query('INSERT INTO user_password_change_audit (user_id, method, ip_address, user_agent) VALUES (?,?,?,?)', [userId, 'first_change', (req.ip || '').substring(0,64), (req.headers['user-agent'] || '').substring(0,255)]);
+    } catch (e) { console.error('User first change audit insert failed:', e.message); }
     // Generate new token for normal access
     const token = jwt.sign(
       { id: userId }, 
@@ -462,6 +542,112 @@ exports.checkPasswordStatus = async (req, res) => {
     return res.json({ password_changed: user.password_changed > 0, phone_number: user.phone_number });
   } catch (error) {
     console.error('Check password status error:', error);
+    return res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// -------------------- USER FORGOT PASSWORD (SMS OTP) --------------------
+// @route POST /api/auth/forgot-password (body: nationalId OR phone_number)
+exports.forgotPassword = async (req, res) => {
+  try {
+  const { nationalId, phoneNumber } = req.body;
+    if (!nationalId && !phoneNumber) {
+      return res.status(400).json({ message: 'Provide nationalId or phoneNumber' });
+    }
+    let query = 'SELECT id, phone_number, national_id FROM users WHERE ';
+    const params = [];
+    if (nationalId) { query += 'national_id = ?'; params.push(nationalId); }
+    else { query += 'phone_number = ?'; params.push(phoneNumber); }
+  const [rows] = await pool.query(query, params);
+    if (!rows.length) return res.status(404).json({ message: 'Account not found' });
+    const user = rows[0];
+    if (!user.phone_number) return res.status(400).json({ message: 'No phone number on record. Contact support.' });
+    // Rate limit forgot password code requests: max 3 per 1h window (separate counters)
+    const [secRows] = await pool.query('SELECT reset_otp_request_count, reset_otp_request_window_start FROM users WHERE id = ?', [user.id]);
+    let rCount = secRows[0].reset_otp_request_count;
+    let rStart = secRows[0].reset_otp_request_window_start;
+    const now = new Date();
+    if (!rStart || (now - new Date(rStart)) > 60*60*1000) {
+      // reset window
+      await pool.query('UPDATE users SET reset_otp_request_count = 1, reset_otp_request_window_start = NOW() WHERE id = ?', [user.id]);
+    } else {
+      if (rCount >= 3) {
+        return res.status(429).json({ message: 'Reset code request limit reached. Try again later.' });
+      }
+      await pool.query('UPDATE users SET reset_otp_request_count = reset_otp_request_count + 1 WHERE id = ?', [user.id]);
+    }
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expires = new Date(Date.now() + 10 * 60 * 1000);
+    await pool.query('UPDATE users SET password_reset_code = ?, password_reset_expires_at = ? WHERE id = ?', [code, expires, user.id]);
+    try {
+      await sendSMS({ to: user.phone_number, body: `Your password reset code is ${code}. It expires in 10 minutes.` });
+    } catch (e) {
+      console.error('Failed sending reset SMS:', e.message);
+    }
+    return res.json({ success: true, message: 'Reset code sent if account exists.' });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    return res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// @route POST /api/auth/forgot-password/verify (body: nationalId, code)
+exports.verifyForgotPasswordCode = async (req, res) => {
+  try {
+    const { nationalId, code } = req.body;
+    if (!nationalId || !code) return res.status(400).json({ message: 'nationalId and code required' });
+    const [rows] = await pool.query('SELECT id, password_reset_code, password_reset_expires_at FROM users WHERE national_id = ?', [nationalId]);
+    if (!rows.length) return res.status(404).json({ message: 'User not found' });
+    const { id, password_reset_code, password_reset_expires_at } = rows[0];
+    if (!password_reset_code || !password_reset_expires_at) return res.status(400).json({ message: 'No active reset code. Request a new one.' });
+    if (String(code) !== String(password_reset_code)) return res.status(400).json({ message: 'Invalid code' });
+    if (new Date() > new Date(password_reset_expires_at)) return res.status(400).json({ message: 'Code expired' });
+    // Issue short-lived token to allow password reset
+    const token = jwt.sign({ id, reset: true }, process.env.JWT_SECRET, { expiresIn: '15m' });
+    return res.json({ success: true, token });
+  } catch (error) {
+    console.error('Verify forgot password code error:', error);
+    return res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// @route PUT /api/auth/forgot-password/reset (auth with reset token)
+exports.resetForgottenPassword = async (req, res) => {
+  try {
+    if (!req.user || !req.user.id || !req.user.reset) {
+      return res.status(403).json({ message: 'Invalid reset token' });
+    }
+    const { newPassword } = req.body;
+    if (!newPassword) return res.status(400).json({ message: 'New password required' });
+    const policy = { min: 8, upper: /[A-Z]/, lower: /[a-z]/, number: /[0-9]/, symbol: /[^A-Za-z0-9]/ };
+    if (newPassword.length < policy.min || !policy.upper.test(newPassword) || !policy.lower.test(newPassword) || !policy.number.test(newPassword) || !policy.symbol.test(newPassword)) {
+      return res.status(400).json({ message: 'Password must be 8+ chars incl upper, lower, number, symbol.' });
+    }
+    const bcrypt = require('bcryptjs');
+    const [rows] = await pool.query('SELECT password FROM users WHERE id = ?', [req.user.id]);
+    if (!rows.length) return res.status(404).json({ message: 'User not found' });
+    const reuse = await bcrypt.compare(newPassword, rows[0].password);
+    if (reuse) return res.status(400).json({ message: 'Cannot reuse previous password.' });
+    // History check
+    const HISTORY_LIMIT2 = 5;
+    const [uph2] = await pool.query('SELECT password_hash FROM user_password_history WHERE user_id = ? ORDER BY created_at DESC LIMIT ?', [req.user.id, HISTORY_LIMIT2]);
+    for (const row of uph2) {
+      const matchPrev = await bcrypt.compare(newPassword, row.password_hash);
+      if (matchPrev) return res.status(400).json({ message: 'Cannot reuse a recent password.' });
+    }
+    const hash = await bcrypt.hash(newPassword, 10);
+    await pool.query('UPDATE users SET password = ?, password_changed = password_changed + 1, password_reset_code = NULL, password_reset_expires_at = NULL WHERE id = ?', [hash, req.user.id]);
+    try {
+      await pool.query('INSERT INTO user_password_history (user_id, password_hash) VALUES (?, ?)', [req.user.id, rows[0].password]);
+      await pool.query('DELETE FROM user_password_history WHERE user_id = ? AND id NOT IN (SELECT id FROM (SELECT id FROM user_password_history WHERE user_id = ? ORDER BY created_at DESC LIMIT ?) t)', [req.user.id, req.user.id, HISTORY_LIMIT2]);
+    } catch (e) { console.error('User password history maintenance failed (forgot flow):', e.message); }
+    try {
+      await pool.query('INSERT INTO user_password_change_audit (user_id, method, ip_address, user_agent) VALUES (?,?,?,?)', [req.user.id, 'forgot_flow', (req.ip || '').substring(0,64), (req.headers['user-agent'] || '').substring(0,255)]);
+    } catch (e) { console.error('Forgot flow audit insert failed:', e.message); }
+    const token = jwt.sign({ id: req.user.id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN });
+    return res.json({ success: true, token, message: 'Password reset successful' });
+  } catch (error) {
+    console.error('Reset forgotten password error:', error);
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
