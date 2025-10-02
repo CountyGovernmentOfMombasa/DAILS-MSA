@@ -11,8 +11,27 @@ exports.getHRAdminDeclarations = async (req, res) => {
     }
     const [declarations] = await pool.query(`
       SELECT 
-        d.id, d.user_id, d.declaration_date, d.status, d.declaration_type	, d.correction_message,
-        u.first_name, u.other_names, u.surname, u.payroll_number, u.email, u.department
+        d.id,
+        d.user_id,
+        d.declaration_date,
+        d.status,
+        d.declaration_type,
+        d.correction_message,
+        d.signature_path,
+        u.first_name,
+        u.other_names,
+        u.surname,
+        u.payroll_number,
+        u.email,
+        u.department,
+        u.national_id,
+        u.designation,
+        /* Latest admin action (legacy fields retained for compatibility) */
+        (SELECT a.changed_at FROM declaration_status_audit a WHERE a.declaration_id = d.id ORDER BY a.changed_at DESC, a.id DESC LIMIT 1) AS last_status_changed_at,
+        (SELECT au.username FROM declaration_status_audit a LEFT JOIN admin_users au ON a.admin_id = au.id WHERE a.declaration_id = d.id ORDER BY a.changed_at DESC, a.id DESC LIMIT 1) AS last_status_admin,
+        /* First time approved (date admin approved) */
+        (SELECT a.changed_at FROM declaration_status_audit a WHERE a.declaration_id = d.id AND a.new_status = 'approved' ORDER BY a.changed_at ASC, a.id ASC LIMIT 1) AS approved_at,
+        (SELECT COALESCE(NULLIF(CONCAT(TRIM(COALESCE(au.first_name,'')), ' ', TRIM(COALESCE(au.surname,''))), ' '), au.username) FROM declaration_status_audit a LEFT JOIN admin_users au ON a.admin_id = au.id WHERE a.declaration_id = d.id AND a.new_status = 'approved' ORDER BY a.changed_at ASC, a.id ASC LIMIT 1) AS approved_admin_name
       FROM declarations d
       JOIN users u ON d.user_id = u.id
       WHERE 1=1 ${departmentFilter}

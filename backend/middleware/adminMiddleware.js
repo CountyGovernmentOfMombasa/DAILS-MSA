@@ -29,7 +29,8 @@ const verifyAdminToken = async (req, res, next) => {
       ...decoded,
       role: rawRole, // keep raw for compatibility, some code may rely on *_admin form
       normalizedRole,
-      department: admin.department || null
+  department: admin.department || null,
+  sub_department: admin.sub_department || null
     };
     next();
   } catch (error) {

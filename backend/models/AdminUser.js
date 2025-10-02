@@ -11,6 +11,7 @@ class AdminUser {
         this.other_names = Object.prototype.hasOwnProperty.call(data, 'other_names') ? data.other_names : null;
         this.surname = data.surname || data.last_name || null;
         this.department = data.department || null;
+    this.sub_department = data.sub_department || data.subDepartment || null;
         this.is_active = data.is_active;
         this.created_at = data.created_at;
         this.updated_at = data.updated_at;
@@ -42,7 +43,7 @@ class AdminUser {
     static async getAllActive() {
         // Try modern schema, fall back progressively
         const attempts = [
-            'SELECT id, username, email, role, department, first_name, other_names, surname, created_at, updated_at, last_login FROM admin_users WHERE is_active = TRUE ORDER BY created_at DESC',
+            'SELECT id, username, email, role, department, sub_department, first_name, other_names, surname, created_at, updated_at, last_login FROM admin_users WHERE is_active = TRUE ORDER BY created_at DESC',
             'SELECT id, username, email, role, department, first_name, last_name, created_at, updated_at, last_login FROM admin_users WHERE is_active = TRUE ORDER BY created_at DESC',
             'SELECT id, username, email, role, first_name, last_login, created_at, updated_at, last_name FROM admin_users WHERE is_active = TRUE ORDER BY created_at DESC' // last fallback (no department)
         ];
@@ -65,7 +66,7 @@ class AdminUser {
 
     static async create(adminData) {
         try {
-            let { username, password, email, role, department, first_name, other_names, surname, created_by, is_active } = adminData;
+            let { username, password, email, role, department, sub_department, first_name, other_names, surname, created_by, is_active } = adminData;
             const allowedRoles = ['super_admin', 'hr_admin', 'finance_admin', 'it_admin'];
             if (!role || !allowedRoles.includes(role)) role = 'hr_admin';
             if (typeof is_active === 'undefined') is_active = true;
@@ -73,8 +74,8 @@ class AdminUser {
 
             const insertAttempts = [
                 {
-                    sql: 'INSERT INTO admin_users (username, password, email, role, department, first_name, other_names, surname, created_by, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    params: [username, hashedPassword, email, role, department, first_name, other_names, surname, created_by, is_active]
+                    sql: 'INSERT INTO admin_users (username, password, email, role, department, sub_department, first_name, other_names, surname, created_by, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    params: [username, hashedPassword, email, role, department, sub_department, first_name, other_names, surname, created_by, is_active]
                 },
                 {
                     sql: 'INSERT INTO admin_users (username, password, email, role, department, first_name, last_name, created_by, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -179,6 +180,7 @@ class AdminUser {
             email: this.email,
             role: this.role,
             department: this.department,
+            sub_department: this.sub_department,
             first_name: this.first_name,
             other_names: this.other_names,
             surname: this.surname,

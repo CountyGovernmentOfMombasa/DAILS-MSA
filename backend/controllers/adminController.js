@@ -6,8 +6,37 @@ exports.updateDeclarationStatus = async (req, res) => {
     if (!['approved', 'rejected'].includes(status)) {
       return res.status(400).json({ success: false, message: 'Invalid status' });
     }
+    // Fetch current status & last correction message for comparison / audit
+    const [currentRows] = await pool.query('SELECT status, correction_message FROM declarations WHERE id = ?', [declarationId]);
+    if (!currentRows.length) {
+      return res.status(404).json({ success: false, message: 'Declaration not found' });
+    }
+    const prevStatus = currentRows[0].status || 'pending';
+    const prevCorrection = currentRows[0].correction_message || null;
+    if (prevStatus === status && (status === 'approved' || (status === 'rejected' && (prevCorrection || '') === (correction_message || '')))) {
+      return res.status(200).json({ success: false, message: 'No change: identical status already set.' });
+    }
     const Declaration = require('../models/declarationModel');
     await Declaration.updateStatus(declarationId, status, correction_message || null);
+
+    // (Removed declaration_checked legacy flag update)
+
+    // Insert unified audit record with snapshot fields
+    try {
+      const [userRows] = await pool.query('SELECT u.national_id, u.first_name, u.other_names, u.surname FROM declarations d JOIN users u ON d.user_id = u.id WHERE d.id = ? LIMIT 1', [declarationId]);
+      let nationalId = null, fullName = null;
+      if (userRows.length) {
+        nationalId = userRows[0].national_id || null;
+        fullName = [userRows[0].first_name, userRows[0].other_names, userRows[0].surname].filter(Boolean).join(' ').replace(/\s+/g,' ').trim() || null;
+      }
+      await pool.query(
+        `INSERT INTO declaration_status_audit (declaration_id, admin_id, user_full_name, national_id, previous_status, new_status, previous_correction_message, new_correction_message)
+         VALUES (?,?,?,?,?,?,?,?)`,
+        [declarationId, (req.admin && req.admin.adminId) || null, fullName, nationalId, prevStatus, status, prevCorrection, correction_message || null]
+      );
+    } catch (auditErr) {
+      console.error('Audit insert failed (declaration_status_audit):', auditErr.message);
+    }
 
     // Notify user by email and SMS
     {
@@ -48,6 +77,135 @@ exports.updateDeclarationStatus = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Server error updating declaration status', error: error.message });
   }
 };
+
+// GET /api/admin/declarations/:declarationId/status-audit  (super + dept admins)
+exports.getDeclarationStatusAudit = async (req, res) => {
+  try {
+    const { declarationId } = req.params;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(Math.max(1, parseInt(req.query.limit) || 25), 200);
+    const offset = (page - 1) * limit;
+    const filters = [];
+    let where = 'WHERE a.declaration_id = ?';
+    const params = [declarationId];
+    if (req.query.status && ['pending','approved','rejected'].includes(req.query.status)) {
+      where += ' AND a.new_status = ?';
+      params.push(req.query.status);
+      filters.push(`status=${req.query.status}`);
+    }
+    if (req.query.admin) {
+      where += ' AND LOWER(au.username) LIKE ?';
+      params.push('%' + req.query.admin.toLowerCase() + '%');
+      filters.push(`admin~${req.query.admin}`);
+    }
+    if (req.query.from) {
+      where += ' AND a.changed_at >= ?';
+      params.push(req.query.from);
+      filters.push(`from=${req.query.from}`);
+    }
+    if (req.query.to) {
+      where += ' AND a.changed_at <= ?';
+      params.push(req.query.to);
+      filters.push(`to=${req.query.to}`);
+    }
+    const [countRows] = await pool.query(`SELECT COUNT(*) AS cnt FROM declaration_status_audit a LEFT JOIN admin_users au ON a.admin_id = au.id ${where}`, params);
+    const total = countRows[0]?.cnt || 0;
+    const [rows] = await pool.query(
+      `SELECT a.id, a.declaration_id, a.admin_id, au.username AS admin_username, a.previous_status, a.new_status,
+              a.previous_correction_message, a.new_correction_message, a.changed_at
+         FROM declaration_status_audit a
+         LEFT JOIN admin_users au ON a.admin_id = au.id
+        ${where}
+        ORDER BY a.changed_at DESC, a.id DESC
+        LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+    return res.json({ success: true, page, limit, total, pages: Math.ceil(total / limit), filters, data: rows });
+  } catch (err) {
+    console.error('Fetch declaration status audit error:', err);
+    res.status(500).json({ success: false, message: 'Server error fetching audit logs', error: err.message });
+  }
+};
+
+// GET /api/admin/declarations/:declarationId/previous-corrections
+exports.getDeclarationPreviousCorrections = async (req, res) => {
+  try {
+    const { declarationId } = req.params;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(Math.max(1, parseInt(req.query.limit) || 10), 100);
+    const offset = (page - 1) * limit;
+    const [countRows] = await pool.query(
+      `SELECT COUNT(*) AS cnt FROM declaration_status_audit WHERE declaration_id = ? AND new_correction_message IS NOT NULL AND new_correction_message <> ''`,
+      [declarationId]
+    );
+    const total = countRows[0]?.cnt || 0;
+    const [rows] = await pool.query(
+      `SELECT new_correction_message AS correction_message, new_status AS status, changed_at
+         FROM declaration_status_audit
+        WHERE declaration_id = ? AND new_correction_message IS NOT NULL AND new_correction_message <> ''
+        ORDER BY changed_at DESC, id DESC
+        LIMIT ? OFFSET ?`,
+      [declarationId, limit, offset]
+    );
+    return res.json({ success: true, page, limit, total, pages: Math.ceil(total / limit), data: rows });
+  } catch (err) {
+    console.error('Fetch previous corrections error:', err);
+    res.status(500).json({ success: false, message: 'Server error fetching previous corrections', error: err.message });
+  }
+};
+
+// GET /api/admin/declarations/status-audit  (global list with filters)
+exports.listAllDeclarationStatusAudits = async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(Math.max(1, parseInt(req.query.limit) || 50), 200);
+    const offset = (page - 1) * limit;
+    let where = 'WHERE 1=1';
+    const params = [];
+    const filters = {};
+    if (req.query.declarationId && !isNaN(parseInt(req.query.declarationId))) {
+      where += ' AND a.declaration_id = ?';
+      params.push(parseInt(req.query.declarationId));
+      filters.declarationId = parseInt(req.query.declarationId);
+    }
+    if (req.query.status && ['pending','approved','rejected'].includes(req.query.status)) {
+      where += ' AND a.new_status = ?';
+      params.push(req.query.status);
+      filters.status = req.query.status;
+    }
+    if (req.query.admin) {
+      where += ' AND LOWER(au.username) LIKE ?';
+      params.push('%' + req.query.admin.toLowerCase() + '%');
+      filters.admin = req.query.admin;
+    }
+    if (req.query.from) {
+      where += ' AND a.changed_at >= ?';
+      params.push(req.query.from);
+      filters.from = req.query.from;
+    }
+    if (req.query.to) {
+      where += ' AND a.changed_at <= ?';
+      params.push(req.query.to);
+      filters.to = req.query.to;
+    }
+    const [countRows] = await pool.query(`SELECT COUNT(*) AS cnt FROM declaration_status_audit a LEFT JOIN admin_users au ON a.admin_id = au.id ${where}`, params);
+    const total = countRows[0]?.cnt || 0;
+    const [rows] = await pool.query(
+      `SELECT a.id, a.declaration_id, a.admin_id, au.username AS admin_username, a.previous_status, a.new_status,
+              a.previous_correction_message, a.new_correction_message, a.changed_at
+         FROM declaration_status_audit a
+         LEFT JOIN admin_users au ON a.admin_id = au.id
+        ${where}
+        ORDER BY a.changed_at DESC, a.id DESC
+        LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+    return res.json({ success: true, page, limit, total, pages: Math.ceil(total/limit), filters, data: rows });
+  } catch (err) {
+    console.error('Global status audit list error:', err);
+    res.status(500).json({ success: false, message: 'Server error listing status audits', error: err.message });
+  }
+};
 const pool = require('../config/db');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
@@ -64,18 +222,21 @@ function normalizeDepartment(name) {
     .trim();
 }
 
-// Canonical departments (must stay in sync with frontend DepartmentOverview)
+// Canonical departments (must stay in sync with frontend DepartmentOverview and models/enums.js)
 const CANONICAL_DEPARTMENTS = [
-  'Department of Transport, Infrastructure and Governance',
-  'Department of Trade, Tourism and Culture',
-  'Department of Education and Vocational Training',
-  'Department of Environment and Water',
-  'Department of Lands, Urban Planning, Housing and Serikali Mtaani',
-  'Department of Health',
+  'Executive',
   'Department of Public Service Administration, Youth, Gender and Sports',
-  'Department of Finance, Economic Planning and Digital Transformation',
   'Department of Blue Economy, Cooperatives, Agriculture and Livestock',
-  'Department of Climate Change, Energy and Natural Resources'
+  'Department of Environment and Water',
+  'Department of Transport, Infrastructure and Governance',
+  'Department of Climate Change, Energy and Natural Resources',
+  'Department of Lands, Urban Planning, Housing and Serikali Mtaani',
+  'Department of Education and Vocational Training',
+  'Department of Finance, Economic Planning and Digital Transformation',
+  'Department of Health',
+  'Department of Trade, Tourism and Culture',
+  // Newly added departments (2025-10-02 updates)
+  'Mombasa County Public Service Board',
 ];
 
 const canonicalIndex = new Map();
@@ -173,7 +334,12 @@ exports.getAllDeclarations = async (req, res) => {
         u.surname,
         u.payroll_number,
         u.email,
-        u.department
+        u.department,
+        u.national_id,
+        u.designation,
+  /* First approval timestamp & approving admin from unified audit table */
+  (SELECT a.changed_at FROM declaration_status_audit a WHERE a.declaration_id = d.id AND a.new_status = 'approved' ORDER BY a.changed_at ASC, a.id ASC LIMIT 1) AS approved_at,
+  (SELECT a.admin_username FROM declaration_status_audit a WHERE a.declaration_id = d.id AND a.new_status = 'approved' ORDER BY a.changed_at ASC, a.id ASC LIMIT 1) AS approved_admin_name
       FROM declarations d
       JOIN users u ON d.user_id = u.id
       WHERE 1=1 ${departmentFilter}
@@ -254,24 +420,16 @@ exports.adminLogin = async (req, res) => {
       });
     }
 
-    // Generate admin token (include department for scoping)
-    const adminToken = jwt.sign(
-      {
-        adminId: admin.id,
-        username: admin.username,
-        role: admin.role,
-        department: admin.department || null,
-        isAdmin: true
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: '8h' }
-    );
-
-    res.json({
-      message: 'Admin login successful',
-      adminToken,
-      admin: admin.toJSON()
-    });
+    // New short-lived access + refresh token model for admins
+    const crypto = require('crypto');
+    const pool = require('../config/db');
+    const accessTtl = process.env.ADMIN_ACCESS_TOKEN_EXPIRES_IN || '30m';
+    const rawRefresh = crypto.randomBytes(48).toString('hex');
+    const refreshToken = `${admin.id}.${rawRefresh}`;
+    const refreshHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+    await pool.query('UPDATE admin_users SET refresh_token_hash = ?, last_activity = NOW(), last_login = NOW() WHERE id = ?', [refreshHash, admin.id]);
+  const adminToken = jwt.sign({ adminId: admin.id, username: admin.username, role: admin.role, department: admin.department || null, sub_department: admin.sub_department || null, isAdmin: true }, process.env.JWT_SECRET, { expiresIn: accessTtl });
+    res.json({ message: 'Admin login successful', adminToken, refreshToken, accessTtl, admin: admin.toJSON() });
 
   } catch (error) {
     console.error('Admin login error:', error);
@@ -753,6 +911,7 @@ exports.changeAdminPassword = async (req, res) => {
         username: admin.username,
         role: mappedRole,
         department: admin.department || null,
+        sub_department: admin.sub_department || null,
         isAdmin: true
       }, process.env.JWT_SECRET, { expiresIn: '8h' });
     } catch (e) {
@@ -1039,6 +1198,7 @@ exports.createUser = async (req, res) => {
       other_names = null,
       national_id,
       department,
+      sub_department = null,
       email = null,
       phone_number = null
     } = req.body || {};
@@ -1068,6 +1228,19 @@ exports.createUser = async (req, res) => {
     const randomPart = Math.random().toString(36).slice(-8);
     const tempPassword = randomPart + '!1';
 
+    const { isValidPhone, normalizePhone } = require('../util/phone');
+    let normalizedPhone = phone_number;
+    if (phone_number) {
+      if (!isValidPhone(phone_number)) {
+        return res.status(400).json({ success:false, code:'INVALID_PHONE_FORMAT', field:'phone_number', message:'Invalid phone number format. Use 7-15 digits, optional leading +' });
+      }
+      const already = await User.existsByPhone(phone_number);
+      if (already) {
+        return res.status(409).json({ success:false, code:'PHONE_IN_USE', field:'phone_number', message:'Phone number already in use by another user.' });
+      }
+      normalizedPhone = normalizePhone(phone_number);
+    }
+
     const userId = await User.create({
       payroll_number,
       first_name,
@@ -1075,14 +1248,15 @@ exports.createUser = async (req, res) => {
       other_names,
       national_id,
       department,
+      sub_department,
       email,
-      phone_number,
+      phone_number: normalizedPhone,
       password: tempPassword
     });
 
     res.status(201).json({
       success: true,
-      user: { id: userId, payroll_number, first_name, surname, other_names, national_id, department, email, phone_number },
+  user: { id: userId, payroll_number, first_name, surname, other_names, national_id, department, sub_department, email, phone_number },
       temporaryPassword: tempPassword
     });
   } catch (error) {
@@ -1484,5 +1658,197 @@ exports.resolveAdminPasswordResetRequest = async (req, res) => {
   } catch (error) {
     console.error('resolveAdminPasswordResetRequest error:', error);
     return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @route POST /api/admin/users/:userId/clear-lockout  (super / it only)
+exports.clearUserLockout = async (req, res) => {
+  try {
+    if (!req.admin || !['super','it','super_admin','it_admin'].includes(req.admin.normalizedRole)) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    const { userId } = req.params;
+    const [rows] = await pool.query('SELECT id, failed_login_attempts, lock_until FROM users WHERE id = ?', [userId]);
+    if (!rows.length) return res.status(404).json({ message: 'User not found' });
+    await pool.query('UPDATE users SET failed_login_attempts = 0, lock_until = NULL WHERE id = ?', [userId]);
+    try {
+      await pool.query('INSERT INTO user_lockout_audit (user_id, event_type, reason, performed_by_admin_id, failed_attempts, ip_address, user_agent) VALUES (?,?,?,?,?,?,?)', [userId, 'CLEAR', 'admin_clear', req.admin.adminId, rows[0].failed_login_attempts, (req.ip||'').substring(0,64), (req.headers['user-agent']||'').substring(0,255)]);
+    } catch (e) { console.error('Lockout audit clear insert failed', e.message); }
+    return res.json({ success: true, message: 'User lockout cleared.' });
+  } catch (error) {
+    console.error('clearUserLockout error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @route GET /api/admin/users/locked  (super / it only)
+exports.listLockedUsers = async (req, res) => {
+  try {
+    if (!req.admin || !['super','it','super_admin','it_admin'].includes(req.admin.normalizedRole)) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    const limit = Math.min(parseInt(req.query.limit || '200', 10), 500);
+    const { nationalId } = req.query;
+    const params = [];
+    let where = 'lock_until IS NOT NULL AND lock_until > NOW()';
+    if (nationalId) { where += ' AND national_id = ?'; params.push(nationalId); }
+    const [rows] = await pool.query(`
+      SELECT 
+        id, national_id, first_name, surname, failed_login_attempts, lock_until,
+        TIMESTAMPDIFF(MINUTE, NOW(), lock_until) AS minutes_remaining
+      FROM users
+      WHERE ${where}
+      ORDER BY lock_until ASC
+      LIMIT ?
+    `, [...params, limit]);
+    return res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('listLockedUsers error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @route GET /api/admin/lockouts/audit (super / it only)
+// query: page=1&pageSize=20&userId=123&eventType=LOCK|UNLOCK|CLEAR&from=ISO&to=ISO
+exports.getUserLockoutAudit = async (req, res) => {
+  try {
+    if (!req.admin || !['super','it','super_admin','it_admin'].includes(req.admin.normalizedRole)) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    const page = Math.max(parseInt(req.query.page || '1', 10), 1);
+    const pageSize = Math.min(Math.max(parseInt(req.query.pageSize || '20', 10), 1), 100);
+    const offset = (page - 1) * pageSize;
+    const { userId, eventType, from, to, nationalId } = req.query;
+    const where = [];
+    const params = [];
+    if (userId) { where.push('a.user_id = ?'); params.push(userId); }
+    if (nationalId) { where.push('u.national_id = ?'); params.push(nationalId); }
+    if (eventType && ['LOCK','UNLOCK','CLEAR'].includes(eventType)) { where.push('a.event_type = ?'); params.push(eventType); }
+    if (from) { where.push('a.created_at >= ?'); params.push(new Date(from)); }
+    if (to) { where.push('a.created_at <= ?'); params.push(new Date(to)); }
+    const whereSql = where.length ? ('WHERE ' + where.join(' AND ')) : '';
+    const [rows] = await pool.query(`
+      SELECT a.id, a.user_id, u.national_id, u.first_name, u.surname, a.event_type, a.reason, a.failed_attempts, a.lock_until, a.performed_by_admin_id,
+             au.username AS performed_by_username, au.role AS performed_by_role, a.created_at
+      FROM user_lockout_audit a
+      JOIN users u ON a.user_id = u.id
+      LEFT JOIN admin_users au ON a.performed_by_admin_id = au.id
+      ${whereSql}
+      ORDER BY a.id DESC
+      LIMIT ? OFFSET ?
+    `, [...params, pageSize, offset]);
+    const [countRows] = await pool.query(`SELECT COUNT(*) as total FROM user_lockout_audit a ${whereSql}`, params);
+    return res.json({ success: true, data: rows, page, pageSize, total: countRows[0].total });
+  } catch (error) {
+    console.error('getUserLockoutAudit error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// GET /api/admin/declarations/status-audit/global (filtered, paginated view over declaration_status_audit)
+// (Renamed from deprecated /declarations/status-events)
+exports.listGlobalDeclarationStatusAudit = async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(Math.max(1, parseInt(req.query.limit) || 50), 500);
+    const offset = (page - 1) * limit;
+    const params = [];
+    let where = 'WHERE 1=1';
+    if (req.query.status && ['pending','approved','rejected'].includes(req.query.status)) {
+      where += ' AND a.new_status = ?';
+      params.push(req.query.status);
+    }
+    if (req.query.admin) {
+      where += ' AND LOWER(au.username) LIKE ?';
+      params.push('%' + req.query.admin.toLowerCase() + '%');
+    }
+    if (req.query.national_id) {
+      where += ' AND a.national_id = ?';
+      params.push(req.query.national_id);
+    }
+    if (req.query.from) {
+      where += ' AND a.changed_at >= ?';
+      params.push(req.query.from);
+    }
+    if (req.query.to) {
+      where += ' AND a.changed_at <= ?';
+      params.push(req.query.to);
+    }
+    const [countRows] = await pool.query(`SELECT COUNT(*) AS cnt FROM declaration_status_audit a LEFT JOIN admin_users au ON a.admin_id = au.id ${where}`, params);
+    const total = countRows[0]?.cnt || 0;
+    const [rows] = await pool.query(
+      `SELECT a.id, a.declaration_id, a.user_full_name, a.national_id, a.previous_status, a.new_status AS status, a.previous_correction_message, a.new_correction_message, a.changed_at, a.admin_id, au.username AS admin_username
+         FROM declaration_status_audit a
+         LEFT JOIN admin_users au ON a.admin_id = au.id
+        ${where}
+        ORDER BY a.changed_at DESC, a.id DESC
+        LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+    return res.json({ success: true, page, limit, total, pages: Math.ceil(total/limit), data: rows });
+  } catch (err) {
+    console.error('listGlobalDeclarationStatusAudit error:', err);
+    return res.status(500).json({ success: false, message: 'Server error fetching status events', error: err.message });
+  }
+};
+
+// ---- Admin session management (refresh & logout) ----
+exports.adminRefresh = async (req, res) => {
+  try {
+    const { refreshToken } = req.body || {};
+    if (!refreshToken) return res.status(400).json({ message: 'refreshToken required' });
+    const parts = refreshToken.split('.');
+    if (parts.length !== 2) return res.status(400).json({ message: 'Invalid format' });
+    const adminId = parseInt(parts[0],10);
+    if (!adminId) return res.status(400).json({ message: 'Invalid token' });
+    const crypto = require('crypto');
+    const hash = (r) => crypto.createHash('sha256').update(r).digest('hex');
+    const [rows] = await pool.query('SELECT refresh_token_hash, last_activity FROM admin_users WHERE id = ? AND is_active = TRUE', [adminId]);
+    if (!rows.length) return res.status(401).json({ message: 'Admin not found' });
+    const row = rows[0];
+    if (!row.refresh_token_hash || row.refresh_token_hash !== hash(refreshToken)) {
+      return res.status(401).json({ message: 'Refresh token invalid or revoked' });
+    }
+    const limitMin = parseInt(process.env.ADMIN_INACTIVITY_TIMEOUT_MINUTES || process.env.INACTIVITY_TIMEOUT_MINUTES || '30',10);
+    if (row.last_activity && limitMin > 0) {
+      if (Date.now() - new Date(row.last_activity).getTime() > limitMin*60000) {
+        await pool.query('UPDATE admin_users SET refresh_token_hash = NULL WHERE id = ?', [adminId]);
+        return res.status(401).json({ message: 'Session expired due to inactivity' });
+      }
+    }
+    const rotate = /^true$/i.test(process.env.REFRESH_TOKEN_ROTATION || 'true');
+    const accessTtl = process.env.ADMIN_ACCESS_TOKEN_EXPIRES_IN || '30m';
+    let newRefreshToken = refreshToken;
+    if (rotate) {
+      const raw = crypto.randomBytes(48).toString('hex');
+      newRefreshToken = `${adminId}.${raw}`;
+      await pool.query('UPDATE admin_users SET refresh_token_hash = ?, last_activity = NOW() WHERE id = ?', [hash(newRefreshToken), adminId]);
+    } else {
+      await pool.query('UPDATE admin_users SET last_activity = NOW() WHERE id = ?', [adminId]);
+    }
+    // Fetch department & sub_department for refreshed payload consistency
+    try {
+      const [infoRows] = await pool.query('SELECT department, sub_department FROM admin_users WHERE id = ?', [adminId]);
+      const info = infoRows[0] || {};
+      const adminToken = jwt.sign({ adminId, isAdmin: true, department: info.department || null, sub_department: info.sub_department || null }, process.env.JWT_SECRET, { expiresIn: accessTtl });
+      return res.json({ adminToken, refreshToken: newRefreshToken, accessTtl });
+    } catch (e2) {
+      const adminToken = jwt.sign({ adminId, isAdmin: true }, process.env.JWT_SECRET, { expiresIn: accessTtl });
+      return res.json({ adminToken, refreshToken: newRefreshToken, accessTtl });
+    }
+  } catch (e) {
+    console.error('adminRefresh error:', e.message);
+    return res.status(500).json({ message: 'Server error', error: e.message });
+  }
+};
+
+exports.adminLogout = async (req, res) => {
+  try {
+    if (!req.admin || !req.admin.adminId) return res.json({ success: true });
+    await pool.query('UPDATE admin_users SET refresh_token_hash = NULL WHERE id = ?', [req.admin.adminId]);
+    return res.json({ success: true });
+  } catch (e) {
+    console.error('adminLogout error:', e.message);
+    return res.status(500).json({ message: 'Server error', error: e.message });
   }
 };

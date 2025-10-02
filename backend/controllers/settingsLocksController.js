@@ -28,6 +28,14 @@ async function setLocks(req, res) {
       await settingsModel.setDeclarationLock('final_declaration_locked', final_declaration_locked);
       updates.final_declaration_locked = final_declaration_locked;
     }
+    // Invalidate public locks cache so subsequent public GET reflects new values immediately
+    try {
+      const { invalidateLocksCache } = require('../middleware/locksCache');
+      invalidateLocksCache();
+    } catch (e) {
+      // non-fatal
+      console.warn('Failed to invalidate locks cache after update:', e.message);
+    }
     const locks = await settingsModel.getDeclarationLocks();
     res.json({ success: true, locks, updates });
   } catch (error) {

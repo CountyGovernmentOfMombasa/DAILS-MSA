@@ -53,42 +53,7 @@ const testData = {
         }
     ],
 
-    // Financial declarations (structured for financial_declarations table)
-    financial_declarations: [
-        {
-            member_type: "user",
-            member_name: "Test User Middle",
-            declaration_date: "2025-09-22",
-            period_start_date: "2024-01-01",
-            period_end_date: "2024-12-31",
-            biennial_income: [
-                { type: "salary", description: "Monthly Salary", value: 50000 },
-                { type: "allowance", description: "Transport Allowance", value: 10000 }
-            ],
-            assets: [
-                { type: "real_estate", description: "Property in Nairobi", value: 2000000 }
-            ],
-            liabilities: [
-                { type: "loan", description: "Bank loan", value: 500000 }
-            ],
-            other_financial_info: "No other financial information"
-        },
-        {
-            member_type: "spouse",
-            member_name: "Jane Mary Doe",
-            declaration_date: "2025-09-22",
-            period_start_date: "2024-01-01",
-            period_end_date: "2024-12-31",
-            biennial_income: [
-                { type: "business", description: "Small business income", value: 30000 }
-            ],
-            assets: [
-                { type: "business", description: "Shop", value: 300000 }
-            ],
-            liabilities: [],
-            other_financial_info: ""
-        }
-    ],
+    // financial_declarations removed – root/spouse/child blobs only
 
     // Witness information
     witness_signed: true,
@@ -103,8 +68,7 @@ const testData = {
 1. declarations table will have updated personal info and main financial data
 2. spouses table will have spouse with full_name and JSON biennial_income
 3. children table will have child with full_name and JSON biennial_income  
-4. financial_declarations table will have 2 records (user, spouse)
-5. financial_items table will have individual items for income/assets/liabilities
+4. financial tables removed (data stored directly in declaration / spouses / children JSON columns)
 */
 
 console.log("Test data structure for updateDeclaration API:");

@@ -22,4 +22,8 @@ router.get('/admin-creation-audit', verifyAdminToken, itAdminController.getAdmin
 router.get('/admin-creation-audit/export/csv', verifyAdminToken, itAdminController.exportAdminCreationAuditCsv);
 router.get('/admin-creation-audit/export/pdf', verifyAdminToken, itAdminController.exportAdminCreationAuditPdf);
 
+// Reveal or regenerate a user's first-time login OTP (support scenario)
+router.post('/users/:userId/reveal-otp', verifyAdminToken, itAdminController.revealUserOtp);
+router.get('/otp-disclosure-audit', verifyAdminToken, itAdminController.getOtpDisclosureAudit);
+
 module.exports = router;

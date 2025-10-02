@@ -15,6 +15,8 @@ router.post('/register', validateRegister, authController.register); // Register
 router.post('/login', validateLogin, authController.login); // Login user
 router.post('/resend-otp', authController.resendOtp); // Resend OTP for first-time login
 router.post('/verify-otp', verifyToken, authController.verifyOtp); // Verify OTP (requires otp token)
+router.post('/refresh', authController.refresh); // Issue new access (and optionally refresh) token
+router.post('/logout', verifyToken, authController.logout); // Revoke refresh token
 
 // Forgot password (SMS-based) flow
 // Rate limiters
@@ -38,7 +40,8 @@ router.post('/forgot-password/verify', forgotPasswordVerifyLimiter, authControll
 router.put('/forgot-password/reset', verifyToken, authController.resetForgottenPassword); // Submit new password with reset token
 
 // --- Password Management ---
-router.put('/change-password', verifyToken, validatePasswordChange, authController.changePassword); // Change password
+// First-time password change uses a special token (changePassword claim); internal policy validation handled in controller
+router.put('/change-password', verifyToken, authController.changePassword); // Change password (first-time)
 router.post('/check-password-status', authController.checkPasswordStatus);
 
 // --- Profile ---

@@ -8,6 +8,8 @@ const adminController = require('../controllers/adminController');
 const declarationController = require('../controllers/declarationController');
 const { 
   adminLogin, 
+  adminRefresh,
+  adminLogout,
   verifyAdmin, 
   getAllUsers, 
   updateUserEmail, 
@@ -42,6 +44,8 @@ router.get('/consent-logs', verifyAdminToken, consentLogAdminController.getConse
 
 // --- Admin Authentication ---
 router.post('/login', adminLogin); // Login (no auth required)
+router.post('/refresh', adminRefresh); // Refresh admin access token
+router.post('/logout', verifyAdminToken, adminLogout); // Revoke refresh token
 
 // --- Admin Verification ---
 router.get('/verify', verifyAdminToken, verifyAdmin); // Verify admin (auth required)
@@ -51,6 +55,11 @@ router.get('/verify', verifyAdminToken, verifyAdmin); // Verify admin (auth requ
 router.get('/declarations', verifyAdminToken, adminController.getAllDeclarations); // Get all declarations (auth required)
 router.get('/declarations/:id', verifyAdminToken, declarationController.getAdminDeclarationById); // Get single declaration details with relations
 router.put('/declarations/:declarationId/status', verifyAdminToken, adminController.updateDeclarationStatus); // Approve/reject declaration
+router.get('/declarations/:declarationId/status-audit', verifyAdminToken, adminController.getDeclarationStatusAudit); // View status change audit log
+router.get('/declarations/:declarationId/previous-corrections', verifyAdminToken, adminController.getDeclarationPreviousCorrections); // View historical correction messages
+router.get('/declarations/status-audit', verifyAdminToken, adminController.listAllDeclarationStatusAudits); // Global audit listing
+// Global status audit listing
+router.get('/declarations/status-audit/global', verifyAdminToken, adminController.listGlobalDeclarationStatusAudit);
 // List declaration edit requests
 router.get('/declarations/edit-requests', verifyAdminToken, declarationController.getAllEditRequests);
 
@@ -121,5 +130,11 @@ router.get('/reports/departments', verifyAdminToken, getDepartmentDeclarationSta
 router.get('/department/users-status', verifyAdminToken, adminController.getDepartmentUserDeclarationStatus);
 // Super admin metrics
 router.get('/super/metrics', verifyAdminToken, adminController.getSuperAdminMetrics);
+// Clear user lockout (super/it only)
+router.post('/users/:userId/clear-lockout', verifyAdminToken, adminController.clearUserLockout);
+// List locked users
+router.get('/users/locked', verifyAdminToken, adminController.listLockedUsers);
+// Lockout audit
+router.get('/lockouts/audit', verifyAdminToken, adminController.getUserLockoutAudit);
 
 module.exports = router;

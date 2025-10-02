@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const cookieParser = require('cookie-parser');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
@@ -83,6 +84,7 @@ app.use(generalLimiter);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(cookieParser());
 // Serve uploaded files
 app.use('/uploads', express.static('uploads'));
 
@@ -95,6 +97,30 @@ app.get('/api/server-date', (req, res) => {
     const formattedDate = `${day}/${month}/${year}`;
     res.json({ date: formattedDate });
 });
+
+// Public (read‑only) endpoint for declaration lock statuses so regular users
+// (who are not admins and thus have no admin token) can still discover which
+// declaration types are currently locked. Wrapped with a light in-memory cache.
+try {
+    const { locksCache } = require('./middleware/locksCache');
+    app.get('/api/settings/locks', locksCache, async (req, res) => {
+        // locksCache already attached req.declarationLocks (best-effort)
+        if (req.declarationLocks) {
+            return res.json({ success: true, locks: req.declarationLocks, cached: true });
+        }
+        // Fallback (unlikely) – direct fetch
+        try {
+            const settingsModel = require('./models/settingsModel');
+            const locks = await settingsModel.getDeclarationLocks();
+            return res.json({ success: true, locks, cached: false });
+        } catch (err) {
+            console.error('Error fetching public locks (fallback):', err.message);
+            return res.status(500).json({ success: false, message: 'Error fetching locks' });
+        }
+    });
+} catch (e) {
+    console.warn('Unable to initialize cached public locks route:', e.message);
+}
 
 
 

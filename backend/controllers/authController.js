@@ -3,6 +3,44 @@ const jwt = require('jsonwebtoken');
 const pool = require('../config/db');
 const User = require('../models/userModel');
 const { validationResult } = require('express-validator');
+const crypto = require('crypto');
+
+// Helper to parse times like '30m', '7d'
+function parseDuration(str, fallbackMs) {
+  if (!str || typeof str !== 'string') return fallbackMs;
+  const m = str.match(/^(\d+)([smhd])$/i);
+  if (!m) return fallbackMs;
+  const n = parseInt(m[1],10); const unit = m[2].toLowerCase();
+  const mult = unit==='s'?1000:unit==='m'?60000:unit==='h'?3600000:unit==='d'?86400000:1;
+  return n*mult;
+}
+const ACCESS_TTL_MS = parseDuration(process.env.ACCESS_TOKEN_EXPIRES_IN || '30m', 30*60000);
+const REFRESH_TTL_MS = parseDuration(process.env.REFRESH_TOKEN_EXPIRES_IN || '14d', 14*86400000);
+const INACTIVITY_LIMIT_MS = parseInt(process.env.INACTIVITY_TIMEOUT_MINUTES || '30',10) * 60000; // server-side guard
+
+function signAccess(payload, overrides={}) {
+  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: process.env.ACCESS_TOKEN_EXPIRES_IN || '30m', ...overrides });
+}
+function signLegacyLong(payload) { // existing 7d tokens still supported for transitional period
+  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '7d' });
+}
+function hashToken(raw) {
+  return crypto.createHash('sha256').update(raw).digest('hex');
+}
+
+async function issueTokenPair(userId, extraClaims={}) {
+  const base = { id: userId, ...extraClaims };
+  const accessToken = signAccess(base);
+  const refreshRaw = crypto.randomBytes(48).toString('hex');
+  const refreshToken = `${userId}.${refreshRaw}`;
+  const refreshHash = hashToken(refreshToken);
+  await pool.query('UPDATE users SET refresh_token_hash = ?, last_activity = NOW() WHERE id = ?', [refreshHash, userId]);
+  return { accessToken, refreshToken, accessExpiresInMs: ACCESS_TTL_MS, refreshExpiresInMs: REFRESH_TTL_MS };
+}
+
+async function revokeRefresh(userId) {
+  await pool.query('UPDATE users SET refresh_token_hash = NULL WHERE id = ?', [userId]);
+}
 
 // @desc    Register new user
 // @route   POST /api/auth/register
@@ -26,7 +64,8 @@ exports.register = async (req, res) => {
     postal_address,
     physical_address,
     designation,
-    department,
+  department,
+  sub_department,
   nature_of_employment
   } = req.body;
 
@@ -44,6 +83,10 @@ exports.register = async (req, res) => {
   const validNatureOfEmployment = nature_of_employment || '';
 
     // Create user
+    if (!sub_department && department) {
+      // Prevent ambiguous registration without sub_department
+      return res.status(400).json({ message: 'sub_department is required when department is provided' });
+    }
     const userId = await User.create({
       national_id,
       payroll_number,
@@ -58,6 +101,7 @@ exports.register = async (req, res) => {
       physical_address,
       designation,
       department,
+      sub_department,
       nature_of_employment: validNatureOfEmployment
     });
 
@@ -72,15 +116,13 @@ exports.register = async (req, res) => {
     });
 
     // Generate JWT
-    const token = jwt.sign(
-      { id: userId }, 
-      process.env.JWT_SECRET, 
-      { expiresIn: process.env.JWT_EXPIRES_IN }
-    );
+    const { accessToken, refreshToken, accessExpiresInMs } = await issueTokenPair(userId);
 
     res.status(201).json({
       success: true,
-      token,
+  token: accessToken,
+  refreshToken,
+  accessExpiresInMs,
       user: {
         id: userId,
         national_id,
@@ -110,12 +152,8 @@ const convertDateFormat = (ddmmyyyy) => {
 
 const sendSMS = require('../util/sendSMS');
 
-// Generate a 6-digit OTP and expiry 10 minutes from now
-function createOtp() {
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
-  const expires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-  return { code, expires };
-}
+// Centralized OTP utility
+const { createOtp } = require('../util/otp');
 
 // @desc    Login user
 // @route   POST /api/auth/login
@@ -148,17 +186,34 @@ exports.login = async (req, res) => {
     } else if (user.lock_until && new Date(user.lock_until) <= new Date()) {
       // Auto clear expired lock
       await pool.query('UPDATE users SET failed_login_attempts = 0, lock_until = NULL WHERE id = ?', [user.id]);
+      try { await pool.query('INSERT INTO user_lockout_audit (user_id, event_type, reason, failed_attempts, ip_address, user_agent) VALUES (?,?,?,?,?,?)', [user.id, 'UNLOCK', 'auto_expire', user.failed_login_attempts, (req.ip || '').substring(0,64), (req.headers['user-agent'] || '').substring(0,255)]);} catch(e){ console.error('Lockout audit unlock insert failed', e.message);}      
       user.failed_login_attempts = 0;
       user.lock_until = null;
     }
 
-    // If phone number is missing, require it and update
+    const { isValidPhone, normalizePhone } = require('../util/phone');
     if (!user.phone_number) {
       if (!phoneNumber) {
-        return res.status(400).json({ message: 'Phone number required', requirePhone: true });
+        return res.status(400).json({ success:false, requirePhone: true, code:'PHONE_REQUIRED', field:'phone_number', message: 'Phone number required' });
       }
-      await pool.query('UPDATE users SET phone_number = ? WHERE id = ?', [phoneNumber, user.id]);
-      user.phone_number = phoneNumber;
+      if (!isValidPhone(phoneNumber)) {
+        return res.status(400).json({ success:false, code:'INVALID_PHONE_FORMAT', field:'phone_number', message:'Invalid phone number format. Use 7-15 digits, optional leading +' });
+      }
+      const normalized = normalizePhone(phoneNumber);
+      const [dupRows] = await pool.query('SELECT id FROM users WHERE phone_number = ?', [normalized]);
+      if (dupRows.length) {
+        return res.status(409).json({ success:false, code:'PHONE_IN_USE', field:'phone_number', message:'Phone number already in use. Please supply a different number.' });
+      }
+      try {
+        await pool.query('UPDATE users SET phone_number = ?, phone_last_changed_at = NOW(), phone_change_count = COALESCE(phone_change_count,0) + 1 WHERE id = ?', [normalized, user.id]);
+        user.phone_number = normalized;
+        try { await pool.query('INSERT INTO user_phone_change_audit (user_id, old_phone, new_phone, via, ip_address, user_agent) VALUES (?,?,?,?,?,?)', [user.id, null, normalized, 'login_capture', (req.ip||'').substring(0,64), (req.headers['user-agent']||'').substring(0,255)]); } catch(auditErr) { console.error('Phone audit insert (login capture) failed:', auditErr.message); }
+      } catch (e) {
+        if (e && e.code === 'ER_DUP_ENTRY') {
+          return res.status(409).json({ success:false, code:'PHONE_IN_USE', field:'phone_number', message:'Phone number already in use. Please supply a different number.' });
+        }
+        throw e;
+      }
     }
 
     // If password hasn't been changed, trigger OTP to phone and require OTP verification
@@ -171,6 +226,7 @@ exports.login = async (req, res) => {
         if (fa.failed_login_attempts >= 5) {
           const lockUntil = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
           await pool.query('UPDATE users SET lock_until = ? WHERE id = ?', [lockUntil, user.id]);
+          try { await pool.query('INSERT INTO user_lockout_audit (user_id, event_type, reason, failed_attempts, lock_until, ip_address, user_agent) VALUES (?,?,?,?,?,?,?)', [user.id, 'LOCK', 'first_time_default_fail', fa.failed_login_attempts, lockUntil, (req.ip||'').substring(0,64), (req.headers['user-agent']||'').substring(0,255)]);} catch(e){ console.error('Lockout audit insert failed', e.message);}          
           return res.status(423).json({ message: 'Too many failed attempts. Account locked for 1 hour.' });
         }
         return res.status(401).json({ 
@@ -223,6 +279,7 @@ exports.login = async (req, res) => {
       if (fa2.failed_login_attempts >= 5) {
         const lockUntil = new Date(Date.now() + 60 * 60 * 1000);
         await pool.query('UPDATE users SET lock_until = ? WHERE id = ?', [lockUntil, user.id]);
+        try { await pool.query('INSERT INTO user_lockout_audit (user_id, event_type, reason, failed_attempts, lock_until, ip_address, user_agent) VALUES (?,?,?,?,?,?,?)', [user.id, 'LOCK', 'password_mismatch', fa2.failed_login_attempts, lockUntil, (req.ip||'').substring(0,64), (req.headers['user-agent']||'').substring(0,255)]);} catch(e){ console.error('Lockout audit insert failed', e.message);}        
         return res.status(423).json({ message: 'Too many failed attempts. Account locked for 1 hour.' });
       }
       return res.status(401).json({ message: 'Invalid credentials' });
@@ -230,18 +287,17 @@ exports.login = async (req, res) => {
 
     // Successful login: clear failed attempts & lock
     if (user.failed_login_attempts > 0 || user.lock_until) {
-      await pool.query('UPDATE users SET failed_login_attempts = 0, lock_until = NULL WHERE id = ?', [user.id]);
+  await pool.query('UPDATE users SET failed_login_attempts = 0, lock_until = NULL WHERE id = ?', [user.id]);
+  try { await pool.query('INSERT INTO user_lockout_audit (user_id, event_type, reason, failed_attempts, ip_address, user_agent) VALUES (?,?,?,?,?,?)', [user.id, 'UNLOCK', 'successful_login', user.failed_login_attempts, (req.ip||'').substring(0,64), (req.headers['user-agent']||'').substring(0,255)]);} catch(e){ console.error('Lockout audit success unlock insert failed', e.message);}        
     }
 
-    const token = jwt.sign(
-      { id: user.id },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN }
-    );
+    const { accessToken, refreshToken, accessExpiresInMs } = await issueTokenPair(user.id);
 
     res.json({
       success: true,
-      token,
+  token: accessToken,
+  refreshToken,
+  accessExpiresInMs,
       user: {
         id: user.id,
         national_id: user.national_id,
@@ -341,10 +397,20 @@ exports.verifyOtp = async (req, res) => {
 // @route   PUT /api/auth/change-password
 // @access  Private (with change password token)
 exports.changePassword = async (req, res) => {
-  const { newPassword } = req.body;
-  const userId = req.user.id;
+  const { newPassword } = req.body || {};
+  const userId = req.user && req.user.id;
   try {
-    // Password policy: min 8 chars, upper, lower, number, symbol
+    if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+    if (!newPassword || typeof newPassword !== 'string') {
+      return res.status(400).json({ message: 'New password is required' });
+    }
+    // Enforce endpoint only for first-time change (token had changePassword claim).
+    // Hydration in verifyToken moves original JWT claims under req.user.token_claims.
+    const hasChangeClaim = !!(req.user.changePassword || (req.user.token_claims && req.user.token_claims.changePassword));
+    if (!hasChangeClaim) {
+      return res.status(403).json({ message: 'Invalid change password token' });
+    }
+    // Password policy
     const policy = {
       minLength: 8,
       upper: /[A-Z]/,
@@ -363,56 +429,48 @@ exports.changePassword = async (req, res) => {
         message: 'Password must be at least 8 characters and include uppercase, lowercase, number, and symbol.'
       });
     }
-
-    // Get current password hash
+    // Current password hash
     const [users] = await pool.query('SELECT password FROM users WHERE id = ?', [userId]);
-    if (!users.length) {
-      return res.status(404).json({ message: 'User not found' });
-    }
+    if (!users.length) return res.status(404).json({ message: 'User not found' });
     const bcrypt = require('bcryptjs');
+    // Prevent reuse of immediate previous password
     const isSame = await bcrypt.compare(newPassword, users[0].password);
-    if (isSame) {
-      return res.status(400).json({ message: 'You cannot reuse your previous password.' });
-    }
-    // Check against recent history
+    if (isSame) return res.status(400).json({ message: 'You cannot reuse your previous password.' });
+    // Prevent reuse of recent history
     const HISTORY_LIMIT = 5;
-    const [uph] = await pool.query('SELECT password_hash FROM user_password_history WHERE user_id = ? ORDER BY created_at DESC LIMIT ?', [userId, HISTORY_LIMIT]);
+    const [uph] = await pool.query(
+      'SELECT password_hash FROM user_password_history WHERE user_id = ? ORDER BY created_at DESC LIMIT ?',
+      [userId, HISTORY_LIMIT]
+    );
     for (const row of uph) {
       const matchPrev = await bcrypt.compare(newPassword, row.password_hash);
       if (matchPrev) return res.status(400).json({ message: 'You cannot reuse a recent password.' });
     }
-
-    // Hash new password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    // Increment password_changed by 1
-    await pool.query(
-      'UPDATE users SET password = ?, password_changed = password_changed + 1 WHERE id = ?',
-      [hashedPassword, userId]
-    );
+    await pool.query('UPDATE users SET password = ?, password_changed = password_changed + 1 WHERE id = ?', [hashedPassword, userId]);
+    // Maintain history
     try {
       await pool.query('INSERT INTO user_password_history (user_id, password_hash) VALUES (?, ?)', [userId, users[0].password]);
       await pool.query('DELETE FROM user_password_history WHERE user_id = ? AND id NOT IN (SELECT id FROM (SELECT id FROM user_password_history WHERE user_id = ? ORDER BY created_at DESC LIMIT ?) t)', [userId, userId, HISTORY_LIMIT]);
     } catch (e) { console.error('User password history maintenance failed:', e.message); }
-    // Audit (first change flow)
+    // Audit
     try {
       await pool.query('INSERT INTO user_password_change_audit (user_id, method, ip_address, user_agent) VALUES (?,?,?,?)', [userId, 'first_change', (req.ip || '').substring(0,64), (req.headers['user-agent'] || '').substring(0,255)]);
     } catch (e) { console.error('User first change audit insert failed:', e.message); }
-    // Generate new token for normal access
-    const token = jwt.sign(
-      { id: userId }, 
-      process.env.JWT_SECRET, 
-      { expiresIn: process.env.JWT_EXPIRES_IN }
-    );
-    res.json({
+    // Issue normal session tokens
+    const { accessToken, refreshToken, accessExpiresInMs } = await issueTokenPair(userId);
+    return res.json({
       success: true,
-      token,
+      token: accessToken,
+      refreshToken,
+      accessExpiresInMs,
       message: 'Password changed successfully'
     });
   } catch (error) {
     console.error('Change password error:', error);
-    res.status(500).json({ 
+    return res.status(500).json({
       message: 'Server error during password change',
-      error: error.message 
+      error: error.message
     });
   }
 };
@@ -470,8 +528,9 @@ exports.updateMe = async (req, res) => {
       'surname', 'first_name', 'other_names', 'birthdate', 'place_of_birth', 'marital_status',
       'postal_address', 'physical_address', 'email', 'payroll_number', 'designation', 'department', 'nature_of_employment', 'phone_number'
     ];
-    const updates = [];
-    const values = [];
+  const updates = [];
+  const values = [];
+  let incomingPhone = undefined;
     fields.forEach(field => {
       if (req.body[field] !== undefined) {
         let value = req.body[field];
@@ -482,16 +541,68 @@ exports.updateMe = async (req, res) => {
           // Capitalize first letter, lowercase the rest
           value = value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
         }
-        updates.push(`${field} = ?`);
-        values.push(value);
+        if (field === 'phone_number') {
+          incomingPhone = value;
+        } else {
+          updates.push(`${field} = ?`);
+          values.push(value);
+        }
       }
     });
+    // Phone number validation & uniqueness (handle separately to allow early errors)
+    if (incomingPhone !== undefined) {
+      const { isValidPhone, normalizePhone } = require('../util/phone');
+      if (incomingPhone === null || incomingPhone === '') {
+        updates.push('phone_number = NULL');
+      } else {
+        if (!isValidPhone(incomingPhone)) {
+          return res.status(400).json({ success:false, code:'INVALID_PHONE_FORMAT', field:'phone_number', message:'Invalid phone number format. Use 7-15 digits, optional leading +' });
+        }
+        const normalized = normalizePhone(incomingPhone);
+        const RATE_LIMIT_MAX = 3;
+        const [hist] = await pool.query('SELECT phone_change_count, phone_last_changed_at FROM users WHERE id = ?', [userId]);
+        if (hist.length) {
+          const rec = hist[0];
+          if (rec.phone_last_changed_at) {
+            const since = Date.now() - new Date(rec.phone_last_changed_at).getTime();
+            if (since < 24*60*60*1000 && rec.phone_change_count >= RATE_LIMIT_MAX) {
+              return res.status(429).json({ success:false, code:'PHONE_CHANGE_RATE_LIMIT', field:'phone_number', message:`Phone number can only be changed ${RATE_LIMIT_MAX} times in 24 hours.` });
+            }
+          }
+        }
+        const [dup] = await pool.query('SELECT id FROM users WHERE phone_number = ? AND id <> ?', [normalized, userId]);
+        if (dup.length) {
+          return res.status(409).json({ success:false, code:'PHONE_IN_USE', field:'phone_number', message:'Phone number already in use by another user.' });
+        }
+        updates.push('phone_number = ?');
+        values.push(normalized);
+        updates.push('phone_last_changed_at = NOW()');
+        updates.push('phone_change_count = CASE WHEN phone_last_changed_at IS NULL OR TIMESTAMPDIFF(HOUR, phone_last_changed_at, NOW()) >= 24 THEN 1 ELSE COALESCE(phone_change_count,0) + 1 END');
+      }
+    }
     console.log('Update values for user:', values);
     if (updates.length === 0) {
       return res.status(400).json({ message: 'No fields to update.' });
     }
     values.push(userId);
-    await pool.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
+    try {
+      let oldPhone = null; let newPhone = null; let phoneChanging = false;
+      if (incomingPhone !== undefined) {
+        const [cur] = await pool.query('SELECT phone_number FROM users WHERE id = ?', [userId]);
+        oldPhone = cur[0]?.phone_number || null;
+        if (incomingPhone === null || incomingPhone === '') newPhone = null; else newPhone = require('../util/phone').normalizePhone(incomingPhone);
+        phoneChanging = oldPhone !== newPhone;
+      }
+      await pool.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
+      if (phoneChanging) {
+        try { await pool.query('INSERT INTO user_phone_change_audit (user_id, old_phone, new_phone, via, ip_address, user_agent) VALUES (?,?,?,?,?,?)', [userId, oldPhone, newPhone, 'self', (req.ip||'').substring(0,64), (req.headers['user-agent']||'').substring(0,255)]); } catch(auditErr) { console.error('Phone change audit insert failed:', auditErr.message); }
+      }
+    } catch (e) {
+      if (e && e.code === 'ER_DUP_ENTRY' && /phone_number/.test(e.message)) {
+        return res.status(409).json({ success:false, code:'PHONE_IN_USE', field:'phone_number', message:'Phone number already in use by another user.' });
+      }
+      throw e;
+    }
     // Return updated profile (same as getMe)
     const [users] = await pool.query(
       `SELECT 
@@ -644,10 +755,70 @@ exports.resetForgottenPassword = async (req, res) => {
     try {
       await pool.query('INSERT INTO user_password_change_audit (user_id, method, ip_address, user_agent) VALUES (?,?,?,?)', [req.user.id, 'forgot_flow', (req.ip || '').substring(0,64), (req.headers['user-agent'] || '').substring(0,255)]);
     } catch (e) { console.error('Forgot flow audit insert failed:', e.message); }
-    const token = jwt.sign({ id: req.user.id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN });
-    return res.json({ success: true, token, message: 'Password reset successful' });
+    const { accessToken, refreshToken, accessExpiresInMs } = await issueTokenPair(req.user.id);
+    return res.json({ success: true, token: accessToken, refreshToken, accessExpiresInMs, message: 'Password reset successful' });
   } catch (error) {
     console.error('Reset forgotten password error:', error);
+    return res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// ---- Refresh token endpoint ----
+exports.refresh = async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+    if (!refreshToken || typeof refreshToken !== 'string') {
+      return res.status(400).json({ message: 'refreshToken required' });
+    }
+    const parts = refreshToken.split('.');
+    if (parts.length !== 2) return res.status(400).json({ message: 'Invalid refresh token format' });
+    const userId = parseInt(parts[0],10);
+    if (!userId) return res.status(400).json({ message: 'Invalid refresh token' });
+    const hash = hashToken(refreshToken);
+    const [rows] = await pool.query('SELECT id, refresh_token_hash, last_activity FROM users WHERE id = ?', [userId]);
+    if (!rows.length) return res.status(401).json({ message: 'User not found' });
+    const row = rows[0];
+    if (!row.refresh_token_hash || row.refresh_token_hash !== hash) {
+      return res.status(401).json({ message: 'Refresh token revoked' });
+    }
+    // Inactivity check (soft invalidation). If last_activity too old, revoke & deny.
+    if (row.last_activity && INACTIVITY_LIMIT_MS > 0) {
+      const last = new Date(row.last_activity).getTime();
+      if (Date.now() - last > INACTIVITY_LIMIT_MS) {
+        await revokeRefresh(userId);
+        return res.status(401).json({ message: 'Session expired due to inactivity' });
+      }
+    }
+    // Rotate refresh token if rotation enabled
+    const rotate = /^true$/i.test(process.env.REFRESH_TOKEN_ROTATION || 'true');
+    let newRefreshToken = refreshToken;
+    if (rotate) {
+      const pair = await issueTokenPair(userId);
+      return res.json({
+        token: pair.accessToken,
+        refreshToken: pair.refreshToken,
+        accessExpiresInMs: pair.accessExpiresInMs
+      });
+    } else {
+      // Update last_activity only
+      await pool.query('UPDATE users SET last_activity = NOW() WHERE id = ?', [userId]);
+      const accessToken = signAccess({ id: userId });
+      return res.json({ token: accessToken, refreshToken: newRefreshToken, accessExpiresInMs: ACCESS_TTL_MS });
+    }
+  } catch (e) {
+    console.error('Refresh error:', e.message);
+    return res.status(500).json({ message: 'Server error', error: e.message });
+  }
+};
+
+// ---- Logout (revoke refresh token) ----
+exports.logout = async (req, res) => {
+  try {
+    if (!req.user || !req.user.id) return res.status(200).json({ success: true });
+    await revokeRefresh(req.user.id);
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Logout error:', error.message);
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

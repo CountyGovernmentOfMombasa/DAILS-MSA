@@ -4,7 +4,8 @@ const { verifyToken } = require('../middleware/authMiddleware');
 const upload = require('../middleware/fileUpload');
 const { validateDeclaration } = require('../middleware/validation');
 const router = express.Router();
-const { getDeclarationById, getDeclarationFinancialUnified, updateUnifiedFinancial, downloadDeclarationPDF } = require('../controllers/declarationController');
+const { getDeclarationById, downloadDeclarationPDF, patchDeclaration } = require('../controllers/declarationController');
+const patchValidation = require('../middleware/patchValidation');
 
 // --- Declaration Submission ---
 // Biennial lock check middleware
@@ -39,10 +40,6 @@ router.get('/', verifyToken, getDeclarations); // Get all declarations for user
 
 // Single declaration (with embedded unified financial)
 router.get('/:id', verifyToken, getDeclarationById);
-// Unified financial data only (read)
-router.get('/:id/financial-unified', verifyToken, getDeclarationFinancialUnified);
-// Unified financial batch update (write)
-router.put('/:id/financial-unified', verifyToken, updateUnifiedFinancial);
 // On-demand PDF download
 router.get('/:id/download-pdf', verifyToken, downloadDeclarationPDF);
 
@@ -50,6 +47,8 @@ router.get('/:id/download-pdf', verifyToken, downloadDeclarationPDF);
 // Update a declaration (edit)
 const { updateDeclaration } = require('../controllers/declarationController');
 router.put('/:id', verifyToken, updateDeclaration);
+// Partial update (diff-based)
+router.patch('/:id', verifyToken, patchValidation, patchDeclaration);
 
 // Record an edit request for a declaration
 router.post('/:id/edit-request', verifyToken, requestEdit);

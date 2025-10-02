@@ -15,26 +15,32 @@ CREATE TABLE users (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
--- Declarations table
 CREATE TABLE declarations (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
     marital_status ENUM('single', 'married', 'divorced', 'widowed', 'separated') NOT NULL,
+    declaration_type ENUM('First','Biennial','Final') NOT NULL,
     declaration_date DATE NOT NULL,
+    period_start_date DATE NULL,
+    period_end_date DATE NULL,
     biennial_income JSON,
-    assets TEXT,
-    liabilities TEXT,
+    assets JSON NULL,
+    liabilities JSON NULL,
     other_financial_info TEXT,
     signature_path VARCHAR(500),
     witness_signed TINYINT(1) DEFAULT 0,
     witness_name VARCHAR(100),
     witness_address VARCHAR(200),
+    witness_phone VARCHAR(20),
+    status ENUM('pending','approved','rejected') DEFAULT 'pending',
+    correction_message TEXT NULL,
+    submitted_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_decl_user_date (user_id,declaration_date)
 );
 
--- Audit log for declaration edits
 CREATE TABLE declaration_audit_logs (
     id INT AUTO_INCREMENT PRIMARY KEY,
     declaration_id INT NOT NULL,
@@ -46,21 +52,47 @@ CREATE TABLE declaration_audit_logs (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     INDEX idx_decl_audit_decl (declaration_id)
 );
+);
 
--- Audit log for financial declaration edits (aggregated diff per update)
-CREATE TABLE financial_audit_logs (
+-- Audit log for declaration status changes (admin actions approve/reject)
+CREATE TABLE declaration_status_audit (
     id INT AUTO_INCREMENT PRIMARY KEY,
     declaration_id INT NOT NULL,
-    user_id INT NOT NULL,
-    action ENUM('REPLACE','MERGE') NOT NULL DEFAULT 'REPLACE',
-    member_type VARCHAR(20),
-    member_name VARCHAR(200),
-    before_state JSON NULL,
-    after_state JSON NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    admin_id INT NULL,
+    previous_status ENUM('pending','approved','rejected') NULL,
+    new_status ENUM('pending','approved','rejected') NOT NULL,
+    previous_correction_message TEXT NULL,
+    new_correction_message TEXT NULL,
+    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (declaration_id) REFERENCES declarations(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_fin_audit_decl (declaration_id)
+    FOREIGN KEY (admin_id) REFERENCES admin_users(id) ON DELETE SET NULL,
+    INDEX idx_decl_status_audit_decl (declaration_id),
+    INDEX idx_decl_status_audit_admin (admin_id)
+);
+
+-- Partial PATCH audit trail
+CREATE TABLE declaration_patch_audit (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        declaration_id INT NOT NULL,
+        user_id INT NOT NULL,
+        changed_scalar_fields JSON NULL,
+        replaced_collections JSON NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (declaration_id) REFERENCES declarations(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        INDEX idx_decl_patch_audit_decl (declaration_id)
+);
+
+-- User edit requests
+CREATE TABLE declaration_edit_requests (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    declarationId INT NOT NULL,
+    userId INT NOT NULL,
+    reason TEXT NOT NULL,
+    requestedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (declarationId) REFERENCES declarations(id) ON DELETE CASCADE,
+    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_decl_edit_req_decl (declarationId)
 );
 
 -- Spouses table

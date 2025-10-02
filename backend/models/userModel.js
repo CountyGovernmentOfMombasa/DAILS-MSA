@@ -1,5 +1,6 @@
 
 const pool = require('../config/db');
+const { DEPARTMENTS, SUB_DEPARTMENTS, SUB_DEPARTMENT_MAP } = require('./enums');
 
 // Utility functions
 const formatBirthdate = (birthdate) => {
@@ -33,6 +34,7 @@ const User = {
       designation = null,
       department = null,
       nature_of_employment = null,
+      sub_department = null,
       phone_number = null
     } = userData;
 
@@ -40,20 +42,35 @@ const User = {
   const allowedEmployment = ['Permanent', 'Contract', 'Temporary', 'Casual'];
     const validNatureOfEmployment = allowedEmployment.includes(nature_of_employment) ? nature_of_employment : null;
 
-    // Validate department
-    const allowedDepartments = [
-      'Department of Transport, Infrastructure and Governance',
-      'Department of Trade, Tourism and Culture',
-      'Department of Education and Vocational Training',
-      'Department of Environment and Water',
-      'Department of Lands, Urban Planning,Housing and Serikali Mtaani',
-      'Department of Health',
-      'Department of Public Service Administration, Youth, Gender and Sports',
-      'Department of Finance, Economic Planning and Digital Transformation',
-      'Department of Blue Economy ,Cooperatives, Agriculture and Livestock',
-      'Department of Climate Change,Energy and Natural Resources'
-    ];
-    const validDepartment = allowedDepartments.includes(department) ? department : null;
+    // Validate department & sub-department (now mandatory pair: if department provided must have valid sub_department; if sub_department given determines department)
+    let validDepartment = null;
+    let validSubDepartment = null;
+    if (sub_department) {
+      // Derive department from mapping reverse lookup
+      const found = Object.entries(SUB_DEPARTMENT_MAP).find(([, subs]) => subs.includes(sub_department));
+      if (found) {
+        validDepartment = found[0];
+        validSubDepartment = sub_department;
+      }
+    } else if (department) {
+      if (DEPARTMENTS.includes(department)) {
+        const allowedSubs = SUB_DEPARTMENT_MAP[department] || [];
+        // Require sub_department if more than one option exists
+        if (allowedSubs.length === 1) {
+          validDepartment = department;
+          validSubDepartment = allowedSubs[0];
+        } else {
+          throw new Error('sub_department is required for the selected department');
+        }
+      }
+    }
+    if (department && validDepartment && department !== validDepartment) {
+      // Provided department inconsistent with derived one
+      throw new Error('Provided department does not match sub_department hierarchy');
+    }
+    if ((department || sub_department) && (!validDepartment || !validSubDepartment)) {
+      throw new Error('Invalid department / sub_department combination');
+    }
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -76,8 +93,9 @@ const User = {
         physical_address,
         designation,
         department,
+        sub_department,
         nature_of_employment
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         payroll_number,
         surname,
@@ -94,7 +112,8 @@ const User = {
         postal_address,
         physical_address,
         designation,
-        validDepartment,
+  validDepartment,
+  validSubDepartment,
         validNatureOfEmployment
       ]
     );
@@ -159,6 +178,25 @@ const User = {
     const [rows] = await pool.query(
       'SELECT id FROM users WHERE national_id = ? OR email = ?',
       [national_id, email]
+    );
+    return rows.length > 0;
+  },
+
+  // Check if phone number already exists (ignores null/empty)
+  async existsByPhone(phone_number) {
+    if (!phone_number) return false;
+    const [rows] = await pool.query(
+      'SELECT id FROM users WHERE phone_number = ?',
+      [phone_number]
+    );
+    return rows.length > 0;
+  },
+
+  async existsByPhoneExcludingId(phone_number, excludeId) {
+    if (!phone_number) return false;
+    const [rows] = await pool.query(
+      'SELECT id FROM users WHERE phone_number = ? AND id <> ?',
+      [phone_number, excludeId]
     );
     return rows.length > 0;
   }

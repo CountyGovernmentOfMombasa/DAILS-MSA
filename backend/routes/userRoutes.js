@@ -5,7 +5,6 @@ const { verifyToken } = require('../middleware/authMiddleware');
 const { body, validationResult, param } = require('express-validator');
 const upload = require('../middleware/fileUpload');
 const { getFamily } = require('../controllers/userController');
-const { getFinancialData } = require('../controllers/financialController');
 
 // --- Validation Middleware ---
 const emailValidation = [
@@ -20,8 +19,6 @@ const emailValidation = [
 // Family info (spouses & children) for current user
 router.get('/family', verifyToken, getFamily);
 
-// Financial data for current user
-router.get('/financial-data', verifyToken, getFinancialData);
 
 // Get user profile
 router.get('/profile/:userId', verifyToken, async (req, res) => {

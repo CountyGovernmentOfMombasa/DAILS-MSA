@@ -20,15 +20,8 @@ async function fetchDeclarationFull(declarationId) {
   const base = declUserRows[0] || {};
   const [spouses] = await pool.query('SELECT first_name, other_names, surname, biennial_income, assets, liabilities, other_financial_info FROM spouses WHERE declaration_id = ?', [declarationId]);
   const [children] = await pool.query('SELECT first_name, other_names, surname, biennial_income, assets, liabilities, other_financial_info FROM children WHERE declaration_id = ?', [declarationId]);
-  const [finDecls] = await pool.query('SELECT id, member_type, member_name, declaration_date, period_start_date, period_end_date, other_financial_info FROM financial_declarations WHERE declaration_id = ?', [declarationId]);
-  let finItems = [];
-  if (finDecls.length) {
-    const ids = finDecls.map(f=>f.id);
-    const placeholders = ids.map(()=>'?').join(',');
-    const [its] = await pool.query(`SELECT financial_declaration_id, item_type, type, description, value FROM financial_items WHERE financial_declaration_id IN (${placeholders})`, ids);
-    finItems = its;
-  }
-  return { base, spouses, children, finDecls, finItems };
+  // financial tables removed – derive everything from root/spouses/children JSON blobs
+  return { base, spouses, children };
 }
 
 function normalizeData(full) {
@@ -95,28 +88,11 @@ function normalizeData(full) {
   let rootIncome = rawIncomeParsed.map(i=>({ type:i.type||i.description||'Income', description:i.description||'', value:i.value||0 }));
   let rootAssets = safeParse(full.base.assets).map(mapAsset);
   let rootLiabilities = safeParse(full.base.liabilities).map(mapLiability);
-  const finDeclExpanded = full.finDecls.map(fd=>{ const items = full.finItems.filter(it=>it.financial_declaration_id===fd.id); return { ...fd, incomes: items.filter(i=>i.item_type==='income').map(i=>({ type:i.type||i.description||'Income', description:i.description||'', value:i.value||0 })), assets: items.filter(i=>i.item_type==='asset').map(mapAsset), liabilities: items.filter(i=>i.item_type==='liability').map(mapLiability) }; });
+  const finDeclExpanded = []; // no separate financial declarations anymore
   let spousesArr = full.spouses.map(s=>({ name:[s.first_name,s.other_names,s.surname].filter(Boolean).join(' '), incomes:safeParse(s.biennial_income).map(i=>({ type:i.type||i.description||'Income', description:i.description||'', value:i.value||0 })), assets:safeParse(s.assets).map(mapAsset), liabilities:safeParse(s.liabilities).map(mapLiability) }));
   let childrenArr = full.children.map(c=>({ name:[c.first_name,c.other_names,c.surname].filter(Boolean).join(' '), incomes:safeParse(c.biennial_income).map(i=>({ type:i.type||i.description||'Income', description:i.description||'', value:i.value||0 })), assets:safeParse(c.assets).map(mapAsset), liabilities:safeParse(c.liabilities).map(mapLiability) }));
   // If root sections are empty but there is a user financial declaration, promote its data to root.
-  if (!rootIncome.length && !rootAssets.length && !rootLiabilities.length) {
-    const userIdx = finDeclExpanded.findIndex(fd => (fd.member_type||'').toLowerCase() === 'user');
-    if (userIdx !== -1) {
-      const userFD = finDeclExpanded[userIdx];
-      rootIncome = userFD.incomes || [];
-      rootAssets = userFD.assets || [];
-      rootLiabilities = userFD.liabilities || [];
-      // Remove the promoted user entry to avoid duplication in PDF sections
-      finDeclExpanded.splice(userIdx,1);
-    }
-  }
-  // Additional fallback: if still empty, attempt to derive from any financial_declaration even if member_type not explicitly 'user'
-  if (!rootIncome.length && finDeclExpanded.length) {
-    const first = finDeclExpanded[0];
-    rootIncome = first.incomes || [];
-    if (!rootAssets.length) rootAssets = first.assets || [];
-    if (!rootLiabilities.length) rootLiabilities = first.liabilities || [];
-  }
+  // No financial tables fallback required now
   // Filter out empty spouse/child (no name & no financial data)
   const nonEmpty = e => (e.name && e.name.trim().length) || (e.incomes && e.incomes.length) || (e.assets && e.assets.length) || (e.liabilities && e.liabilities.length);
   spousesArr = spousesArr.filter(nonEmpty);
@@ -139,6 +115,7 @@ function buildPDF({ declarationId, base, normalized }) {
   const doc = new PDFDocument({ margin: 28 });
   const buffers=[]; doc.on('data',d=>buffers.push(d));
   const pageWidth=()=> doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  let pageCounter = 1;
   const moneyFormatter = new Intl.NumberFormat('en-KE',{ minimumFractionDigits:2, maximumFractionDigits:2 });
   const formatMoney = (val) => {
     const num = Number(val);
@@ -181,86 +158,175 @@ function buildPDF({ declarationId, base, normalized }) {
     if(!isNaN(d)) return d.toISOString().slice(0,10);
     return s; // fallback original
   };
-  const addHeader=()=>{ try{ const logo=path.resolve(__dirname,'../../my-app/public/logo192.png'); if(fs.existsSync(logo)) doc.image(logo, doc.page.margins.left, 20, { width:60 }); }catch{} doc.fontSize(14).font('Helvetica-Bold').text('DECLARATION OF INCOME, ASSETS AND LIABILITIES',{align:'center'}); doc.moveDown(0.2).fontSize(11).font('Helvetica').text('County Government of Mombasa',{align:'center'}); doc.moveDown(); };
-  const ensureSpace=n=>{ if(doc.y + n > doc.page.height - doc.page.margins.bottom){ doc.addPage(); addHeader(); } };
-  const section=t=>{ ensureSpace(30); doc.moveDown(0.4); doc.fontSize(12).font('Helvetica-Bold').fillColor('#003366').text(t); doc.moveDown(0.2).fontSize(9).font('Helvetica').fillColor('#000'); };
-  const kv=(k,v)=>{ ensureSpace(18); doc.font('Helvetica-Bold').text(k+': ',{continued:true}); doc.font('Helvetica').text(v||''); doc.moveDown(0.15); };
-  const table=(rows,headers)=>{
-    if(!rows.length){ doc.font('Helvetica-Oblique').text('None'); return; }
+  const addHeader=()=>{ 
+    try { 
+      const logo=path.resolve(__dirname,'../../my-app/public/logo192.png'); 
+      if (fs.existsSync(logo)) {
+        const logoWidth=60; const centerX = doc.page.margins.left + (pageWidth()-logoWidth)/2; 
+        // Draw logo at the very top with some breathing space after it
+        doc.image(logo, centerX, 18, { width:logoWidth });
+        // Push cursor below full logo height + gap (assuming roughly square logo)
+        doc.y = 18 + logoWidth + 10; 
+      } else {
+        doc.moveDown(0.6);
+      }
+    } catch { doc.moveDown(0.6); }
+    // Heading now clearly separated from logo
+    doc.fontSize(15).font('Helvetica-Bold').text('DECLARATION OF INCOME, ASSETS AND LIABILITIES',{align:'center'});
+    doc.moveDown(0.25).fontSize(11).font('Helvetica').text('County Government of Mombasa',{align:'center'});
+    doc.moveDown(0.4);
+  };
+  const addPageFooter=()=>{
+    // Draw footer page number inside the content area (avoid pushing content or creating blank pages)
+    const currentY = doc.y; // remember cursor
+    const footerY = doc.page.height - doc.page.margins.bottom - 12; // inside bottom margin
+    doc.save();
+    doc.fontSize(8).fillColor('#555');
+    doc.text(`Page ${pageCounter}`, doc.page.margins.left, footerY, { width: pageWidth(), align:'center' });
+    doc.restore();
+    doc.y = currentY; // restore cursor to continue content if needed
+  };
+  const ensureSpace=n=>{ if(doc.y + n > doc.page.height - doc.page.margins.bottom){ addPageFooter(); doc.addPage(); pageCounter++; addHeader(); } };
+  const section=t=>{ ensureSpace(40); doc.moveDown(0.6); doc.fontSize(12).font('Helvetica-Bold').fillColor('#003366').text(t.toUpperCase(), { underline:false }); doc.moveDown(0.25).fontSize(9).font('Helvetica').fillColor('#000'); };
+  // Generic table renderer (updated padding & spacing)
+  const table=(rows,headers, opts={})=>{
+    const { emptyMessage='None', columnWidths=null, fontSize=8 } = opts;
+    if(!rows.length){ doc.font('Helvetica-Oblique').fontSize(fontSize).text(emptyMessage); doc.moveDown(0.4); return; }
     const w=pageWidth();
-    const colWidths=headers.map(()=>Math.floor(w/headers.length));
+    const totalCols = headers.length;
+    const colWidths = columnWidths && columnWidths.length===totalCols ? columnWidths : headers.map(()=>Math.floor(w/totalCols));
     const startXBase = doc.x;
     const drawRow=(vals,isHeader=false)=>{
-      ensureSpace(24);
+      ensureSpace(28);
       const startX = startXBase;
-      let rowY = doc.y;
+      const rowY = doc.y;
       // measure heights
       const cellHeights = vals.map((val,i)=>{
-        const text = String(val).substring(0,300) || '';
-        return doc.heightOfString(text, { width: colWidths[i], align:'left' });
+        const text = (val===undefined||val===null?'':String(val)).substring(0,500);
+        return doc.heightOfString(text, { width: colWidths[i]-8, align:'left' });
       });
-      const paddingY = 4;
+      const paddingY = isHeader ? 6 : 5;
       const rowHeight = Math.max(...cellHeights) + paddingY*2;
-      // background for header
+      // background for header / zebra
       if (isHeader) {
-        doc.save().rect(startX, rowY, colWidths.reduce((a,b)=>a+b,0), rowHeight).fill('#f0f0f0').restore();
+        doc.save().rect(startX, rowY, colWidths.reduce((a,b)=>a+b,0), rowHeight).fill('#e6eef5').restore();
+      } else if (opts.zebra && rows.indexOf(vals) % 2 === 0) {
+        doc.save().rect(startX, rowY, colWidths.reduce((a,b)=>a+b,0), rowHeight).fill('#fafafa').restore();
       }
-      // cell borders + text
+      // draw cells
       let offsetX = startX;
       vals.forEach((val,i)=>{
         const cellWidth = colWidths[i];
-        // border
-        doc.rect(offsetX, rowY, cellWidth, rowHeight).stroke();
-        // text
-        doc.font(isHeader?'Helvetica-Bold':'Helvetica').fontSize(isHeader?9:8).fillColor('#000');
-        doc.text(String(val).substring(0,300), offsetX+3, rowY+paddingY, { width: cellWidth-6, continued:false });
+        doc.rect(offsetX, rowY, cellWidth, rowHeight).stroke('#cccccc');
+        doc.font(isHeader?'Helvetica-Bold':'Helvetica').fontSize(isHeader?fontSize+1:fontSize).fillColor('#000');
+        doc.text((val===undefined||val===null?'':String(val)), offsetX+4, rowY+paddingY, { width: cellWidth-8, continued:false });
         offsetX += cellWidth;
       });
-      doc.y = rowY + rowHeight; // move cursor
-      doc.x = startX;
+      doc.y = rowY + rowHeight; doc.x = startX;
     };
     drawRow(headers,true);
     rows.forEach(r=> drawRow(r,false));
-  doc.moveDown(0.5);
+    doc.moveDown(0.7);
+  };
+  // Helper to build key/value tables uniformly
+  const tableKV=(pairs, headerLabel='Field')=>{
+    const filtered = (pairs||[]).filter(p=>p && p.length===2);
+    table(filtered, [headerLabel,'Value'], { fontSize:8, zebra:true });
   };
   addHeader();
-  section('Declaration Overview'); kv('Declaration ID', declarationId); kv('Declaration Type', base.declaration_type||''); kv('Submitted At', fmtDate(base.submitted_at)||fmtDate(base.created_at)||''); kv('Status', base.status||'pending'); if (base.correction_message) kv('Correction Message', base.correction_message);
-  section('Employee Profile'); const fullName=[base.surname, base.first_name, base.other_names].filter(Boolean).join(', '); kv('Name', fullName); kv('National ID', base.national_id||''); kv('Payroll Number', base.payroll_number||''); kv('Department', base.department||''); kv('Designation', base.designation||''); kv('Marital Status', base.marital_status||base.user_marital_status||''); kv('Birthdate', fmtDate(base.birthdate)||''); kv('Place of Birth', base.place_of_birth||''); kv('Email', base.email||''); kv('Postal Address', base.postal_address||''); kv('Physical Address', base.physical_address||''); kv('Nature of Employment', base.nature_of_employment||'');
-  section('Financial Period'); kv('Period Start', fmtDate(base.period_start_date || (normalized.finDeclExpanded[0]?.period_start_date) || '')); kv('Period End', fmtDate(base.period_end_date || (normalized.finDeclExpanded[0]?.period_end_date) || ''));
+  section('Declaration Overview');
+  tableKV([
+    ['Declaration ID', declarationId],
+    ['Declaration Type', base.declaration_type||''],
+    ['Submitted At', fmtDate(base.submitted_at)||fmtDate(base.created_at)||''],
+    ['Status', base.status||'pending'],
+    ...(base.correction_message ? [['Correction Message', base.correction_message]]:[])
+  ]);
+  section('Employee Profile');
+  const fullName=[base.surname, base.first_name, base.other_names].filter(Boolean).join(', ');
+  tableKV([
+    ['Name', fullName],
+    ['National ID', base.national_id||''],
+    ['Payroll Number', base.payroll_number||''],
+    ['Department', base.department||''],
+    ['Designation', base.designation||''],
+    ['Marital Status', base.marital_status||base.user_marital_status||''],
+    ['Birthdate', fmtDate(base.birthdate)||''],
+    ['Place of Birth', base.place_of_birth||''],
+    ['Email', base.email||''],
+    ['Postal Address', base.postal_address||''],
+    ['Physical Address', base.physical_address||''],
+    ['Nature of Employment', base.nature_of_employment||'']
+  ]);
+  section('Financial Period');
+  tableKV([
+    ['Period Start', fmtDate(base.period_start_date || (normalized.finDeclExpanded[0]?.period_start_date) || '')],
+    ['Period End', fmtDate(base.period_end_date || (normalized.finDeclExpanded[0]?.period_end_date) || '')]
+  ]);
 
-  // Integrate root financial data into the Financial Declaration list instead of separate root sections
+  // Integrate root financial data into the Financial Declaration list (single synthetic user entry)
   const userDisplayName = [base.surname, base.first_name, base.other_names].filter(Boolean).join(' ').trim() || 'User';
   if ((normalized.rootIncome && normalized.rootIncome.length) || (normalized.rootAssets && normalized.rootAssets.length) || (normalized.rootLiabilities && normalized.rootLiabilities.length)) {
-    // Try to find existing user declaration to merge into
-    let existingUser = normalized.finDeclExpanded.find(fd => (fd.member_type||'').toLowerCase() === 'user');
-    if (!existingUser) {
-      normalized.finDeclExpanded.unshift({
-        member_type: 'user',
-        member_name: userDisplayName,
-        declaration_date: base.declaration_date || new Date().toISOString().slice(0,10),
-        period_start_date: base.period_start_date || normalized.finDeclExpanded[0]?.period_start_date || base.period_start || '',
-        period_end_date: base.period_end_date || normalized.finDeclExpanded[0]?.period_end_date || base.period_end || '',
-        incomes: [...(normalized.rootIncome||[])],
-        assets: [...(normalized.rootAssets||[])],
-        liabilities: [...(normalized.rootLiabilities||[])]
-      });
-    } else {
-      // Merge without duplicating identical objects (simple JSON string match uniqueness)
-      const uniqMerge = (targetArr, addArr) => {
-        const seen = new Set(targetArr.map(o=>JSON.stringify(o)));
-        addArr.forEach(o=>{ const s=JSON.stringify(o); if(!seen.has(s)){ seen.add(s); targetArr.push(o);} });
-      };
-      uniqMerge(existingUser.incomes, normalized.rootIncome||[]);
-      uniqMerge(existingUser.assets, normalized.rootAssets||[]);
-      uniqMerge(existingUser.liabilities, normalized.rootLiabilities||[]);
-    }
+    normalized.finDeclExpanded.unshift({
+      member_type: 'user',
+      member_name: userDisplayName,
+      declaration_date: base.declaration_date || new Date().toISOString().slice(0,10),
+      period_start_date: base.period_start_date || '',
+      period_end_date: base.period_end_date || '',
+      incomes: [...(normalized.rootIncome||[])],
+      assets: [...(normalized.rootAssets||[])],
+      liabilities: [...(normalized.rootLiabilities||[])]
+    });
   }
-  normalized.finDeclExpanded.forEach(fd=>{ section(`Financial Declaration – ${fd.member_type.toUpperCase()} (${fd.member_name})`); kv('Declaration Date', fmtDate(fd.declaration_date)||''); kv('Period', `${fmtDate(fd.period_start_date||'')} -> ${fmtDate(fd.period_end_date||'')}`); doc.font('Helvetica-Bold').text('Income:'); table((fd.incomes||[]).map(i=>[i.type,i.description,formatMoney(i.value)]), ['Type','Description','Value']); doc.font('Helvetica-Bold').text('Assets:'); table((fd.assets||[]).map(a=>[a.type === 'Other' && a.asset_other_type ? a.asset_other_type : a.type, buildAssetDescription(a), formatMoney(a.value)]), ['Type','Description','Value']); doc.font('Helvetica-Bold').text('Liabilities:'); table((fd.liabilities||[]).map(l=>[l.type === 'Other' && l.liability_other_type ? l.liability_other_type : l.type, buildLiabilityDescription(l), formatMoney(l.value)]), ['Type','Description','Value']); });
-  normalized.spousesArr.forEach((s,i)=>{ section(`Spouse ${i+1}: ${s.name||'Unnamed'}`); doc.font('Helvetica-Bold').text('Income:'); table(s.incomes.map(i=>[i.type,i.description,formatMoney(i.value)]), ['Type','Description','Value']); doc.font('Helvetica-Bold').text('Assets:'); table(s.assets.map(a=>[a.type === 'Other' && a.asset_other_type ? a.asset_other_type : a.type, buildAssetDescription(a), formatMoney(a.value)]), ['Type','Description','Value']); doc.font('Helvetica-Bold').text('Liabilities:'); table(s.liabilities.map(l=>[l.type === 'Other' && l.liability_other_type ? l.liability_other_type : l.type, buildLiabilityDescription(l), formatMoney(l.value)]), ['Type','Description','Value']); });
-  normalized.childrenArr.forEach((c,i)=>{ section(`Child ${i+1}: ${c.name||'Unnamed'}`); doc.font('Helvetica-Bold').text('Income:'); table(c.incomes.map(i=>[i.type,i.description,formatMoney(i.value)]), ['Type','Description','Value']); doc.font('Helvetica-Bold').text('Assets:'); table(c.assets.map(a=>[a.type === 'Other' && a.asset_other_type ? a.asset_other_type : a.type, buildAssetDescription(a), formatMoney(a.value)]), ['Type','Description','Value']); doc.font('Helvetica-Bold').text('Liabilities:'); table(c.liabilities.map(l=>[l.type === 'Other' && l.liability_other_type ? l.liability_other_type : l.type, buildLiabilityDescription(l), formatMoney(l.value)]), ['Type','Description','Value']); });
-  const sum=a=>a.reduce((t,x)=>t+(Number(x.value)||0),0); section('Totals Summary'); const allIncomes = normalized.finDeclExpanded.flatMap(f=>f.incomes||[]); const allAssets = normalized.finDeclExpanded.flatMap(f=>f.assets||[]); const allLiabilities = normalized.finDeclExpanded.flatMap(f=>f.liabilities||[]); kv('Total Income (All)', formatMoney(sum(allIncomes))); kv('Total Assets (All)', formatMoney(sum(allAssets))); kv('Total Liabilities (All)', formatMoney(sum(allLiabilities)));
-  section('Signatures'); ensureSpace(80); doc.font('Helvetica').text('Declarant Signature: ______________________________'); doc.text('Date (YYYY-MM-DD): ____________________'); if (base.witness_name || base.witness_phone || base.witness_address){ doc.moveDown(); doc.text(`Witness Name: ${base.witness_name||''}`); doc.text(`Witness Phone: ${base.witness_phone||''}`); doc.text(`Witness Address: ${base.witness_address||''}`); if (base.witness_signed) doc.font('Helvetica-Oblique').text('(Witness signed)'); doc.font('Helvetica').text('Witness Signature: __________________________'); doc.text('Date (YYYY-MM-DD): ____________________'); } else { doc.moveDown(); doc.font('Helvetica-Oblique').text('No witness information provided.'); doc.font('Helvetica'); }
-  ensureSpace(20); doc.moveDown(1).fontSize(8).fillColor('#555').text('Generated by Mombasa County DAILs Portal – retain for your records.', { align:'center', width: pageWidth() });
+  const userFDs = normalized.finDeclExpanded.filter(fd => (fd.member_type||'').toLowerCase() === 'user');
+  if (userFDs.length > 1) {
+    const primary = userFDs[0];
+    const uniqMerge = (target, add) => {
+      const seen = new Set(target.map(o=>JSON.stringify(o)));
+      add.forEach(o=>{ const s=JSON.stringify(o); if(!seen.has(s)){ seen.add(s); target.push(o);} });
+    };
+    for (let i=1;i<userFDs.length;i++) {
+      uniqMerge(primary.incomes, userFDs[i].incomes||[]);
+      uniqMerge(primary.assets, userFDs[i].assets||[]);
+      uniqMerge(primary.liabilities, userFDs[i].liabilities||[]);
+    }
+    // Rebuild expanded list with single consolidated user entry at the front
+    normalized.finDeclExpanded = [primary, ...normalized.finDeclExpanded.filter(fd => (fd.member_type||'').toLowerCase() !== 'user')];
+  }
+  normalized.finDeclExpanded.forEach(fd=>{
+    section(`Financial Declaration – ${fd.member_type.toUpperCase()} (${fd.member_name})`);
+    tableKV([
+      ['Declaration Date', fmtDate(fd.declaration_date)||''],
+      ['Period', `${fmtDate(fd.period_start_date||'')} -> ${fmtDate(fd.period_end_date||'')}`]
+    ]);
+    doc.font('Helvetica-Bold').text('Income').moveDown(0.2);
+    table((fd.incomes||[]).map(i=>[i.type,i.description,formatMoney(i.value)]), ['Type','Description','Value'], { zebra:true });
+    doc.font('Helvetica-Bold').text('Assets').moveDown(0.2);
+    table((fd.assets||[]).map(a=>[a.type === 'Other' && a.asset_other_type ? a.asset_other_type : a.type, buildAssetDescription(a), formatMoney(a.value)]), ['Type','Description','Value'], { zebra:true });
+    doc.font('Helvetica-Bold').text('Liabilities').moveDown(0.2);
+    table((fd.liabilities||[]).map(l=>[l.type === 'Other' && l.liability_other_type ? l.liability_other_type : l.type, buildLiabilityDescription(l), formatMoney(l.value)]), ['Type','Description','Value'], { zebra:true });
+  });
+  normalized.spousesArr.forEach((s,i)=>{ section(`Spouse ${i+1}: ${s.name||'Unnamed'}`); doc.font('Helvetica-Bold').text('Income').moveDown(0.15); table(s.incomes.map(i=>[i.type,i.description,formatMoney(i.value)]), ['Type','Description','Value'], { zebra:true }); doc.font('Helvetica-Bold').text('Assets').moveDown(0.15); table(s.assets.map(a=>[a.type === 'Other' && a.asset_other_type ? a.asset_other_type : a.type, buildAssetDescription(a), formatMoney(a.value)]), ['Type','Description','Value'], { zebra:true }); doc.font('Helvetica-Bold').text('Liabilities').moveDown(0.15); table(s.liabilities.map(l=>[l.type === 'Other' && l.liability_other_type ? l.liability_other_type : l.type, buildLiabilityDescription(l), formatMoney(l.value)]), ['Type','Description','Value'], { zebra:true }); });
+  normalized.childrenArr.forEach((c,i)=>{ section(`Child ${i+1}: ${c.name||'Unnamed'}`); doc.font('Helvetica-Bold').text('Income').moveDown(0.15); table(c.incomes.map(i=>[i.type,i.description,formatMoney(i.value)]), ['Type','Description','Value'], { zebra:true }); doc.font('Helvetica-Bold').text('Assets').moveDown(0.15); table(c.assets.map(a=>[a.type === 'Other' && a.asset_other_type ? a.asset_other_type : a.type, buildAssetDescription(a), formatMoney(a.value)]), ['Type','Description','Value'], { zebra:true }); doc.font('Helvetica-Bold').text('Liabilities').moveDown(0.15); table(c.liabilities.map(l=>[l.type === 'Other' && l.liability_other_type ? l.liability_other_type : l.type, buildLiabilityDescription(l), formatMoney(l.value)]), ['Type','Description','Value'], { zebra:true }); });
+  const sum=a=>a.reduce((t,x)=>t+(Number(x.value)||0),0); section('Totals Summary'); const allIncomes = normalized.finDeclExpanded.flatMap(f=>f.incomes||[]); const allAssets = normalized.finDeclExpanded.flatMap(f=>f.assets||[]); const allLiabilities = normalized.finDeclExpanded.flatMap(f=>f.liabilities||[]); tableKV([
+    ['Total Income (All)', formatMoney(sum(allIncomes))],
+    ['Total Assets (All)', formatMoney(sum(allAssets))],
+    ['Total Liabilities (All)', formatMoney(sum(allLiabilities))]
+  ], 'Metric');
+  const declarationDate = fmtDate(base.declaration_date || normalized.finDeclExpanded.find(fd => (fd.member_type||'').toLowerCase()==='user')?.declaration_date || normalized.finDeclExpanded[0]?.declaration_date || '');
+  section('Signatures'); ensureSpace(120); tableKV([
+    ['Declarant Signature', 'Signed'],
+    ['Declarant Date', declarationDate || ''],
+    ...(base.witness_name||base.witness_phone||base.witness_address ? [
+      ['Witness Name', base.witness_name||''],
+      ['Witness Phone', base.witness_phone||''],
+      ['Witness Address', base.witness_address||''],
+      ['Witness Signature', 'Informed'],
+      ['Witness Date', declarationDate || '']
+    ] : [['Witness Information', 'No witness information provided.']])
+  ], 'Field');
+  ensureSpace(40); doc.moveDown(0.5).fontSize(8).fillColor('#555').text('Generated by Mombasa County DAILs Portal – retain for your records.', { align:'center', width: pageWidth() });
+  addPageFooter();
   doc.end();
   return new Promise(resolve => doc.on('end', ()=> resolve(Buffer.concat(buffers))));
 }

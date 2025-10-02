@@ -3,12 +3,21 @@ exports.updateDeclaration = async (req, res) => {
     try {
         const declarationId = req.params.id;
         const userId = req.user.id;
+        const db = require('../config/db');
+        // Ensure the declaration exists and belongs to this user BEFORE we start
+        // deleting and reinserting relational rows. Without this, attempting to
+        // insert spouses/children for a non-existent declaration triggers a
+        // foreign key error (500) instead of a clean 404 for the client.
+        const [existingDeclRows] = await db.execute('SELECT id FROM declarations WHERE id = ? AND user_id = ?', [declarationId, userId]);
+        if (!existingDeclRows.length) {
+            return res.status(404).json({ success: false, message: 'Declaration not found' });
+        }
         const {
             // Personal/user profile fields may be sent but declaration table does not store them; ignore or optionally update users table separately.
             marital_status,
             spouses,
             children,
-            financial_declarations,
+            // financial_declarations removed
             witness_signed,
             witness_name,
             witness_address,
@@ -33,12 +42,11 @@ exports.updateDeclaration = async (req, res) => {
 
         // Fetch previous state for audit
         let prevDeclaration = null;
-        let prevFinDecls = [];
+    let prevFinDecls = [];// removed feature
         try {
             const [drows] = await db.execute('SELECT id, marital_status, declaration_date, biennial_income, assets, liabilities, other_financial_info, witness_signed, witness_name, witness_address, witness_phone FROM declarations WHERE id = ? AND user_id = ?', [declarationId, userId]);
             if (drows && drows[0]) prevDeclaration = drows[0];
-            const [finRows] = await db.execute('SELECT id, member_type, member_name, declaration_date, period_start_date, period_end_date, other_financial_info FROM financial_declarations WHERE declaration_id = ?', [declarationId]);
-            prevFinDecls = finRows;
+            // financial_declarations deprecated
         } catch (e) {
             console.warn('Audit prefetch failed:', e.message);
         }
@@ -49,7 +57,7 @@ exports.updateDeclaration = async (req, res) => {
                 marital_status=?, 
                 witness_signed=?, witness_name=?, witness_address=?, witness_phone=?, 
                 biennial_income=?, assets=?, liabilities=?, other_financial_info=?, 
-                declaration_date=?, updated_at=CURRENT_TIMESTAMP 
+                declaration_date=?, period_start_date=?, period_end_date=?, updated_at=CURRENT_TIMESTAMP 
              WHERE id=? AND user_id=?`,
             [
                 marital_status,
@@ -62,12 +70,12 @@ exports.updateDeclaration = async (req, res) => {
                 typeof liabilities === 'string' ? liabilities : JSON.stringify(liabilities || []),
                 other_financial_info || '',
                 declaration_date,
+                period_start_date || null,
+                period_end_date || null,
                 declarationId,
                 userId
             ]
         );
-
-        // Note: period_start_date / period_end_date not in current schema (cannot update). If needed, add columns first.
 
         // If witness phone changed or newly added, notify the (new) witness
         try {
@@ -131,89 +139,10 @@ exports.updateDeclaration = async (req, res) => {
             }
         }
 
-        // Update financial declarations and financial items
-        // First, delete existing financial items (cascade will handle this, but be explicit)
-        const [existingFinDecls] = await db.execute('SELECT id FROM financial_declarations WHERE declaration_id = ?', [declarationId]);
-        if (existingFinDecls.length > 0) {
-            const finDeclIds = existingFinDecls.map(fd => fd.id);
-            await db.execute(`DELETE FROM financial_items WHERE financial_declaration_id IN (${finDeclIds.map(() => '?').join(',')})`, finDeclIds);
-        }
-        
-        // Delete existing financial declarations
-        await db.execute('DELETE FROM financial_declarations WHERE declaration_id = ?', [declarationId]);
-        
-        // Insert new financial declarations and items
-        if (Array.isArray(financial_declarations) && financial_declarations.length > 0) {
-            // Filter out obviously invalid placeholder objects
-            const cleanedFinancialDecls = financial_declarations.filter(fd => fd && (fd.member_type || fd.member_name || fd.biennial_income || fd.assets || fd.liabilities));
-            const FinancialDeclaration = require('../models/financialDeclaration');
-            const FinancialItem = require('../models/financialItem');
-            
-            for (const finDecl of cleanedFinancialDecls) {
-                // Validate member_type
-                const allowedTypes = ['user', 'spouse', 'child'];
-                const validType = allowedTypes.includes(finDecl.member_type?.toLowerCase()) ? finDecl.member_type.toLowerCase() : 'user';
-
-                // Create the financial declaration
-                const financialDeclaration = await FinancialDeclaration.create({
-                    declaration_id: declarationId,
-                    member_type: validType,
-                    member_name: finDecl.member_name || 'Unknown',
-                    declaration_date: finDecl.declaration_date || new Date().toISOString().split('T')[0],
-                    period_start_date: finDecl.period_start_date || '',
-                    period_end_date: finDecl.period_end_date || '',
-                    other_financial_info: finDecl.other_financial_info || ''
-                });
-
-                // Insert financial items for biennial_income
-                if (Array.isArray(finDecl.biennial_income) && finDecl.biennial_income.length > 0) {
-                    for (const item of finDecl.biennial_income) {
-                        await FinancialItem.create({
-                            financial_declaration_id: financialDeclaration.id,
-                            item_type: 'income',
-                            type: item.type || 'income',
-                            description: item.description || '',
-                            value: item.value || 0
-                        });
-                    }
-                }
-
-                // Insert financial items for assets
-                if (Array.isArray(finDecl.assets) && finDecl.assets.length > 0) {
-                    for (const item of finDecl.assets) {
-                        await FinancialItem.create({
-                            financial_declaration_id: financialDeclaration.id,
-                            item_type: 'asset',
-                            type: item.type || 'asset',
-                            description: item.description || '',
-                            value: item.value || 0
-                        });
-                    }
-                }
-
-                // Insert financial items for liabilities
-                if (Array.isArray(finDecl.liabilities) && finDecl.liabilities.length > 0) {
-                    for (const item of finDecl.liabilities) {
-                        await FinancialItem.create({
-                            financial_declaration_id: financialDeclaration.id,
-                            item_type: 'liability',
-                            type: item.type || 'liability',
-                            description: item.description || '',
-                            value: item.value || 0
-                        });
-                    }
-                }
-            }
-        }
+        // financial_declarations removed
 
         // Fetch new fin declarations for audit diff
-        let newFinDecls = [];
-        try {
-            const [finRowsNew] = await db.execute('SELECT id, member_type, member_name, declaration_date, period_start_date, period_end_date, other_financial_info FROM financial_declarations WHERE declaration_id = ?', [declarationId]);
-            newFinDecls = finRowsNew;
-        } catch (e) {
-            console.warn('Audit postfetch failed:', e.message);
-        }
+        let newFinDecls = [];// removed
 
         // Compute diff (shallow) for declaration root
         const computeShallowDiff = (beforeObj, afterObj) => {
@@ -248,37 +177,7 @@ exports.updateDeclaration = async (req, res) => {
             console.warn('Audit log insert (declaration) failed:', e.message);
         }
 
-        // Insert financial audit logs per member (match by member_type+member_name)
-        try {
-            const indexByKey = (arr) => {
-                const map = new Map();
-                (arr || []).forEach(r => map.set(`${r.member_type}|${r.member_name}`, r));
-                return map;
-            };
-            const beforeMap = indexByKey(prevFinDecls);
-            const afterMap = indexByKey(newFinDecls);
-            const keys = new Set([...beforeMap.keys(), ...afterMap.keys()]);
-            for (const key of keys) {
-                const before = beforeMap.get(key) || null;
-                const after = afterMap.get(key) || null;
-                if (JSON.stringify(before) !== JSON.stringify(after)) {
-                    await db.execute(
-                        'INSERT INTO financial_audit_logs (declaration_id, user_id, action, member_type, member_name, before_state, after_state) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                        [
-                            declarationId,
-                            userId,
-                            'REPLACE',
-                            after?.member_type || before?.member_type || null,
-                            after?.member_name || before?.member_name || null,
-                            before ? JSON.stringify(before) : null,
-                            after ? JSON.stringify(after) : null
-                        ]
-                    );
-                }
-            }
-        } catch (e) {
-            console.warn('Audit log insert (financial) failed:', e.message);
-        }
+        // financial audit logs removed
 
         res.json({ success: true, message: 'Declaration updated successfully.' });
     } catch (err) {
@@ -291,145 +190,116 @@ exports.updateDeclaration = async (req, res) => {
     }
 };
 
-// --- Batch Update Unified Financial Structure ---
-// Endpoint will accept: { financial_unified: [ { member_type, member_name, data: { biennial_income, assets, liabilities, other_financial_info, declaration_date?, period_start_date?, period_end_date? } } ] }
-// Behavior:
-// 1. Wipes existing financial_declarations + items for the declaration
-// 2. Recreates them from the unified array
-// 3. Updates spouses/children JSON financial blobs if member_type spouse/child present
-// 4. Updates root declaration JSON (biennial_income/assets/liabilities) if member_type user & scope root or user entry present
-exports.updateUnifiedFinancial = async (req, res) => {
-    const db = require('../config/db');
-    const declarationId = req.params.id;
-    const userId = req.user.id;
-    const { financial_unified } = req.body || {};
-    if (!Array.isArray(financial_unified)) {
-        return res.status(400).json({ success: false, message: 'financial_unified array required' });
-    }
-    const conn = await db.getConnection();
+// --- Partial Update Declaration (PATCH) ---
+// Accepts a subset of fields and only updates those provided. Does not delete/replace
+// full related collections unless explicitly supplied. Designed to work with
+// diffModels output from frontend.
+exports.patchDeclaration = async (req, res) => {
     try {
-        await conn.beginTransaction();
-        // Ensure declaration belongs to user
-        const [declRows] = await conn.execute('SELECT id FROM declarations WHERE id = ? AND user_id = ?', [declarationId, userId]);
-        if (declRows.length === 0) {
-            await conn.rollback();
+        const declarationId = req.params.id;
+        const userId = req.user.id;
+        const db = require('../config/db');
+        const [existing] = await db.execute('SELECT id FROM declarations WHERE id = ? AND user_id = ?', [declarationId, userId]);
+        if (!existing.length) {
             return res.status(404).json({ success: false, message: 'Declaration not found' });
         }
-        // Delete existing financial items and declarations
-        const [oldFin] = await conn.execute('SELECT id FROM financial_declarations WHERE declaration_id = ?', [declarationId]);
-        if (oldFin.length > 0) {
-            const ids = oldFin.map(r => r.id);
-            await conn.execute(`DELETE FROM financial_items WHERE financial_declaration_id IN (${ids.map(()=>'?').join(',')})`, ids);
-            await conn.execute('DELETE FROM financial_declarations WHERE declaration_id = ?', [declarationId]);
-        }
-        // We'll rebuild spouse/children sets of JSON data for merging
-        const spouseMap = new Map();
-        const childMap = new Map();
-        let rootUser = null;
-        // Insert new financial_declarations + items
-        const insertFinDecl = async (fd) => {
-            const member_type = ['user','spouse','child'].includes(fd.member_type) ? fd.member_type : 'user';
-            const member_name = fd.member_name || 'Unknown';
-            const data = fd.data || {};
-            const finDeclInsert = await conn.execute(
-                'INSERT INTO financial_declarations (declaration_id, member_type, member_name, declaration_date, period_start_date, period_end_date, other_financial_info) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                [
-                    declarationId,
-                    member_type,
-                    member_name,
-                    data.declaration_date || new Date().toISOString().slice(0,10),
-                    data.period_start_date || null,
-                    data.period_end_date || null,
-                    data.other_financial_info || ''
-                ]
-            );
-            const finDeclId = finDeclInsert[0].insertId;
-            const insertItems = async (items, item_type) => {
-                if (!Array.isArray(items)) return;
-                for (const item of items) {
-                    await conn.execute(
-                        'INSERT INTO financial_items (financial_declaration_id, item_type, type, description, value) VALUES (?, ?, ?, ?, ?)',
-                        [finDeclId, item_type, item.type || item_type, item.description || '', item.value || 0]
-                    );
-                }
-            };
-            await insertItems(data.biennial_income, 'income');
-            await insertItems(data.assets, 'asset');
-            await insertItems(data.liabilities, 'liability');
-            // Capture for spouse/child/root sync
-            if (member_type === 'spouse') {
-                if (!spouseMap.has(member_name)) spouseMap.set(member_name, { biennial_income: [], assets: [], liabilities: [], other_financial_info: '' });
-                const agg = spouseMap.get(member_name);
-                agg.biennial_income = data.biennial_income || [];
-                agg.assets = data.assets || [];
-                agg.liabilities = data.liabilities || [];
-                agg.other_financial_info = data.other_financial_info || '';
-            } else if (member_type === 'child') {
-                if (!childMap.has(member_name)) childMap.set(member_name, { biennial_income: [], assets: [], liabilities: [], other_financial_info: '' });
-                const agg = childMap.get(member_name);
-                agg.biennial_income = data.biennial_income || [];
-                agg.assets = data.assets || [];
-                agg.liabilities = data.liabilities || [];
-                agg.other_financial_info = data.other_financial_info || '';
-            } else if (member_type === 'user') {
-                rootUser = data;
-            }
-        };
-        for (const entry of financial_unified) {
-            await insertFinDecl(entry);
-        }
-        // Update root declaration JSON fields if user data provided
-        if (rootUser) {
-            await conn.execute('UPDATE declarations SET biennial_income = ?, assets = ?, liabilities = ?, other_financial_info = ? WHERE id = ?', [
-                JSON.stringify(rootUser.biennial_income || []),
-                JSON.stringify(rootUser.assets || []),
-                JSON.stringify(rootUser.liabilities || []),
-                rootUser.other_financial_info || '',
-                declarationId
-            ]);
-        }
-        // Sync spouses (match by full_name)
-        if (spouseMap.size > 0) {
-            const [existingSpouses] = await conn.execute('SELECT id, full_name FROM spouses WHERE declaration_id = ?', [declarationId]);
-            for (const sp of existingSpouses) {
-                if (spouseMap.has(sp.full_name)) {
-                    const data = spouseMap.get(sp.full_name);
-                    await conn.execute('UPDATE spouses SET biennial_income = ?, assets = ?, liabilities = ?, other_financial_info = ? WHERE id = ?', [
-                        JSON.stringify(data.biennial_income || []),
-                        JSON.stringify(data.assets || []),
-                        JSON.stringify(data.liabilities || []),
-                        data.other_financial_info || '',
-                        sp.id
-                    ]);
-                }
+    const allowedScalar = new Set(['marital_status','witness_signed','witness_name','witness_address','witness_phone','biennial_income','assets','liabilities','other_financial_info','declaration_date','period_start_date','period_end_date']);
+        const payload = req.body || {};
+        const setClauses = [];
+        const values = [];
+        const changedScalar = [];
+        for (const key of Object.keys(payload)) {
+            if (!allowedScalar.has(key)) continue;
+            if (key === 'biennial_income' || key === 'assets' || key === 'liabilities') {
+                setClauses.push(`${key} = ?`);
+                values.push(JSON.stringify(payload[key] || []));
+                changedScalar.push(key);
+            } else if (key === 'witness_signed') {
+                setClauses.push('witness_signed = ?');
+                values.push(payload[key] ? 1 : 0);
+                changedScalar.push(key);
+            } else {
+                setClauses.push(`${key} = ?`);
+                values.push(payload[key]);
+                changedScalar.push(key);
             }
         }
-        // Sync children (match by full_name)
-        if (childMap.size > 0) {
-            const [existingChildren] = await conn.execute('SELECT id, full_name FROM children WHERE declaration_id = ?', [declarationId]);
-            for (const ch of existingChildren) {
-                if (childMap.has(ch.full_name)) {
-                    const data = childMap.get(ch.full_name);
-                    await conn.execute('UPDATE children SET biennial_income = ?, assets = ?, liabilities = ?, other_financial_info = ? WHERE id = ?', [
-                        JSON.stringify(data.biennial_income || []),
-                        JSON.stringify(data.assets || []),
-                        JSON.stringify(data.liabilities || []),
-                        data.other_financial_info || '',
-                        ch.id
-                    ]);
-                }
+        if (setClauses.length) {
+            setClauses.push('updated_at = CURRENT_TIMESTAMP');
+            await db.execute(`UPDATE declarations SET ${setClauses.join(', ')} WHERE id = ? AND user_id = ?`, [...values, declarationId, userId]);
+        }
+
+    // Related collections: spouses, children
+        // Only process if explicitly provided in payload (partial semantics)
+        const replacedCollections = {};
+        if (Array.isArray(payload.spouses)) {
+            await db.execute('DELETE FROM spouses WHERE declaration_id = ?', [declarationId]);
+            for (const spouse of payload.spouses) {
+                const fullName = `${spouse.first_name || ''} ${spouse.other_names || ''} ${spouse.surname || ''}`.trim();
+                await db.execute(
+                    'INSERT INTO spouses (declaration_id, first_name, other_names, surname, full_name, biennial_income, assets, liabilities, other_financial_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [
+                        declarationId,
+                        spouse.first_name || '',
+                        spouse.other_names || '',
+                        spouse.surname || '',
+                        fullName,
+                        JSON.stringify(spouse.biennial_income || []),
+                        spouse.assets || '',
+                        spouse.liabilities || '',
+                        spouse.other_financial_info || ''
+                    ]
+                );
+            }
+            replacedCollections.spouses = true;
+        }
+        if (Array.isArray(payload.children)) {
+            await db.execute('DELETE FROM children WHERE declaration_id = ?', [declarationId]);
+            for (const child of payload.children) {
+                const fullName = `${child.first_name || ''} ${child.other_names || ''} ${child.surname || ''}`.trim();
+                await db.execute(
+                    'INSERT INTO children (declaration_id, first_name, other_names, surname, full_name, biennial_income, assets, liabilities, other_financial_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [
+                        declarationId,
+                        child.first_name || '',
+                        child.other_names || '',
+                        child.surname || '',
+                        fullName,
+                        JSON.stringify(child.biennial_income || []),
+                        child.assets || '',
+                        child.liabilities || '',
+                        child.other_financial_info || ''
+                    ]
+                );
+            }
+            replacedCollections.children = true;
+        }
+        // financial_declarations payload ignored (deprecated)
+        // Basic audit log (create table if needed separately): declaration_patch_audit
+        try {
+                        await db.execute(
+                            'INSERT INTO declaration_patch_audit (declaration_id, user_id, changed_scalar_fields, replaced_collections) VALUES (?,?,?,?)',
+                            [
+                                declarationId,
+                                userId,
+                                JSON.stringify(changedScalar),
+                                JSON.stringify(replacedCollections)
+                            ]
+                        );
+        } catch (e) {
+            // If the audit table doesn't exist yet, log and continue silently
+            if (!/doesn\'t exist|unknown table/i.test(e.message)) {
+                console.warn('Patch audit insert failed:', e.message);
             }
         }
-        await conn.commit();
-        res.json({ success: true, message: 'Unified financial data updated.' });
+        return res.json({ success: true, message: 'Declaration patched successfully' });
     } catch (err) {
-        await conn.rollback();
-        console.error('Error updating unified financial data:', err);
-        res.status(500).json({ success: false, message: 'Failed to update unified financial data', error: err.message });
-    } finally {
-        conn.release();
+        console.error('patchDeclaration error:', err.message);
+        return res.status(500).json({ success: false, message: 'Server error applying patch' });
     }
 };
+
+// unified financial update endpoint removed
 // --- Edit Request & Retrieval Handlers ---
 const db = require('../config/db');
 
@@ -530,29 +400,17 @@ exports.getDeclarationById = async (req, res) => {
 
         const [spouses] = await db.execute('SELECT * FROM spouses WHERE declaration_id = ?', [declarationId]);
         const [children] = await db.execute('SELECT * FROM children WHERE declaration_id = ?', [declarationId]);
-        const [financialDeclarations] = await db.execute('SELECT * FROM financial_declarations WHERE declaration_id = ?', [declarationId]);
-
-        let financialItems = [];
-        if (financialDeclarations.length) {
-            const ids = financialDeclarations.map(fd => fd.id);
-            const placeholders = ids.map(() => '?').join(',');
-            const [items] = await db.execute(`SELECT * FROM financial_items WHERE financial_declaration_id IN (${placeholders})`, ids);
-            financialItems = items;
+        // Build unified financial view from root/spouses/children only (financial tables removed)
+        const parseArr = (v)=>{ if(!v) return []; if(Array.isArray(v)) return v; try { return JSON.parse(v)||[];} catch { return []; } };
+        const financial_unified = [];
+        const rootIncome = parseArr(rootDecl.biennial_income);
+        const rootAssets = parseArr(rootDecl.assets);
+        const rootLiabilities = parseArr(rootDecl.liabilities);
+        if (rootIncome.length || rootAssets.length || rootLiabilities.length) {
+            financial_unified.push({ member_type:'user', member_name: rootDecl.first_name ? `${rootDecl.first_name} ${rootDecl.surname||''}`.trim() : 'User', scope:'root', data:{ biennial_income: rootIncome, assets: rootAssets, liabilities: rootLiabilities, other_financial_info: rootDecl.other_financial_info||'' } });
         }
-
-        const shapeItem = (i) => ({ ...i, type: i.type || i.item_type || i.description || '' });
-        const financialsWithItems = financialDeclarations.map(fd => {
-            const items = financialItems.filter(it => it.financial_declaration_id === fd.id);
-            return {
-                ...fd,
-                member_name: fd.member_name || (fd.member_type === 'user' ? 'User' : (fd.member_type || 'member') + '_' + fd.id),
-                biennial_income: items.filter(i => i.item_type === 'income').map(shapeItem),
-                assets: items.filter(i => i.item_type === 'asset').map(shapeItem),
-                liabilities: items.filter(i => i.item_type === 'liability').map(shapeItem)
-            };
-        });
-
-        const financial_unified = buildUnifiedFinancial(rootDecl, financialsWithItems, spouses, children);
+        spouses.forEach(s=>{ const si=parseArr(s.biennial_income), sa=parseArr(s.assets), sl=parseArr(s.liabilities); if (si.length||sa.length||sl.length) financial_unified.push({ member_type:'spouse', member_name: s.full_name || `${s.first_name||''} ${s.surname||''}`.trim(), scope:'spouses', data:{ biennial_income: si, assets: sa, liabilities: sl, other_financial_info: s.other_financial_info||'' } }); });
+        children.forEach(c=>{ const ci=parseArr(c.biennial_income), ca=parseArr(c.assets), cl=parseArr(c.liabilities); if (ci.length||ca.length||cl.length) financial_unified.push({ member_type:'child', member_name: c.full_name || `${c.first_name||''} ${c.surname||''}`.trim(), scope:'children', data:{ biennial_income: ci, assets: ca, liabilities: cl, other_financial_info: c.other_financial_info||'' } }); });
 
         return res.json({
             success: true,
@@ -561,7 +419,6 @@ exports.getDeclarationById = async (req, res) => {
                 user: userProfile, // explicit user object for frontend
                 spouses,
                 children,
-                financial_declarations: financialsWithItems,
                 financial_unified
             }
         });
@@ -571,80 +428,7 @@ exports.getDeclarationById = async (req, res) => {
     }
 };
 
-// Helper to build unified financial records
-function buildUnifiedFinancial(rootDecl, financialsWithItems, spouses, children) {
-    const parseJsonArray = (val) => {
-        if (!val) return [];
-        if (Array.isArray(val)) return val;
-        if (typeof val === 'string') {
-            try { const parsed = JSON.parse(val); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
-        }
-        return [];
-    };
-    const normalizeItems = (arr, defType) => parseJsonArray(arr).map(o => ({
-        type: o.type || defType || o.description || '',
-        description: o.description || '',
-        value: o.value || '',
-        ...o
-    }));
-    const unified = [];
-    const rootIncome = normalizeItems(rootDecl.biennial_income, 'Income');
-    const rootAssets = normalizeItems(rootDecl.assets, 'Asset');
-    const rootLiabilities = normalizeItems(rootDecl.liabilities, 'Liability');
-    if (rootIncome.length || rootAssets.length || rootLiabilities.length) {
-        unified.push({
-            member_type: 'user',
-            member_name: rootDecl.first_name ? `${rootDecl.first_name} ${rootDecl.surname || ''}`.trim() : 'User',
-            scope: 'root',
-            data: { biennial_income: rootIncome, assets: rootAssets, liabilities: rootLiabilities, other_financial_info: rootDecl.other_financial_info || '' }
-        });
-    }
-    financialsWithItems.forEach(fd => unified.push({
-        member_type: fd.member_type || 'user',
-        member_name: fd.member_name,
-        scope: 'financial_declarations',
-        data: {
-            declaration_date: fd.declaration_date,
-            period_start_date: fd.period_start_date,
-            period_end_date: fd.period_end_date,
-            biennial_income: fd.biennial_income,
-            assets: fd.assets,
-            liabilities: fd.liabilities,
-            other_financial_info: fd.other_financial_info || ''
-        }
-    }));
-    spouses.forEach(s => {
-        const sIncome = normalizeItems(s.biennial_income, 'Income');
-        const sAssets = normalizeItems(s.assets, 'Asset');
-        const sLiabilities = normalizeItems(s.liabilities, 'Liability');
-        if (sIncome.length || sAssets.length || sLiabilities.length) unified.push({
-            member_type: 'spouse',
-            member_name: s.full_name || `${s.first_name || ''} ${s.surname || ''}`.trim(),
-            scope: 'spouses',
-            data: { biennial_income: sIncome, assets: sAssets, liabilities: sLiabilities, other_financial_info: s.other_financial_info || '' }
-        });
-    });
-    children.forEach(c => {
-        const cIncome = normalizeItems(c.biennial_income, 'Income');
-        const cAssets = normalizeItems(c.assets, 'Asset');
-        const cLiabilities = normalizeItems(c.liabilities, 'Liability');
-        if (cIncome.length || cAssets.length || cLiabilities.length) unified.push({
-            member_type: 'child',
-            member_name: c.full_name || `${c.first_name || ''} ${c.surname || ''}`.trim(),
-            scope: 'children',
-            data: { biennial_income: cIncome, assets: cAssets, liabilities: cLiabilities, other_financial_info: c.other_financial_info || '' }
-        });
-    });
-    const dedupMap = new Map();
-    unified.forEach(entry => {
-        const key = entry.member_type + '::' + entry.member_name;
-        if (!dedupMap.has(key)) dedupMap.set(key, entry); else {
-            const existing = dedupMap.get(key);
-            if (existing.scope !== 'financial_declarations' && entry.scope === 'financial_declarations') dedupMap.set(key, entry);
-        }
-    });
-    return Array.from(dedupMap.values());
-}
+// buildUnifiedFinancial removed – simplified financial_unified logic inlined
 
 // On-demand PDF download (owner or super_admin)
 exports.downloadDeclarationPDF = async (req, res) => {
@@ -672,38 +456,6 @@ exports.downloadDeclarationPDF = async (req, res) => {
     }
 };
 
-// New endpoint: only unified financial data (rebuilds fresh)
-exports.getDeclarationFinancialUnified = async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const declarationId = req.params.id;
-        const db = require('../config/db');
-        const [declRows] = await db.execute('SELECT * FROM declarations WHERE id = ? AND user_id = ?', [declarationId, userId]);
-        if (declRows.length === 0) return res.status(404).json({ success: false, message: 'Declaration not found' });
-        const rootDecl = declRows[0];
-        const [spouses] = await db.execute('SELECT * FROM spouses WHERE declaration_id = ?', [declarationId]);
-        const [children] = await db.execute('SELECT * FROM children WHERE declaration_id = ?', [declarationId]);
-        const [financialDeclarations] = await db.execute('SELECT * FROM financial_declarations WHERE declaration_id = ?', [declarationId]);
-        const [financialItems] = await db.execute('SELECT * FROM financial_items WHERE financial_declaration_id IN (' + (financialDeclarations.map(fd => fd.id).join(',') || '0') + ')');
-        const shapeItem = (i) => ({ ...i, type: i.type || i.item_type || i.description || '' });
-        const financialsWithItems = financialDeclarations.map(fd => {
-            const items = financialItems.filter(item => item.financial_declaration_id === fd.id);
-            let member_name = fd.member_name || (fd.member_type === 'user' ? 'User' : (fd.member_type || 'member') + '_' + fd.id);
-            return {
-                ...fd,
-                member_name,
-                biennial_income: items.filter(i => i.item_type === 'income').map(shapeItem),
-                assets: items.filter(i => i.item_type === 'asset').map(shapeItem),
-                liabilities: items.filter(i => i.item_type === 'liability').map(shapeItem)
-            };
-        });
-        const financial_unified = buildUnifiedFinancial(rootDecl, financialsWithItems, spouses, children);
-        res.json({ success: true, financial_unified });
-    } catch (err) {
-        console.error('Error fetching unified financial data:', err);
-        res.status(500).json({ success: false, message: 'Server error fetching unified financial data' });
-    }
-};
 const Declaration = require('../models/declarationModel');
 
 // Get all declarations for admin (with debug log)
@@ -770,7 +522,7 @@ exports.submitDeclaration = async (req, res) => {
             signature_path,
             spouses,
             children,
-            financialDeclarations,
+            financialDeclarations, // legacy camelCase from older frontend
             spouse_financials,
             child_financials,
             witness,
@@ -780,9 +532,20 @@ exports.submitDeclaration = async (req, res) => {
             period_start_date,
             period_end_date
         } = req.body;
+    // Legacy financial_declarations payload ignored (tables removed)
         // --- Declaration type logic ---
-        const allowedTypes = ['First', 'Bienniel', 'Final'];
-        if (!declaration_type || !allowedTypes.includes(declaration_type)) {
+        // Normalize declaration_type spelling (accept legacy variants)
+        const normalizeDeclType = (val) => {
+            if (!val) return '';
+            const lower = val.toLowerCase();
+            if (lower.startsWith('bien')) return 'Biennial'; // covers 'biennial', 'bienniel'
+            if (lower === 'first') return 'First';
+            if (lower === 'final') return 'Final';
+            return val; // unknown passthrough
+        };
+        const allowedTypes = ['First', 'Biennial', 'Final'];
+        const normalizedType = normalizeDeclType(declaration_type);
+        if (!normalizedType || !allowedTypes.includes(normalizedType)) {
             return res.status(400).json({ success: false, message: 'Invalid or missing declaration type.' });
         }
 
@@ -795,7 +558,7 @@ exports.submitDeclaration = async (req, res) => {
         }
 
         // Bienniel logic: only allowed every two years, Nov 1 - Dec 31, starting 2025
-        if (declaration_type === 'Bienniel') {
+    if (normalizedType === 'Biennial') {
             // Parse date
             let decDate = declaration_date;
             if (typeof decDate === 'string' && decDate.includes('/')) {
@@ -809,18 +572,20 @@ exports.submitDeclaration = async (req, res) => {
             const day = dateObj.getDate();
             // Only allow odd years >= 2025
             if (year < 2025 || year % 2 === 0) {
-                return res.status(400).json({ success: false, message: 'Bienniel declaration is only allowed every two years starting 2025.' });
+                return res.status(400).json({ success: false, message: 'Biennial declaration is only allowed every two years starting 2025.' });
             }
             // Only allow between Nov 1 and Dec 31
             const isAllowedWindow = (month === 11 && day >= 1) || (month === 12 && day <= 31);
             if (!isAllowedWindow) {
-                return res.status(400).json({ success: false, message: 'Bienniel declaration is only allowed between Nov 1 and Dec 31 of the allowed year.' });
+                return res.status(400).json({ success: false, message: 'Biennial declaration is only allowed between Nov 1 and Dec 31 of the allowed year.' });
             }
-            // Only one bienniel per allowed year
-            if (previousDeclarations.some(d => d.declaration_type === 'Bienniel' && d.declaration_date && new Date(d.declaration_date).getFullYear() === year)) {
-                return res.status(400).json({ success: false, message: 'You have already submitted a Bienniel declaration for this period.' });
+            // Only one biennial per allowed year (account for legacy spelling in DB)
+            if (previousDeclarations.some(d => ['Biennial','Bienniel'].includes(d.declaration_type) && d.declaration_date && new Date(d.declaration_date).getFullYear() === year)) {
+                return res.status(400).json({ success: false, message: 'You have already submitted a Biennial declaration for this period.' });
             }
         }
+        // Use normalized type going forward
+        req.body.declaration_type = normalizedType;
 
                 // Merge spouse_financials into spouses
                 let mergedSpouses = spouses;
@@ -859,12 +624,12 @@ exports.submitDeclaration = async (req, res) => {
                     return dateStr;
                 }
 
-                // Validate biennial_income: must be an array of objects with type, description, value
-                let validBiennialIncome = biennial_income;
-                if (!Array.isArray(validBiennialIncome) || !validBiennialIncome.every(item => item && typeof item === 'object' && 'type' in item && 'description' in item && 'value' in item)) {
+                // Validate biennial_income: allow missing -> treat as empty array. Validate shape only if non-empty.
+                let validBiennialIncome = Array.isArray(biennial_income) ? biennial_income : [];
+                if (validBiennialIncome.length > 0 && !validBiennialIncome.every(item => item && typeof item === 'object' && 'type' in item && 'description' in item && 'value' in item)) {
                     return res.status(400).json({
                         success: false,
-                        message: "Biennial income must be an array of objects with type, description, and value."
+                        message: "Biennial income entries must include type, description, and value."
                     });
                 }
 
@@ -884,8 +649,8 @@ exports.submitDeclaration = async (req, res) => {
                     period_start_date: isoPeriodStart,
                     period_end_date: isoPeriodEnd,
                     biennial_income: validBiennialIncome,
-                    assets,
-                    liabilities,
+                    assets: Array.isArray(assets) ? assets : (assets || []),
+                    liabilities: Array.isArray(liabilities) ? liabilities : (liabilities || []),
                     other_financial_info,
                     signature_path,
                     declaration_type,
@@ -903,61 +668,7 @@ exports.submitDeclaration = async (req, res) => {
                     await Declaration.createChildren(declarationId, mergedChildren);
                 }
 
-                // Insert financial declarations and items
-                if (financialDeclarations && Array.isArray(financialDeclarations) && financialDeclarations.length > 0) {
-                    const FinancialDeclaration = require('../models/financialDeclaration');
-                    const FinancialItem = require('../models/financialItem');
-                    for (const finDecl of financialDeclarations) {
-                        // Validate member_type
-                        const allowedTypes = ['user', 'spouse', 'child'];
-                        const validType = allowedTypes.includes(finDecl.member_type?.toLowerCase()) ? finDecl.member_type.toLowerCase() : 'user';
-
-                        // Skip spouse/child financial declarations if no spouse/child provided
-                        if ((validType === 'spouse' && (!req.body.spouses || req.body.spouses.length === 0)) ||
-                            (validType === 'child' && (!req.body.children || req.body.children.length === 0))) {
-                            continue;
-                        }
-
-                        // Fallback for member_name
-                        let memberName = finDecl.member_name;
-                        if (!memberName) {
-                            if (validType === 'user' && req.user) {
-                                memberName = req.user.surname ? `${req.user.surname} ${req.user.first_name} ${req.user.other_names || ''}`.trim() : 'User';
-                            } else if (validType === 'spouse' && req.body.spouses && req.body.spouses.length > 0) {
-                                memberName = req.body.spouses[0].surname ? `${req.body.spouses[0].first_name} ${req.body.spouses[0].other_names || ''} ${req.body.spouses[0].surname}`.trim() : 'Spouse';
-                            } else if (validType === 'child' && req.body.children && req.body.children.length > 0) {
-                                memberName = req.body.children[0].surname ? `${req.body.children[0].first_name} ${req.body.children[0].other_names || ''} ${req.body.children[0].surname}`.trim() : 'Child';
-                            } else {
-                                memberName = 'Unknown';
-                            }
-                        }
-                        const financialDeclaration = await FinancialDeclaration.create({
-                            declaration_id: declarationId,
-                            member_type: validType,
-                            member_name: memberName,
-                            declaration_date: finDecl.declaration_date || declaration_date,
-                            period_start_date: finDecl.period_start_date || isoPeriodStart || declaration_date || '',
-                            period_end_date: finDecl.period_end_date || isoPeriodEnd || declaration_date || '',
-                            other_financial_info: finDecl.other_financial_info || '',
-                            status: finDecl.status || undefined
-                        });
-                        // Insert financial items
-                        if (finDecl.items && Array.isArray(finDecl.items)) {
-                            for (const item of finDecl.items) {
-                                // Validate item_type
-                                const allowedItemTypes = ['income', 'asset', 'liability'];
-                                const validItemType = allowedItemTypes.includes(item.item_type?.toLowerCase()) ? item.item_type.toLowerCase() : 'income';
-                                await FinancialItem.create({
-                                    financial_declaration_id: financialDeclaration.id,
-                                    item_type: validItemType,
-                                    description: item.description,
-                                    value: item.value,
-                                    status: item.status || undefined
-                                });
-                            }
-                        }
-                    }
-                }
+                // financial declarations & items removed – unified structures ignored
 
                 // Save witness data if provided
                 if (witness) {
