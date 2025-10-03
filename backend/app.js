@@ -132,7 +132,10 @@ app.use('/api/it-admin', itAdminRoutes);
 app.use('/api/finance-admin', financeAdminRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/drafts', draftRoutes);
-app.use('/api/admin/consent', consentRoutes);
+// Consent submission was originally mounted only under /api/admin/consent/consent
+// Frontend expects /api/consent/consent; expose both for backward compatibility.
+app.use('/api/admin/consent', consentRoutes); // legacy path
+app.use('/api/consent', consentRoutes);       // public/standardized path
 app.use('/api/progress', progressRoutes);
 
 // Health check endpoint
@@ -163,7 +166,11 @@ app.use((error, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-});
+if (process.env.NODE_ENV !== 'test') {
+    app.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT}`);
+        console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    });
+}
+
+module.exports = app;

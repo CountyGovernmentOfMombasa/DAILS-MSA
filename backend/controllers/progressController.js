@@ -32,7 +32,9 @@ exports.saveProgress = async (req, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
-    const { userKey, progress } = req.body || {};
+    // Accept either camelCase or snake_case (middleware normalizes, but keep fallback)
+    const userKey = req.body.user_key || req.body.userKey;
+    const progress = req.body.data || req.body.progress;
     if (!userKey || !progress) {
       console.warn('[progressController] 400 saveProgress missing fields', {
         userId,
@@ -77,7 +79,21 @@ exports.getProgress = async (req, res) => {
       record = await Progress.latest(userId);
     }
     if (!record) return res.json({ success: true, progress: null });
-    return res.json({ success: true, progress: { userKey: record.user_key, ...JSON.parse(JSON.stringify(record.data)), updatedAt: record.updated_at } });
+    // record.data may already be a JS object (if driver parsed JSON) or a JSON string.
+    let raw = record.data;
+    if (typeof raw === 'string') {
+      try { raw = JSON.parse(raw); } catch { raw = {}; }
+    } else if (raw && typeof raw === 'object' && raw.type === 'Buffer' && Array.isArray(raw.data)) {
+      // Safety: if somehow a Buffer wrapper sneaks in
+      try { raw = JSON.parse(Buffer.from(raw.data).toString('utf8')); } catch { raw = {}; }
+    }
+    // Defensive shaping: ensure stateSnapshot object so frontend/tests don't crash
+    if (!raw.stateSnapshot || typeof raw.stateSnapshot !== 'object') {
+      raw.stateSnapshot = { userData: {}, spouses: [], children: [] };
+    } else if (!raw.stateSnapshot.userData) {
+      raw.stateSnapshot.userData = {};
+    }
+    return res.json({ success: true, progress: { userKey: record.user_key, ...raw, updatedAt: record.updated_at } });
   } catch (e) {
     console.error('getProgress error', e);
     res.status(500).json({ success: false, message: 'Failed to load progress' });

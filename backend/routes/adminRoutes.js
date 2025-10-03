@@ -29,6 +29,15 @@ const {
   getDepartmentDeclarationStats
 } = adminController;
 const { verifyAdminToken } = require('../middleware/adminMiddleware');
+const { verifyToken } = require('../middleware/authMiddleware'); // for elevation via user token
+const {
+  adminUserList: adminUserListValidators,
+  updateUserEmailBody: updateUserEmailValidators,
+  bulkEmail: bulkEmailValidators,
+  statusAudit: statusAuditValidators,
+  declarationStatusUpdate: declarationStatusUpdateValidators,
+  handleValidation
+} = require('../middleware/requestValidators');
 const upload = require('../middleware/fileUpload');
 
 // --- Declaration Locks Management ---
@@ -44,6 +53,7 @@ router.get('/consent-logs', verifyAdminToken, consentLogAdminController.getConse
 
 // --- Admin Authentication ---
 router.post('/login', adminLogin); // Login (no auth required)
+router.post('/elevate-from-user', verifyToken, adminController.elevateFromUser); // Elevate logged-in user to admin (if linked)
 router.post('/refresh', adminRefresh); // Refresh admin access token
 router.post('/logout', verifyAdminToken, adminLogout); // Revoke refresh token
 
@@ -53,21 +63,21 @@ router.get('/verify', verifyAdminToken, verifyAdmin); // Verify admin (auth requ
 // --- Declaration Management ---
 // Use adminController.getAllDeclarations so spouses & children are attached and department scoping is enforced
 router.get('/declarations', verifyAdminToken, adminController.getAllDeclarations); // Get all declarations (auth required)
-router.get('/declarations/:id', verifyAdminToken, declarationController.getAdminDeclarationById); // Get single declaration details with relations
-router.put('/declarations/:declarationId/status', verifyAdminToken, adminController.updateDeclarationStatus); // Approve/reject declaration
-router.get('/declarations/:declarationId/status-audit', verifyAdminToken, adminController.getDeclarationStatusAudit); // View status change audit log
-router.get('/declarations/:declarationId/previous-corrections', verifyAdminToken, adminController.getDeclarationPreviousCorrections); // View historical correction messages
-router.get('/declarations/status-audit', verifyAdminToken, adminController.listAllDeclarationStatusAudits); // Global audit listing
-// Global status audit listing
+// Static audit listing routes BEFORE parameterized :id
+router.get('/declarations/status-audit', verifyAdminToken, statusAuditValidators, handleValidation, adminController.listAllDeclarationStatusAudits);
 router.get('/declarations/status-audit/global', verifyAdminToken, adminController.listGlobalDeclarationStatusAudit);
+router.get('/declarations/:id', verifyAdminToken, declarationController.getAdminDeclarationById); // Get single declaration details with relations
+router.put('/declarations/:declarationId/status', verifyAdminToken, declarationStatusUpdateValidators, handleValidation, adminController.updateDeclarationStatus);
+router.get('/declarations/:declarationId/status-audit', verifyAdminToken, statusAuditValidators, handleValidation, adminController.getDeclarationStatusAudit);
+router.get('/declarations/:declarationId/previous-corrections', verifyAdminToken, statusAuditValidators, handleValidation, adminController.getDeclarationPreviousCorrections);
 // List declaration edit requests
 router.get('/declarations/edit-requests', verifyAdminToken, declarationController.getAllEditRequests);
 
 // --- User Management ---
-router.get('/users', verifyAdminToken, getAllUsers); // Get all users
+router.get('/users', verifyAdminToken, adminUserListValidators, handleValidation, getAllUsers);
 router.get('/users/departments/distinct', verifyAdminToken, getDistinctDepartments); // Get distinct departments
-router.put('/users/:userId/email', verifyAdminToken, updateUserEmail); // Update user email
-router.put('/users/bulk-email', verifyAdminToken, bulkUpdateEmails); // Bulk update emails
+router.put('/users/:userId/email', verifyAdminToken, updateUserEmailValidators, handleValidation, updateUserEmail);
+router.put('/users/bulk-email', verifyAdminToken, bulkEmailValidators, handleValidation, bulkUpdateEmails);
 router.post('/users', verifyAdminToken, createUser); // Create user
 router.delete('/users/:userId', verifyAdminToken, deleteUser); // Delete user
 // Email audit

@@ -684,7 +684,7 @@ exports.exportUserCreationAuditPdf = async (req, res) => {
 // Allows IT / Super admins (and only within their department scope if constrained) to reveal
 // an active first-time login OTP for a user who cannot access their phone. Optionally regenerates
 // a new OTP (subject to the same rate limiting counters used during login flows).
-// Route: POST /api/it-admin/users/:userId/reveal-otp  { reason: string, regenerate?: boolean }
+// Route: POST /api/it-admin/users/:userId/reveal-otp  { reason: string, regenerate?: boolean, forceResendSms?: boolean }
 // Security considerations:
 //  - Requires admin token (handled by middleware)
 //  - Role restricted to it_admin or super_admin
@@ -704,7 +704,7 @@ exports.revealUserOtp = async (req, res) => {
     if (!userId || userId <= 0) {
       return res.status(400).json({ success:false, message: 'Invalid userId parameter.' });
     }
-    const { reason, regenerate = false } = req.body || {};
+  const { reason, regenerate = false, forceResendSms = false } = req.body || {};
     if (!reason || String(reason).trim().length < 5) {
       return res.status(400).json({ success:false, message: 'A meaningful reason (min 5 chars) is required.' });
     }
@@ -740,7 +740,8 @@ exports.revealUserOtp = async (req, res) => {
     let windowStart = user.otp_request_window_start ? new Date(user.otp_request_window_start) : null;
     const windowExpired = !windowStart || (now - windowStart) > 60*60*1000; // >1h
 
-    let generated = false;
+  let generated = false;
+  let smsSent = false;
     if (regenerate || !hasActive) {
       // If no active code and regenerate not requested explicitly, we still generate fresh for support scenario
       const wantGenerate = regenerate || !hasActive;
@@ -751,7 +752,7 @@ exports.revealUserOtp = async (req, res) => {
         if (otp_request_count >= 3) {
           return res.status(429).json({ success:false, message: 'OTP request limit reached (hourly). Try later.' });
         }
-  const { code, expires } = createOtp();
+        const { code, expires } = createOtp();
         activeCode = code;
         expiry = expires;
         otp_request_count += 1;
@@ -766,6 +767,7 @@ exports.revealUserOtp = async (req, res) => {
           try {
             const sendSMS = require('../util/sendSMS');
             await sendSMS({ to: user.phone_number, body: `Your WDP one-time code is ${activeCode}. It expires in 10 minutes.` });
+            smsSent = true;
           } catch (e) {
             console.warn('Failed to send OTP SMS (IT reveal regenerate):', e.message);
           }
@@ -773,9 +775,27 @@ exports.revealUserOtp = async (req, res) => {
       }
     }
 
+    // Force resend SMS if requested and we did not generate a new OTP
+    if (!generated && forceResendSms) {
+      if (!activeCode || !expiry || now >= expiry) {
+        return res.status(400).json({ success:false, message: 'No active OTP to resend. Use regenerate=true.' });
+      }
+      if (user.phone_number) {
+        try {
+          const sendSMS = require('../util/sendSMS');
+          await sendSMS({ to: user.phone_number, body: `Your WDP one-time code is ${activeCode}. It expires in 10 minutes.` });
+          smsSent = true;
+        } catch (e) {
+          console.warn('Failed to re-send existing OTP SMS:', e.message);
+        }
+      }
+    }
+    
     if (!activeCode || !expiry || now >= expiry) {
       return res.status(404).json({ success:false, message: 'No active OTP. Set regenerate=true to create one.' });
     }
+
+    // (Moved existence check above audit section)
 
     // Audit (best effort) - hash OTP so we do not store plaintext; also keep last2 for traceability
     let alertNeeded = false;
@@ -830,6 +850,7 @@ exports.revealUserOtp = async (req, res) => {
       expiresAt: expiry.toISOString(),
       generated,
       maskedPhone: maskPhone(user.phone_number),
+      smsSent,
       note: 'OTP is valid for 10 minutes. Provide directly to the verified user; do not store or transmit insecurely.'
     });
   } catch (error) {

@@ -27,7 +27,8 @@ CREATE TABLE declarations (
     assets JSON NULL,
     liabilities JSON NULL,
     other_financial_info TEXT,
-    signature_path VARCHAR(500),
+    -- signature_path repurposed as boolean flag (1 = employee declaration signed). If a file path is required in future, add signature_file_path.
+    signature_path TINYINT(1) DEFAULT 0,
     witness_signed TINYINT(1) DEFAULT 0,
     witness_name VARCHAR(100),
     witness_address VARCHAR(200),

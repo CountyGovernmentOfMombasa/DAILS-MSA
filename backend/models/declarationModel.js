@@ -18,6 +18,7 @@ const Declaration = {
       witness_signed,
       witness_name,
       witness_address,
+      witness_phone,
       declaration_type,
       status = 'pending',
       correction_message = null
@@ -43,10 +44,11 @@ const Declaration = {
         witness_signed,
         witness_name,
         witness_address,
+        witness_phone,
         declaration_type,
         status,
         correction_message
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         user_id,
         marital_status,
@@ -61,6 +63,7 @@ const Declaration = {
         witness_signed,
         witness_name,
         witness_address,
+        witness_phone,
         declaration_type,
         status,
         correction_message

@@ -94,26 +94,36 @@ npm start
 - `POST /api/declarations` - Submit declaration
 - `GET /api/declarations` - Get user declarations
 
-### Admin
+## Validation
 
-- `GET /api/admin/declarations` - Get all declarations (scoped to department unless super admin)
+Input validation has been centralized in `middleware/requestValidators.js` to ensure consistent constraints, error formatting and to reduce duplication.
 
-### Health Check
+Key exports:
 
-- `GET /api/health` - Service health check
+- `handleValidation` – terminal middleware that converts express-validator errors into a standardized `{ message, code, details[] }` response (HTTP 400)
+- `listQuery(options)` – factory for paginated list endpoints (page, limit, search + optional department). Used by finance & HR admin and user declaration list.
+- `adminUserList`, `statusAudit`, `bulkEmail`, `updateMe`, `declarationStatusUpdate`, `consentSubmit` – purpose‑specific validator arrays.
+- `dateRange` – reusable from/to ISO date validators with logical ordering check.
 
-## Security Features
+Standard error schema example:
 
-- JWT authentication
-- Password hashing with bcrypt
-- Input validation with express-validator
-- CORS protection
-- Helmet security headers
-- Request logging with Morgan
-- SQL injection protection
+```json
+{
+   "message": "Validation failed",
+   "code": "VALIDATION_FAILED",
+   "details": [
+      { "field": "page", "message": "page must be between 1 and 500", "code": "VALIDATION_PAGE" }
+   ]
+}
+```
 
-### PDF Export Security
+Refactoring notes:
 
+- Avoid inline uses of `validationResult` in routes; rely on the shared helpers.
+- New validators should follow the established pattern and end with `handleValidation`.
+- When adding a new list endpoint, prefer `listQuery({ includeDepartment: true, extra: [...] })` instead of duplicating pagination/search logic.
+
+Generated declaration PDFs are automatically password-protected (if the dependency `pdfkit-encrypt` is installed) using the employee's National ID as the user password. Owner password defaults to the same value unless overridden via `PDF_OWNER_PASSWORD`.
 Generated declaration PDFs are automatically password-protected (if the dependency `pdfkit-encrypt` is installed) using the employee's National ID as the user password. Owner password defaults to the same value unless overridden via `PDF_OWNER_PASSWORD`.
 
 You can control fine‑grained permissions via environment variables:

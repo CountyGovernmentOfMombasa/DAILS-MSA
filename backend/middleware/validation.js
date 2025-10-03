@@ -69,33 +69,25 @@ exports.validatePasswordChange = [
         .withMessage('New password must contain at least one uppercase letter, one lowercase letter, one number, and one special character')
 ];
 
-// Validation for declaration submission
+// Validation for declaration submission (aligned with current controller expectations)
 exports.validateDeclaration = [
     body('marital_status')
-        .isIn(['single', 'married', 'divorced', 'widowed', 'separated'])
-        .withMessage('Invalid marital status'),
-    
+        .notEmpty().withMessage('marital_status required')
+        .isIn(['single','married','divorced','widowed','separated'])
+        .withMessage('Invalid marital_status'),
+    body('declaration_type')
+        .notEmpty().withMessage('declaration_type required')
+        .isString().trim().isLength({ max: 20 }),
     body('declaration_date')
-        .isISO8601()
-        .withMessage('Invalid declaration date format'),
-    
-    body('annual_income')
+        .optional({ nullable: true })
+        .custom(v=>{ if(!v) return true; if(/^\d{4}-\d{2}-\d{2}$/.test(v)) return true; if(/^\d{2}\/\d{2}\/\d{4}$/.test(v)) return true; throw new Error('declaration_date must be YYYY-MM-DD or DD/MM/YYYY'); }),
+    body('biennial_income')
         .optional()
-        .isFloat({ min: 0 })
-        .withMessage('Annual income must be a positive number'),
-    
-    body('assets')
-        .optional()
-        .isLength({ max: 1000 })
-        .withMessage('Assets description must be less than 1000 characters'),
-    
-    body('liabilities')
-        .optional()
-        .isLength({ max: 1000 })
-        .withMessage('Liabilities description must be less than 1000 characters'),
-    
-    body('other_financial_info')
-        .optional()
-        .isLength({ max: 1000 })
-        .withMessage('Other financial info must be less than 1000 characters')
+        .custom(v=>{ if(Array.isArray(v)) return v.length<=200; if(typeof v==='string') return v.length<=5000; return false; })
+        .withMessage('biennial_income invalid format/size'),
+    body('assets').optional().custom(v=>{ if(Array.isArray(v)) return v.length<=500; if(typeof v==='string') return v.length<=5000; return false; }).withMessage('assets invalid'),
+    body('liabilities').optional().custom(v=>{ if(Array.isArray(v)) return v.length<=500; if(typeof v==='string') return v.length<=5000; return false; }).withMessage('liabilities invalid'),
+    body('other_financial_info').optional().isLength({ max: 5000 }).withMessage('other_financial_info too long'),
+    body('period_start_date').optional().isISO8601().withMessage('period_start_date must be ISO date'),
+    body('period_end_date').optional().isISO8601().withMessage('period_end_date must be ISO date')
 ];

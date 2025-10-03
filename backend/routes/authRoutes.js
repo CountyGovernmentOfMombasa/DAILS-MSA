@@ -7,6 +7,7 @@ const {
     validateLogin, 
     validatePasswordChange 
 } = require('../middleware/validation');
+const { updateMe: updateMeValidators, handleValidation } = require('../middleware/requestValidators');
 const rateLimit = require('express-rate-limit');
 const router = express.Router();
 
@@ -46,6 +47,6 @@ router.post('/check-password-status', authController.checkPasswordStatus);
 
 // --- Profile ---
 router.get('/me', verifyToken, authController.getMe); // Get user profile
-router.put('/me', verifyToken, authController.updateMe); // Update user profile
+router.put('/me', verifyToken, updateMeValidators, handleValidation, authController.updateMe); // Update user profile (validated)
 
 module.exports = router;

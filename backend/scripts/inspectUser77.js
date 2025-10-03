@@ -1,0 +1,1 @@
+(async()=>{ const db=require('../config/db'); const [rows]=await db.query('SELECT id,declaration_type,declaration_date FROM declarations WHERE user_id=?',[77]); console.log(rows); process.exit(0); })().catch(e=>{ console.error(e); process.exit(1); });

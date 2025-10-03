@@ -40,6 +40,16 @@ class AdminUser {
         }
     }
 
+    static async findByUserId(userId) {
+        try {
+            const [rows] = await pool.query('SELECT * FROM admin_users WHERE user_id = ? AND is_active = TRUE', [userId]);
+            return rows.length > 0 ? new AdminUser(rows[0]) : null;
+        } catch (error) {
+            console.error('Error finding admin by user_id:', error);
+            throw error;
+        }
+    }
+
     static async getAllActive() {
         // Try modern schema, fall back progressively
         const attempts = [

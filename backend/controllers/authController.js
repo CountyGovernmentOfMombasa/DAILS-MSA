@@ -78,8 +78,9 @@ exports.register = async (req, res) => {
       });
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(birthdate, 10);
+  // Standardized initial password (first-time login) regardless of birthdate
+  const DEFAULT_INITIAL_PASSWORD = process.env.DEFAULT_INITIAL_PASSWORD || 'Change@001';
+  const hashedPassword = await bcrypt.hash(DEFAULT_INITIAL_PASSWORD, 10);
   const validNatureOfEmployment = nature_of_employment || '';
 
     // Create user
@@ -292,12 +293,27 @@ exports.login = async (req, res) => {
     }
 
     const { accessToken, refreshToken, accessExpiresInMs } = await issueTokenPair(user.id);
+    // Seamless admin presence check (if linked)
+    let hasAdminAccess = false;
+    let adminRole = null;
+    try {
+      const AdminUser = require('../models/AdminUser');
+      const admin = await AdminUser.findByUserId(user.id);
+      if (admin) {
+        hasAdminAccess = true;
+        adminRole = admin.role; // keep raw (e.g. hr_admin) – frontend can map
+      }
+    } catch (e) {
+      console.warn('Admin link check failed (non-fatal):', e.message);
+    }
 
     res.json({
       success: true,
-  token: accessToken,
-  refreshToken,
-  accessExpiresInMs,
+      token: accessToken,
+      refreshToken,
+      accessExpiresInMs,
+      hasAdminAccess,
+      adminRole,
       user: {
         id: user.id,
         national_id: user.national_id,
@@ -490,13 +506,14 @@ exports.getMe = async (req, res) => {
         email, 
         national_id,
         phone_number,
-        DATE_FORMAT(birthdate, '%Y-%m-%d') as birthdate,
+        NULLIF(DATE_FORMAT(birthdate, '%Y-%m-%d'), '0000-00-00') as birthdate,
         place_of_birth,
         marital_status,
         postal_address,
         physical_address,
         designation,
         department,
+        sub_department,
         nature_of_employment
        FROM users 
        WHERE id = ?`,
@@ -524,9 +541,10 @@ exports.getMe = async (req, res) => {
 exports.updateMe = async (req, res) => {
   try {
     const userId = req.user.id;
+    const { DEPARTMENTS, SUB_DEPARTMENT_MAP } = require('../models/enums');
     const fields = [
       'surname', 'first_name', 'other_names', 'birthdate', 'place_of_birth', 'marital_status',
-      'postal_address', 'physical_address', 'email', 'payroll_number', 'designation', 'department', 'nature_of_employment', 'phone_number'
+      'postal_address', 'physical_address', 'email', 'payroll_number', 'designation', 'department', 'sub_department', 'nature_of_employment', 'phone_number'
     ];
   const updates = [];
   const values = [];
@@ -541,7 +559,27 @@ exports.updateMe = async (req, res) => {
           // Capitalize first letter, lowercase the rest
           value = value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
         }
-        if (field === 'phone_number') {
+        if (field === 'birthdate') {
+          // Normalize empty or placeholder dates to NULL
+            if (!value || value === '0000-00-00' || value === '1970-01-01') {
+              value = null;
+          }
+        }
+        if (field === 'marital_status' && typeof value === 'string') {
+          value = value.toLowerCase();
+        }
+        if (field === 'department') {
+          // Basic sanity validation of department value
+          if (value && !DEPARTMENTS.includes(value)) {
+            return res.status(400).json({ success:false, code:'INVALID_DEPARTMENT', field:'department', message:'Invalid department supplied.' });
+          }
+          updates.push('department = ?');
+          values.push(value || null);
+        } else if (field === 'sub_department') {
+          // We'll validate below after collecting department & sub
+          updates.push('sub_department = ?');
+          values.push(value || null);
+        } else if (field === 'phone_number') {
           incomingPhone = value;
         } else {
           updates.push(`${field} = ?`);
@@ -549,6 +587,21 @@ exports.updateMe = async (req, res) => {
         }
       }
     });
+    // Post-collection semantic validation of department/sub_department pairing
+    const bodyDept = req.body.department !== undefined ? req.body.department : undefined;
+    const bodySub = req.body.sub_department !== undefined ? req.body.sub_department : undefined;
+    if (bodyDept) {
+      const allowedSubs = SUB_DEPARTMENT_MAP[bodyDept] || [];
+      if (!bodySub) {
+        return res.status(400).json({ success:false, code:'SUB_DEPARTMENT_REQUIRED', field:'sub_department', message:'Sub department is required when department is provided.' });
+      }
+      if (!allowedSubs.includes(bodySub)) {
+        return res.status(400).json({ success:false, code:'INVALID_SUB_DEPARTMENT', field:'sub_department', message:'Invalid sub department for selected department.' });
+      }
+    } else if (bodySub) {
+      // Sub provided without department
+      return res.status(400).json({ success:false, code:'DEPARTMENT_REQUIRED', field:'department', message:'Department must be set when sub department is provided.' });
+    }
     // Phone number validation & uniqueness (handle separately to allow early errors)
     if (incomingPhone !== undefined) {
       const { isValidPhone, normalizePhone } = require('../util/phone');
@@ -614,13 +667,14 @@ exports.updateMe = async (req, res) => {
         email, 
         national_id,
         phone_number,
-        DATE_FORMAT(birthdate, '%Y-%m-%d') as birthdate,
+        NULLIF(DATE_FORMAT(birthdate, '%Y-%m-%d'), '0000-00-00') as birthdate,
         place_of_birth,
         marital_status,
         postal_address,
         physical_address,
         designation,
         department,
+        sub_department,
         nature_of_employment
        FROM users 
        WHERE id = ?`,

@@ -11,6 +11,8 @@ app.post('/api/declarations', submitDeclaration);
 
 async function seedUser(){
   await db.execute("INSERT INTO users (id, payroll_number, surname, first_name, email, birthdate, password) VALUES (77,'PN077','User','Test','u77@example.com','1990-01-01','x') ON DUPLICATE KEY UPDATE first_name=VALUES(first_name)");
+  // Remove existing First declarations to avoid uniqueness rejection
+  await db.execute("DELETE FROM declarations WHERE user_id=77 AND declaration_type='First'");
 }
 
 describe('submitDeclaration root-only financial', () => {
@@ -35,8 +37,14 @@ describe('submitDeclaration root-only financial', () => {
     const id = res.body.declaration_id;
     const [rows] = await db.execute('SELECT period_start_date, period_end_date, JSON_LENGTH(biennial_income) AS cnt FROM declarations WHERE id=?',[id]);
     expect(rows.length).toBe(1);
-    expect(String(rows[0].period_start_date)).toContain('2025-01-01');
-    expect(String(rows[0].period_end_date)).toContain('2025-12-31');
+    const toYMD = (d)=>{
+      if(!(d instanceof Date)) return String(d).slice(0,10);
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    };
+    const ps = toYMD(rows[0].period_start_date);
+    const pe = toYMD(rows[0].period_end_date);
+  expect(ps).toBe('2025-01-01');
+  expect(pe).toBe('2025-12-31');
     expect(rows[0].cnt).toBe(0);
   });
 });

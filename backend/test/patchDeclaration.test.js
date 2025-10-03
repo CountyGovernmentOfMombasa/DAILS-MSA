@@ -70,14 +70,16 @@ describe('PATCH /api/declarations/:id', () => {
   test('PATCH period_start_date only updates that field', async () => {
     const res = await request(app).patch(`/api/declarations/${declId}`).send({ period_start_date: '2025-01-01' });
     expect(res.status).toBe(200);
-    const [rows] = await db.execute('SELECT period_start_date FROM declarations WHERE id=?',[declId]);
-    expect(String(rows[0].period_start_date)).toContain('2025-01-01');
+  const [rows] = await db.execute('SELECT period_start_date FROM declarations WHERE id=?',[declId]);
+  const toYMD = (d)=>{ if(!(d instanceof Date)) return String(d).slice(0,10); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+  expect(toYMD(rows[0].period_start_date)).toBe('2025-01-01');
   });
 
   test('PATCH period_end_date only updates that field', async () => {
     const res = await request(app).patch(`/api/declarations/${declId}`).send({ period_end_date: '2025-12-31' });
     expect(res.status).toBe(200);
-    const [rows] = await db.execute('SELECT period_end_date FROM declarations WHERE id=?',[declId]);
-    expect(String(rows[0].period_end_date)).toContain('2025-12-31');
+  const [rows] = await db.execute('SELECT period_end_date FROM declarations WHERE id=?',[declId]);
+  const toYMD = (d)=>{ if(!(d instanceof Date)) return String(d).slice(0,10); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+  expect(toYMD(rows[0].period_end_date)).toBe('2025-12-31');
   });
 });

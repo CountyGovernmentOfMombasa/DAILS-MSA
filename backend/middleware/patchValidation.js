@@ -15,5 +15,11 @@ module.exports = function patchValidation(req, res, next) {
     }
   }
   // financial_declarations deprecated – ignore silently
+  if (Object.prototype.hasOwnProperty.call(b,'signature_path')) {
+    const v = b.signature_path;
+    if (!(v === 0 || v === 1 || v === true || v === false || v === null)) {
+      return res.status(400).json({ success:false, message:'signature_path must be boolean (0/1)' });
+    }
+  }
   next();
 }

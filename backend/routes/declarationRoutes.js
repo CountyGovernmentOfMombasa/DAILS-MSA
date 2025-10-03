@@ -5,6 +5,8 @@ const upload = require('../middleware/fileUpload');
 const { validateDeclaration } = require('../middleware/validation');
 const router = express.Router();
 const { getDeclarationById, downloadDeclarationPDF, patchDeclaration } = require('../controllers/declarationController');
+const { param } = require('express-validator');
+const { handleValidation, listQuery } = require('../middleware/requestValidators');
 const patchValidation = require('../middleware/patchValidation');
 
 // --- Declaration Submission ---
@@ -36,22 +38,22 @@ router.post('/', verifyToken, validateDeclaration, async (req, res, next) => {
 }, submitDeclaration); // Submit a new declaration
 
 // --- Declaration Retrieval ---
-router.get('/', verifyToken, getDeclarations); // Get all declarations for user
+router.get('/', verifyToken, listQuery({ limitMax: 200 }), getDeclarations); // Get all declarations for user
 
 // Single declaration (with embedded unified financial)
-router.get('/:id', verifyToken, getDeclarationById);
+router.get('/:id', verifyToken, param('id').isInt({min:1}), handleValidation, getDeclarationById);
 // On-demand PDF download
-router.get('/:id/download-pdf', verifyToken, downloadDeclarationPDF);
+router.get('/:id/download-pdf', verifyToken, param('id').isInt({min:1}), handleValidation, downloadDeclarationPDF);
 
 
 // Update a declaration (edit)
 const { updateDeclaration } = require('../controllers/declarationController');
-router.put('/:id', verifyToken, updateDeclaration);
+router.put('/:id', verifyToken, param('id').isInt({min:1}), handleValidation, updateDeclaration);
 // Partial update (diff-based)
-router.patch('/:id', verifyToken, patchValidation, patchDeclaration);
+router.patch('/:id', verifyToken, param('id').isInt({min:1}), handleValidation, patchValidation, patchDeclaration);
 
 // Record an edit request for a declaration
-router.post('/:id/edit-request', verifyToken, requestEdit);
+router.post('/:id/edit-request', verifyToken, param('id').isInt({min:1}), handleValidation, requestEdit);
 
 // (Duplicate route removed)
 

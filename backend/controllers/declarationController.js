@@ -12,24 +12,23 @@ exports.updateDeclaration = async (req, res) => {
         if (!existingDeclRows.length) {
             return res.status(404).json({ success: false, message: 'Declaration not found' });
         }
+        // Destructure with defaults to avoid passing undefined to MySQL driver (throws bind errors)
         const {
-            // Personal/user profile fields may be sent but declaration table does not store them; ignore or optionally update users table separately.
-            marital_status,
-            spouses,
-            children,
-            // financial_declarations removed
-            witness_signed,
-            witness_name,
-            witness_address,
-            witness_phone,
-            biennial_income,
-            assets,
-            liabilities,
-            other_financial_info,
-            declaration_date,
-            period_start_date,
-            period_end_date
-        } = req.body;
+            marital_status = null,
+            spouses = [],
+            children = [],
+            witness_signed = 0,
+            witness_name = '',
+            witness_address = '',
+            witness_phone = null,
+            biennial_income = [],
+            assets = [],
+            liabilities = [],
+            other_financial_info = '',
+            declaration_date = null,
+            period_start_date = null,
+            period_end_date = null
+        } = req.body || {};
 
         // Fetch existing witness info to detect changes
         let oldWitnessPhone = null;
@@ -52,29 +51,35 @@ exports.updateDeclaration = async (req, res) => {
         }
 
         // Update declaration table (limited to existing columns in schema)
+        // Sanitize values (convert undefined -> null or string) prior to binding
+        const sanitizeDate = (d) => (d === undefined || d === '' ? null : d);
+        const rootUpdateParams = [
+            marital_status === '' ? null : marital_status,
+            witness_signed ? 1 : 0,
+            witness_name || '',
+            witness_address || '',
+            witness_phone || null,
+            JSON.stringify(Array.isArray(biennial_income) ? biennial_income : []),
+            typeof assets === 'string' ? assets : JSON.stringify(Array.isArray(assets) ? assets : []),
+            typeof liabilities === 'string' ? liabilities : JSON.stringify(Array.isArray(liabilities) ? liabilities : []),
+            (other_financial_info || ''),
+            sanitizeDate(declaration_date),
+            sanitizeDate(period_start_date),
+            sanitizeDate(period_end_date),
+            (typeof req.body?.signature_path === 'number' ? req.body.signature_path : (req.body?.declarationChecked ? 1 : null)),
+            declarationId,
+            userId
+        ];
         await db.execute(
             `UPDATE declarations SET 
                 marital_status=?, 
                 witness_signed=?, witness_name=?, witness_address=?, witness_phone=?, 
                 biennial_income=?, assets=?, liabilities=?, other_financial_info=?, 
-                declaration_date=?, period_start_date=?, period_end_date=?, updated_at=CURRENT_TIMESTAMP 
+                declaration_date=?, period_start_date=?, period_end_date=?, 
+                signature_path=COALESCE(?, signature_path), 
+                updated_at=CURRENT_TIMESTAMP 
              WHERE id=? AND user_id=?`,
-            [
-                marital_status,
-                witness_signed ? 1 : 0,
-                witness_name,
-                witness_address,
-                witness_phone,
-                JSON.stringify(biennial_income || []),
-                typeof assets === 'string' ? assets : JSON.stringify(assets || []),
-                typeof liabilities === 'string' ? liabilities : JSON.stringify(liabilities || []),
-                other_financial_info || '',
-                declaration_date,
-                period_start_date || null,
-                period_end_date || null,
-                declarationId,
-                userId
-            ]
+            rootUpdateParams
         );
 
         // If witness phone changed or newly added, notify the (new) witness
@@ -203,7 +208,7 @@ exports.patchDeclaration = async (req, res) => {
         if (!existing.length) {
             return res.status(404).json({ success: false, message: 'Declaration not found' });
         }
-    const allowedScalar = new Set(['marital_status','witness_signed','witness_name','witness_address','witness_phone','biennial_income','assets','liabilities','other_financial_info','declaration_date','period_start_date','period_end_date']);
+    const allowedScalar = new Set(['marital_status','witness_signed','witness_name','witness_address','witness_phone','biennial_income','assets','liabilities','other_financial_info','declaration_date','period_start_date','period_end_date','signature_path']);
         const payload = req.body || {};
         const setClauses = [];
         const values = [];
@@ -216,6 +221,10 @@ exports.patchDeclaration = async (req, res) => {
                 changedScalar.push(key);
             } else if (key === 'witness_signed') {
                 setClauses.push('witness_signed = ?');
+                values.push(payload[key] ? 1 : 0);
+                changedScalar.push(key);
+            } else if (key === 'signature_path') {
+                setClauses.push('signature_path = ?');
                 values.push(payload[key] ? 1 : 0);
                 changedScalar.push(key);
             } else {
@@ -546,6 +555,7 @@ exports.submitDeclaration = async (req, res) => {
         const allowedTypes = ['First', 'Biennial', 'Final'];
         const normalizedType = normalizeDeclType(declaration_type);
         if (!normalizedType || !allowedTypes.includes(normalizedType)) {
+            console.warn('submitDeclaration reject: invalid declaration_type', declaration_type);
             return res.status(400).json({ success: false, message: 'Invalid or missing declaration type.' });
         }
 
@@ -553,9 +563,9 @@ exports.submitDeclaration = async (req, res) => {
     const previousDeclarations = await Declaration.findByUserId(req.user.id);
 
         // Check for existing 'First' or 'Final' declaration
-        if ((declaration_type === 'First' || declaration_type === 'Final') && previousDeclarations.some(d => d.declaration_type === declaration_type)) {
-            return res.status(400).json({ success: false, message: `You can only submit a ${declaration_type} declaration once.` });
-        }
+            if ((declaration_type === 'First' || declaration_type === 'Final') && previousDeclarations.some(d => d.declaration_type === declaration_type)) {
+                return res.status(400).json({ success: false, message: `You can only submit a ${declaration_type} declaration once.` });
+            }
 
         // Bienniel logic: only allowed every two years, Nov 1 - Dec 31, starting 2025
     if (normalizedType === 'Biennial') {
@@ -608,6 +618,7 @@ exports.submitDeclaration = async (req, res) => {
 
                 // Validate required field
                 if (!marital_status) {
+                    console.warn('submitDeclaration reject: missing marital_status');
                     return res.status(400).json({
                         success: false,
                         message: "Marital status is required."
@@ -652,8 +663,12 @@ exports.submitDeclaration = async (req, res) => {
                     assets: Array.isArray(assets) ? assets : (assets || []),
                     liabilities: Array.isArray(liabilities) ? liabilities : (liabilities || []),
                     other_financial_info,
-                    signature_path,
-                    declaration_type,
+                    signature_path: typeof signature_path === 'number' ? signature_path : (req.body.signature_path ? 1 : 0),
+                    witness_signed: witness?.signed ? 1 : (req.body.witness_signed ? 1 : 0),
+                    witness_name: witness?.name || req.body.witness_name || null,
+                    witness_address: witness?.address || req.body.witness_address || null,
+                    witness_phone: witness?.phone || req.body.witness_phone || null,
+                    declaration_type: normalizedType,
                     status: req.body.status || 'pending'
                 });
                 const declarationId = declaration.id;
@@ -670,15 +685,21 @@ exports.submitDeclaration = async (req, res) => {
 
                 // financial declarations & items removed – unified structures ignored
 
-                // Save witness data if provided
-                if (witness) {
+                // Save witness data if provided ONLY if not already set via create (legacy fallback)
+                const fallbackWitness = witness || ((req.body.witness_name || req.body.witness_phone || req.body.witness_address) ? {
+                    signed: !!req.body.witness_signed,
+                    name: req.body.witness_name,
+                    address: req.body.witness_address,
+                    phone: req.body.witness_phone
+                } : null);
+                if (fallbackWitness && (!declaration.witness_name && fallbackWitness.name)) {
                     await pool.query(
                         'UPDATE declarations SET witness_signed = ?, witness_name = ?, witness_address = ?, witness_phone = ? WHERE id = ?',
-                        [witness.signed ? 1 : 0, witness.name, witness.address, witness.phone || '', declarationId]
+                        [fallbackWitness.signed ? 1 : 0, fallbackWitness.name, fallbackWitness.address, fallbackWitness.phone || '', declarationId]
                     );
                     // Notify witness via SMS
                     try {
-                        if (witness.phone) {
+                        if (fallbackWitness.phone) {
                             const sendSMS = require('../util/sendSMS');
                             // Fetch user name to personalize message
                             const [urows] = await pool.query('SELECT first_name, other_names, surname FROM users WHERE id = ?', [req.user.id]);
@@ -690,7 +711,7 @@ exports.submitDeclaration = async (req, res) => {
                             }
                             const fullName = nameParts.join(' ') || 'an employee';
                             await sendSMS({
-                                to: witness.phone,
+                                to: fallbackWitness.phone,
                                 body: `You have been selected as a witness by ${fullName} in their DIALs.`
                             });
                         }

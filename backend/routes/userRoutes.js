@@ -2,18 +2,12 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
 const { verifyToken } = require('../middleware/authMiddleware');
-const { body, validationResult, param } = require('express-validator');
+const { validationResult } = require('express-validator');
+const { userProfileUpdate, userDelete, handleValidation } = require('../middleware/requestValidators');
 const upload = require('../middleware/fileUpload');
 const { getFamily } = require('../controllers/userController');
 
-// --- Validation Middleware ---
-const emailValidation = [
-    body('email')
-        .optional({ nullable: true })
-        .isEmail()
-        .withMessage('Please provide a valid email address')
-        .normalizeEmail()
-];
+// Validation moved to centralized requestValidators
 
 // --- Profile Management ---
 // Family info (spouses & children) for current user
@@ -46,12 +40,9 @@ router.get('/profile/:userId', verifyToken, async (req, res) => {
 });
 
 // Update user profile
-router.put('/profile/:userId', verifyToken, emailValidation, async (req, res) => {
+router.put('/profile/:userId', verifyToken, userProfileUpdate, async (req, res) => {
     try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ errors: errors.array() });
-        }
+        // validation already handled by middleware
 
         const userId = req.params.userId;
         
@@ -144,12 +135,9 @@ router.get('/', verifyToken, async (req, res) => {
 });
 
 // Delete user
-router.delete('/:userId', verifyToken, param('userId').isInt(), async (req, res) => {
+router.delete('/:userId', verifyToken, userDelete, async (req, res) => {
     try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ errors: errors.array() });
-        }
+        // validation handled by userDelete
 
         // Check if user is admin
         if (req.user.role !== 'admin') {

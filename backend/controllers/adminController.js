@@ -1852,3 +1852,42 @@ exports.adminLogout = async (req, res) => {
     return res.status(500).json({ message: 'Server error', error: e.message });
   }
 };
+
+// Elevate a logged-in normal user (user token) to an admin session if linked
+// @route POST /api/admin/elevate-from-user
+// @access User JWT (not admin)
+exports.elevateFromUser = async (req, res) => {
+  try {
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ message: 'User context missing' });
+    }
+    const AdminUser = require('../models/AdminUser');
+    const admin = await AdminUser.findByUserId(req.user.id);
+    if (!admin) {
+      return res.status(403).json({ message: 'Not an admin' });
+    }
+    if (admin.is_active === false) {
+      return res.status(403).json({ message: 'Admin account inactive' });
+    }
+    // Map role to short form consistent with existing adminLogin behavior
+    let shortRole = admin.role;
+    if (shortRole === 'hr_admin') shortRole = 'hr';
+    else if (shortRole === 'it_admin') shortRole = 'it';
+    else if (shortRole === 'finance_admin') shortRole = 'finance';
+    else if (shortRole === 'super_admin') shortRole = 'super';
+
+    const accessTtl = process.env.ADMIN_ACCESS_TOKEN_EXPIRES_IN || '30m';
+    const crypto = require('crypto');
+    const rawRefresh = crypto.randomBytes(48).toString('hex');
+    const refreshToken = `${admin.id}.${rawRefresh}`;
+    const refreshHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+    const pool = require('../config/db');
+    await pool.query('UPDATE admin_users SET refresh_token_hash = ?, last_activity = NOW(), last_login = NOW() WHERE id = ?', [refreshHash, admin.id]);
+    const jwt = require('jsonwebtoken');
+    const adminToken = jwt.sign({ adminId: admin.id, username: admin.username, role: shortRole, department: admin.department || null, sub_department: admin.sub_department || null, isAdmin: true }, process.env.JWT_SECRET, { expiresIn: accessTtl });
+    return res.json({ message: 'Elevation successful', adminToken, refreshToken, accessTtl, admin: admin.toJSON() });
+  } catch (error) {
+    console.error('Admin elevation error:', error);
+    return res.status(500).json({ message: 'Server error elevating user' });
+  }
+};
