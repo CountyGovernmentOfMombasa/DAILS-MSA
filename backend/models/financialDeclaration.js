@@ -1,42 +1,11 @@
-const pool = require('../config/db');
-
-class FinancialDeclaration {
-  static async create({
-    declaration_id,
-    member_type,
-    member_name,
-    declaration_date,
-    period_start_date,
-    period_end_date,
-    other_financial_info
-  }) {
-    // Validate member_type
-    const allowedTypes = ['user', 'spouse', 'child'];
-    const validType = allowedTypes.includes(member_type?.toLowerCase()) ? member_type.toLowerCase() : 'user';
-
-    const [result] = await pool.query(
-      `INSERT INTO financial_declarations (
-        declaration_id, member_type, member_name, declaration_date, period_start_date, period_end_date, other_financial_info
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [
-        declaration_id,
-        validType,
-        member_name,
-        declaration_date,
-        period_start_date,
-        period_end_date,
-        other_financial_info
-      ]
-    );
-    // Return the inserted record including created_at and updated_at
-    const [rows] = await pool.query('SELECT * FROM financial_declarations WHERE id = ?', [result.insertId]);
-    return rows[0];
+// Deprecated stub: financial_declarations table removed (2025-10 migration).
+// Any code still requiring this module should transition to using embedded JSON fields
+// on the declarations / spouses / children tables (see declarationController financial_unified logic).
+module.exports = {
+  async create() {
+    throw new Error('financial_declarations deprecated: use embedded JSON fields instead');
+  },
+  async findByDeclarationId() {
+    return []; // graceful fallback
   }
-
-  static async findByDeclarationId(declaration_id) {
-    const [rows] = await pool.query('SELECT * FROM financial_declarations WHERE declaration_id = ?', [declaration_id]);
-    return rows;
-  }
-}
-
-module.exports = FinancialDeclaration;
+};

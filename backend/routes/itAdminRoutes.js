@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const itAdminController = require('../controllers/itAdminController');
+const rateLimit = require('express-rate-limit');
 const { verifyAdminToken } = require('../middleware/adminMiddleware');
 
 // Get all declarations for IT admin (no financial data)
@@ -23,7 +24,16 @@ router.get('/admin-creation-audit/export/csv', verifyAdminToken, itAdminControll
 router.get('/admin-creation-audit/export/pdf', verifyAdminToken, itAdminController.exportAdminCreationAuditPdf);
 
 // Reveal or regenerate a user's first-time login OTP (support scenario)
-router.post('/users/:userId/reveal-otp', verifyAdminToken, itAdminController.revealUserOtp);
+// Dedicated stricter rate limit for OTP reveal to mitigate brute force/enumeration
+const otpRevealLimiter = rateLimit({
+	windowMs: 10 * 60 * 1000, // 10 minutes
+	max: parseInt(process.env.OTP_REVEAL_MAX || '30',10),
+	standardHeaders: true,
+	legacyHeaders: false,
+	message: { success:false, message: 'Too many OTP actions, please slow down.' },
+	keyGenerator: (req) => `${req.ip}:${req.admin?.id || 'anon'}`
+});
+router.post('/users/:userId/reveal-otp', verifyAdminToken, otpRevealLimiter, itAdminController.revealUserOtp);
 router.get('/otp-disclosure-audit', verifyAdminToken, itAdminController.getOtpDisclosureAudit);
 
 module.exports = router;

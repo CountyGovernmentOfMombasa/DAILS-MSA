@@ -801,20 +801,22 @@ exports.revealUserOtp = async (req, res) => {
     let alertNeeded = false;
     try {
       const hash = crypto.createHash('sha256').update(String(activeCode)).digest('hex');
-      await pool.query(`INSERT INTO otp_disclosure_audit (user_id, admin_id, admin_role, admin_department, admin_sub_department, action, reason, hashed_otp, otp_last2, generated, ip_address, user_agent) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, [
+      // NOTE: Column list has 12 columns; ensure placeholders match (12)
+      const { logOtpDisclosure } = require('../util/auditLogger');
+      await logOtpDisclosure({
         userId,
-        adminCtx.adminId || null,
-        adminCtx.role || null,
+        adminId: adminCtx.adminId,
+        adminRole: adminCtx.role,
         adminDept,
-        adminSub,
-        generated ? 'REGENERATE' : 'VIEW',
-        String(reason).substring(0,500),
+        adminSubDept: adminSub,
+        action: generated ? 'REGENERATE' : 'VIEW',
+        reason,
         hash,
-        String(activeCode).slice(-2),
-        generated ? 1 : 0,
-        (req.ip || '').substring(0,64),
-        (req.headers['user-agent'] || '').substring(0,255)
-      ]);
+        last2: String(activeCode).slice(-2),
+        generated,
+        ip: req.ip,
+        ua: req.headers['user-agent']
+      });
       // Simple threshold alerting: if more than X disclosures by same admin in rolling window
       const MAX_WINDOW = 60 * 60 * 1000; // 1h
       const ADMIN_THRESHOLD = parseInt(process.env.OTP_DISCLOSURE_ADMIN_THRESHOLD || '10',10); // default 10

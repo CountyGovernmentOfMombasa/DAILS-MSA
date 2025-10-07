@@ -1,34 +1,74 @@
 // --- Update Declaration (PUT) ---
+// NOTE: This endpoint now performs a *selective* update. It will ONLY modify
+// fields explicitly provided in the request body. Previously, omitted fields
+// were defaulted (e.g., arrays -> []) which caused unintended data loss.
 exports.updateDeclaration = async (req, res) => {
     try {
         const declarationId = req.params.id;
         const userId = req.user.id;
         const db = require('../config/db');
-        // Ensure the declaration exists and belongs to this user BEFORE we start
-        // deleting and reinserting relational rows. Without this, attempting to
-        // insert spouses/children for a non-existent declaration triggers a
-        // foreign key error (500) instead of a clean 404 for the client.
-        const [existingDeclRows] = await db.execute('SELECT id FROM declarations WHERE id = ? AND user_id = ?', [declarationId, userId]);
+
+        // Ensure the declaration exists
+        const [existingDeclRows] = await db.execute('SELECT * FROM declarations WHERE id = ? AND user_id = ?', [declarationId, userId]);
         if (!existingDeclRows.length) {
             return res.status(404).json({ success: false, message: 'Declaration not found' });
         }
-        // Destructure with defaults to avoid passing undefined to MySQL driver (throws bind errors)
-        const {
-            marital_status = null,
-            spouses = [],
-            children = [],
-            witness_signed = 0,
-            witness_name = '',
-            witness_address = '',
-            witness_phone = null,
-            biennial_income = [],
-            assets = [],
-            liabilities = [],
-            other_financial_info = '',
-            declaration_date = null,
-            period_start_date = null,
-            period_end_date = null
-        } = req.body || {};
+        const existingRow = existingDeclRows[0];
+
+        const payload = req.body || {};
+
+        // Optional debug (enable by setting process.env.DECLARATION_DEBUG=1)
+        if (process.env.DECLARATION_DEBUG === '1') {
+            try {
+                console.log('[updateDeclaration] Incoming payload', JSON.stringify(payload).slice(0,2000));
+            } catch (_) { /* ignore */ }
+        }
+
+        // Build dynamic SET clause only for provided scalar fields
+        const setClauses = [];
+        const values = [];
+        const scalarFieldHandlers = {
+            marital_status: v => (v === '' ? null : v),
+            witness_signed: v => (v ? 1 : 0),
+            witness_name: v => (v || ''),
+            witness_address: v => (v || ''),
+            witness_phone: v => (v || null),
+            biennial_income: v => JSON.stringify(Array.isArray(v) ? v : (typeof v === 'string' ? (()=>{try{return JSON.parse(v)||[];}catch{return []}})() : [])),
+            assets: v => {
+                if (Array.isArray(v)) return JSON.stringify(v);
+                if (typeof v === 'string') {
+                    // Assume already JSON or raw text; try parse
+                    try { JSON.parse(v); return v; } catch { return JSON.stringify([]); }
+                }
+                return JSON.stringify([]);
+            },
+            liabilities: v => {
+                if (Array.isArray(v)) return JSON.stringify(v);
+                if (typeof v === 'string') { try { JSON.parse(v); return v; } catch { return JSON.stringify([]); } }
+                return JSON.stringify([]);
+            },
+            other_financial_info: v => (v || ''),
+            declaration_date: v => (v ? v : existingRow.declaration_date),
+            period_start_date: v => (v === '' ? null : v),
+            period_end_date: v => (v === '' ? null : v),
+            signature_path: v => (v ? 1 : 0)
+        };
+
+        Object.keys(scalarFieldHandlers).forEach(field => {
+            if (!Object.prototype.hasOwnProperty.call(payload, field)) return;
+            const rawVal = payload[field];
+            // Skip null / undefined to avoid accidental data erasure
+            if (rawVal === null || rawVal === undefined) return;
+            // For marital_status specifically, skip empty string (treat as 'no change')
+            if (field === 'marital_status' && typeof rawVal === 'string' && rawVal.trim() === '') return;
+            setClauses.push(`${field} = ?`);
+            values.push(scalarFieldHandlers[field](rawVal));
+        });
+
+        if (setClauses.length) {
+            setClauses.push('updated_at = CURRENT_TIMESTAMP');
+            await db.execute(`UPDATE declarations SET ${setClauses.join(', ')} WHERE id = ? AND user_id = ?`, [...values, declarationId, userId]);
+        }
 
         // Fetch existing witness info to detect changes
         let oldWitnessPhone = null;
@@ -100,48 +140,67 @@ exports.updateDeclaration = async (req, res) => {
             console.error('Witness change SMS notify error:', e.message);
         }
 
-    // Update spouses
-        await db.execute('DELETE FROM spouses WHERE declaration_id = ?', [declarationId]);
-        if (Array.isArray(spouses) && spouses.length > 0) {
+        // Update spouses ONLY if explicitly supplied
+        if (Object.prototype.hasOwnProperty.call(payload, 'spouses')) {
+            // Safeguard: if empty array provided but existing rows present AND no force flag, skip deletion (likely unintended)
+            const [spCountRows] = await db.execute('SELECT COUNT(*) as cnt FROM spouses WHERE declaration_id = ?', [declarationId]);
+            const existingSpouseCount = spCountRows[0]?.cnt || 0;
+            if (Array.isArray(payload.spouses) && payload.spouses.length === 0 && existingSpouseCount > 0 && !payload._forceReplace) {
+                if (process.env.DECLARATION_DEBUG === '1') console.warn('[updateDeclaration] Empty spouses array ignored to prevent unintended data loss');
+            } else {
+            const spouses = Array.isArray(payload.spouses) ? payload.spouses : [];
+            await db.execute('DELETE FROM spouses WHERE declaration_id = ?', [declarationId]);
             for (const spouse of spouses) {
                 const fullName = `${spouse.first_name || ''} ${spouse.other_names || ''} ${spouse.surname || ''}`.trim();
-                await db.execute(
-                    'INSERT INTO spouses (declaration_id, first_name, other_names, surname, full_name, biennial_income, assets, liabilities, other_financial_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    [
-                        declarationId, 
-                        spouse.first_name || '', 
-                        spouse.other_names || '', 
-                        spouse.surname || '',
-                        fullName,
-                        JSON.stringify(spouse.biennial_income || []),
-                        spouse.assets || '',
-                        spouse.liabilities || '',
-                        spouse.other_financial_info || ''
-                    ]
-                );
+                const incomeJson = Array.isArray(spouse.biennial_income) ? JSON.stringify(spouse.biennial_income) : '[]';
+                const assetsJson = Array.isArray(spouse.assets) ? JSON.stringify(spouse.assets) : (typeof spouse.assets === 'string' ? spouse.assets : '[]');
+                const liabilitiesJson = Array.isArray(spouse.liabilities) ? JSON.stringify(spouse.liabilities) : (typeof spouse.liabilities === 'string' ? spouse.liabilities : '[]');
+                await db.execute('INSERT INTO spouses (declaration_id, first_name, other_names, surname, full_name, biennial_income, assets, liabilities, other_financial_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+                    declarationId,
+                    spouse.first_name || '',
+                    spouse.other_names || '',
+                    spouse.surname || '',
+                    fullName,
+                    incomeJson,
+                    assetsJson,
+                    liabilitiesJson,
+                    spouse.other_financial_info || ''
+                ]);
             }
+            }
+        } else if (process.env.DECLARATION_DEBUG === '1') {
+            console.log('[updateDeclaration] Spouses not provided -> existing rows preserved');
         }
 
-    // Update children
-    await db.execute('DELETE FROM children WHERE declaration_id = ?', [declarationId]);
-        if (Array.isArray(children) && children.length > 0) {
+        // Update children ONLY if explicitly supplied
+        if (Object.prototype.hasOwnProperty.call(payload, 'children')) {
+            const [chCountRows] = await db.execute('SELECT COUNT(*) as cnt FROM children WHERE declaration_id = ?', [declarationId]);
+            const existingChildCount = chCountRows[0]?.cnt || 0;
+            if (Array.isArray(payload.children) && payload.children.length === 0 && existingChildCount > 0 && !payload._forceReplace) {
+                if (process.env.DECLARATION_DEBUG === '1') console.warn('[updateDeclaration] Empty children array ignored to prevent unintended data loss');
+            } else {
+            const children = Array.isArray(payload.children) ? payload.children : [];
+            await db.execute('DELETE FROM children WHERE declaration_id = ?', [declarationId]);
             for (const child of children) {
                 const fullName = `${child.first_name || ''} ${child.other_names || ''} ${child.surname || ''}`.trim();
-                await db.execute(
-                    'INSERT INTO children (declaration_id, first_name, other_names, surname, full_name, biennial_income, assets, liabilities, other_financial_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    [
-                        declarationId, 
-                        child.first_name || '', 
-                        child.other_names || '', 
-                        child.surname || '',
-                        fullName,
-                        JSON.stringify(child.biennial_income || []),
-                        child.assets || '',
-                        child.liabilities || '',
-                        child.other_financial_info || ''
-                    ]
-                );
+                const incomeJson = Array.isArray(child.biennial_income) ? JSON.stringify(child.biennial_income) : '[]';
+                const assetsJson = Array.isArray(child.assets) ? JSON.stringify(child.assets) : (typeof child.assets === 'string' ? child.assets : '[]');
+                const liabilitiesJson = Array.isArray(child.liabilities) ? JSON.stringify(child.liabilities) : (typeof child.liabilities === 'string' ? child.liabilities : '[]');
+                await db.execute('INSERT INTO children (declaration_id, first_name, other_names, surname, full_name, biennial_income, assets, liabilities, other_financial_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+                    declarationId,
+                    child.first_name || '',
+                    child.other_names || '',
+                    child.surname || '',
+                    fullName,
+                    incomeJson,
+                    assetsJson,
+                    liabilitiesJson,
+                    child.other_financial_info || ''
+                ]);
             }
+            }
+        } else if (process.env.DECLARATION_DEBUG === '1') {
+            console.log('[updateDeclaration] Children not provided -> existing rows preserved');
         }
 
         // financial_declarations removed
@@ -177,9 +236,10 @@ exports.updateDeclaration = async (req, res) => {
         // Insert declaration audit log
         try {
             const diff = computeShallowDiff(prevDeclaration, newDeclarationRow);
-            await db.execute('INSERT INTO declaration_audit_logs (declaration_id, user_id, action, diff) VALUES (?, ?, ?, ?)', [declarationId, userId, 'UPDATE', JSON.stringify(diff)]);
+            const { logDeclarationUpdate } = require('../util/auditLogger');
+            await logDeclarationUpdate({ declarationId, userId, diff, action: 'UPDATE' });
         } catch (e) {
-            console.warn('Audit log insert (declaration) failed:', e.message);
+            console.warn('Audit log wrapper (declaration) failed:', e.message);
         }
 
         // financial audit logs removed
@@ -245,6 +305,10 @@ exports.patchDeclaration = async (req, res) => {
             await db.execute('DELETE FROM spouses WHERE declaration_id = ?', [declarationId]);
             for (const spouse of payload.spouses) {
                 const fullName = `${spouse.first_name || ''} ${spouse.other_names || ''} ${spouse.surname || ''}`.trim();
+                // Ensure financial array fields are JSON serialized. Accept pre-stringified JSON to avoid double quoting.
+                const incomeJson = Array.isArray(spouse.biennial_income) ? JSON.stringify(spouse.biennial_income) : (typeof spouse.biennial_income === 'string' ? spouse.biennial_income : '[]');
+                const assetsJson = Array.isArray(spouse.assets) ? JSON.stringify(spouse.assets) : (typeof spouse.assets === 'string' && spouse.assets.trim().startsWith('[') ? spouse.assets : '[]');
+                const liabilitiesJson = Array.isArray(spouse.liabilities) ? JSON.stringify(spouse.liabilities) : (typeof spouse.liabilities === 'string' && spouse.liabilities.trim().startsWith('[') ? spouse.liabilities : '[]');
                 await db.execute(
                     'INSERT INTO spouses (declaration_id, first_name, other_names, surname, full_name, biennial_income, assets, liabilities, other_financial_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
                     [
@@ -253,9 +317,9 @@ exports.patchDeclaration = async (req, res) => {
                         spouse.other_names || '',
                         spouse.surname || '',
                         fullName,
-                        JSON.stringify(spouse.biennial_income || []),
-                        spouse.assets || '',
-                        spouse.liabilities || '',
+                        incomeJson,
+                        assetsJson,
+                        liabilitiesJson,
                         spouse.other_financial_info || ''
                     ]
                 );
@@ -266,6 +330,9 @@ exports.patchDeclaration = async (req, res) => {
             await db.execute('DELETE FROM children WHERE declaration_id = ?', [declarationId]);
             for (const child of payload.children) {
                 const fullName = `${child.first_name || ''} ${child.other_names || ''} ${child.surname || ''}`.trim();
+                const incomeJson = Array.isArray(child.biennial_income) ? JSON.stringify(child.biennial_income) : (typeof child.biennial_income === 'string' ? child.biennial_income : '[]');
+                const assetsJson = Array.isArray(child.assets) ? JSON.stringify(child.assets) : (typeof child.assets === 'string' && child.assets.trim().startsWith('[') ? child.assets : '[]');
+                const liabilitiesJson = Array.isArray(child.liabilities) ? JSON.stringify(child.liabilities) : (typeof child.liabilities === 'string' && child.liabilities.trim().startsWith('[') ? child.liabilities : '[]');
                 await db.execute(
                     'INSERT INTO children (declaration_id, first_name, other_names, surname, full_name, biennial_income, assets, liabilities, other_financial_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
                     [
@@ -274,9 +341,9 @@ exports.patchDeclaration = async (req, res) => {
                         child.other_names || '',
                         child.surname || '',
                         fullName,
-                        JSON.stringify(child.biennial_income || []),
-                        child.assets || '',
-                        child.liabilities || '',
+                        incomeJson,
+                        assetsJson,
+                        liabilitiesJson,
                         child.other_financial_info || ''
                     ]
                 );
@@ -286,20 +353,10 @@ exports.patchDeclaration = async (req, res) => {
         // financial_declarations payload ignored (deprecated)
         // Basic audit log (create table if needed separately): declaration_patch_audit
         try {
-                        await db.execute(
-                            'INSERT INTO declaration_patch_audit (declaration_id, user_id, changed_scalar_fields, replaced_collections) VALUES (?,?,?,?)',
-                            [
-                                declarationId,
-                                userId,
-                                JSON.stringify(changedScalar),
-                                JSON.stringify(replacedCollections)
-                            ]
-                        );
+            const { logDeclarationPatch } = require('../util/auditLogger');
+            await logDeclarationPatch({ declarationId, userId, changedScalar, replacedCollections });
         } catch (e) {
-            // If the audit table doesn't exist yet, log and continue silently
-            if (!/doesn\'t exist|unknown table/i.test(e.message)) {
-                console.warn('Patch audit insert failed:', e.message);
-            }
+            console.warn('Patch audit wrapper failed:', e.message);
         }
         return res.json({ success: true, message: 'Declaration patched successfully' });
     } catch (err) {
@@ -544,14 +601,7 @@ exports.submitDeclaration = async (req, res) => {
     // Legacy financial_declarations payload ignored (tables removed)
         // --- Declaration type logic ---
         // Normalize declaration_type spelling (accept legacy variants)
-        const normalizeDeclType = (val) => {
-            if (!val) return '';
-            const lower = val.toLowerCase();
-            if (lower.startsWith('bien')) return 'Biennial'; // covers 'biennial', 'bienniel'
-            if (lower === 'first') return 'First';
-            if (lower === 'final') return 'Final';
-            return val; // unknown passthrough
-        };
+        const normalizeDeclType = require('../util/normalizeDeclarationType');
         const allowedTypes = ['First', 'Biennial', 'Final'];
         const normalizedType = normalizeDeclType(declaration_type);
         if (!normalizedType || !allowedTypes.includes(normalizedType)) {
@@ -635,14 +685,21 @@ exports.submitDeclaration = async (req, res) => {
                     return dateStr;
                 }
 
-                // Validate biennial_income: allow missing -> treat as empty array. Validate shape only if non-empty.
-                let validBiennialIncome = Array.isArray(biennial_income) ? biennial_income : [];
-                if (validBiennialIncome.length > 0 && !validBiennialIncome.every(item => item && typeof item === 'object' && 'type' in item && 'description' in item && 'value' in item)) {
-                    return res.status(400).json({
-                        success: false,
-                        message: "Biennial income entries must include type, description, and value."
-                    });
+                // --- Financial Arrays Normalization (root) ---
+                const normalizeFinArray = (val) => {
+                    if (Array.isArray(val)) return val;
+                    if (typeof val === 'string') {
+                        try { const parsed = JSON.parse(val); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
+                    }
+                    return [];
+                };
+                const filterRows = (arr) => (arr || []).filter(r => r && (String(r.description||'').trim() || String(r.value||'').trim()));
+                let validBiennialIncome = filterRows(normalizeFinArray(biennial_income));
+                if (validBiennialIncome.length && !validBiennialIncome.every(item => item && typeof item === 'object' && 'description' in item && 'value' in item)) {
+                    return res.status(400).json({ success:false, message:'Biennial income entries must contain description and value.' });
                 }
+                const rootAssets = filterRows(normalizeFinArray(assets));
+                const rootLiabilities = filterRows(normalizeFinArray(liabilities));
 
 
                 // Convert date to ISO format for DB
@@ -660,8 +717,8 @@ exports.submitDeclaration = async (req, res) => {
                     period_start_date: isoPeriodStart,
                     period_end_date: isoPeriodEnd,
                     biennial_income: validBiennialIncome,
-                    assets: Array.isArray(assets) ? assets : (assets || []),
-                    liabilities: Array.isArray(liabilities) ? liabilities : (liabilities || []),
+                    assets: rootAssets,
+                    liabilities: rootLiabilities,
                     other_financial_info,
                     signature_path: typeof signature_path === 'number' ? signature_path : (req.body.signature_path ? 1 : 0),
                     witness_signed: witness?.signed ? 1 : (req.body.witness_signed ? 1 : 0),

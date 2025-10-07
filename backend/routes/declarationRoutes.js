@@ -10,11 +10,12 @@ const { handleValidation, listQuery } = require('../middleware/requestValidators
 const patchValidation = require('../middleware/patchValidation');
 
 // --- Declaration Submission ---
-// Biennial lock check middleware
+// Biennial lock check middleware – normalize type before checking
 const adminRoutes = require('./adminRoutes');
+const normalizeDeclarationType = require('../util/normalizeDeclarationType');
 let biennialLocked = false;
 try {
-	biennialLocked = require('./adminRoutes').biennialLocked;
+  biennialLocked = require('./adminRoutes').biennialLocked;
 } catch {}
 
 // Admin / IT Admin: View all edit requests
@@ -24,12 +25,17 @@ router.get('/edit-requests/all', verifyAdminToken, getAllEditRequests);
 router.get('/edit-requests', verifyAdminToken, getAllEditRequests);
 
 router.post('/', verifyToken, validateDeclaration, async (req, res, next) => {
-	// Block biennial declaration if locked
-	if (req.body.declaration_type === 'biennial') {
-		// Use the same biennialLocked variable as adminRoutes
-		if (typeof require.cache[require.resolve('./adminRoutes')].exports.biennialLocked !== 'undefined') {
-			biennialLocked = require.cache[require.resolve('./adminRoutes')].exports.biennialLocked;
-		}
+	// Normalize early so downstream logic & lock check share canonical form
+	if (req.body && req.body.declaration_type) {
+		req.body.declaration_type = normalizeDeclarationType(req.body.declaration_type);
+	}
+	if (req.body.declaration_type === 'Biennial') {
+		// Refresh lock flag from cached adminRoutes export if present
+		try {
+			if (typeof require.cache[require.resolve('./adminRoutes')].exports.biennialLocked !== 'undefined') {
+				biennialLocked = require.cache[require.resolve('./adminRoutes')].exports.biennialLocked;
+			}
+		} catch {}
 		if (biennialLocked) {
 			return res.status(403).json({ success: false, message: 'Biennial Declaration is currently locked by the administrator.' });
 		}

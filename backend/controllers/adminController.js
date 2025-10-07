@@ -339,7 +339,13 @@ exports.getAllDeclarations = async (req, res) => {
         u.designation,
   /* First approval timestamp & approving admin from unified audit table */
   (SELECT a.changed_at FROM declaration_status_audit a WHERE a.declaration_id = d.id AND a.new_status = 'approved' ORDER BY a.changed_at ASC, a.id ASC LIMIT 1) AS approved_at,
-  (SELECT a.admin_username FROM declaration_status_audit a WHERE a.declaration_id = d.id AND a.new_status = 'approved' ORDER BY a.changed_at ASC, a.id ASC LIMIT 1) AS approved_admin_name
+  /* The original subquery referenced a non-existent column a.admin_username. We now LEFT JOIN admin_users to fetch username. */
+  (SELECT COALESCE(NULLIF(TRIM(au.username), ''), au.username)
+     FROM declaration_status_audit a
+     LEFT JOIN admin_users au ON a.admin_id = au.id
+    WHERE a.declaration_id = d.id AND a.new_status = 'approved'
+    ORDER BY a.changed_at ASC, a.id ASC
+    LIMIT 1) AS approved_admin_name
       FROM declarations d
       JOIN users u ON d.user_id = u.id
       WHERE 1=1 ${departmentFilter}

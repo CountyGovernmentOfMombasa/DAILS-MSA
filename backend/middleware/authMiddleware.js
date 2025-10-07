@@ -7,14 +7,24 @@ const INACTIVITY_MS = INACTIVITY_MINUTES * 60000;
 exports.verifyToken = async (req, res, next) => {
     // Get token from header
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.startsWith('Bearer ') 
-        ? authHeader.slice(7) 
+    const token = authHeader && authHeader.startsWith('Bearer ')
+        ? authHeader.slice(7)
         : authHeader;
 
     if (!token) {
         return res.status(403).json({ 
             message: 'A token is required for authentication' 
         });
+    }
+
+    // Test environment bypass for simplified tokens: Bearer TEST-USER-<id>
+    if (process.env.NODE_ENV === 'test' && token && token.startsWith('TEST-USER-')) {
+        const idStr = token.substring('TEST-USER-'.length);
+        const id = parseInt(idStr, 10);
+        if (!isNaN(id)) {
+            req.user = { id };
+            return next();
+        }
     }
 
     try {

@@ -25,9 +25,14 @@ const Declaration = {
     } = declarationData;
 
   // Store biennial_income as JSON string
-  const biennialIncomeJson = (typeof biennial_income === 'string') ? biennial_income : JSON.stringify(biennial_income || []);
-    const assetsJson = (typeof assets === 'object') ? JSON.stringify(assets) : assets;
-    const liabilitiesJson = (typeof liabilities === 'object') ? JSON.stringify(liabilities) : liabilities;
+    const normalizeFinArray = (val) => {
+      if (Array.isArray(val)) return val;
+      if (typeof val === 'string') { try { const parsed = JSON.parse(val); return Array.isArray(parsed) ? parsed : []; } catch { return []; } }
+      return [];
+    };
+    const biennialIncomeJson = (typeof biennial_income === 'string') ? biennial_income : JSON.stringify(normalizeFinArray(biennial_income));
+    const assetsJson = JSON.stringify(normalizeFinArray(assets));
+    const liabilitiesJson = JSON.stringify(normalizeFinArray(liabilities));
 
     const [result] = await pool.query(
       `INSERT INTO declarations (
