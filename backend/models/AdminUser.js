@@ -76,16 +76,21 @@ class AdminUser {
 
     static async create(adminData) {
         try {
-            let { username, password, email, role, department, sub_department, first_name, other_names, surname, created_by, is_active } = adminData;
+            let { username, password, email, role, department, sub_department, first_name, other_names, surname, created_by, is_active, user_id } = adminData;
             const allowedRoles = ['super_admin', 'hr_admin', 'finance_admin', 'it_admin'];
             if (!role || !allowedRoles.includes(role)) role = 'hr_admin';
             if (typeof is_active === 'undefined') is_active = true;
             const hashedPassword = await bcrypt.hash(password, 10);
 
             const insertAttempts = [
+                // New preferred schema including user_id + sub_department + other_names + surname
+                {
+                    sql: 'INSERT INTO admin_users (username, password, email, role, department, sub_department, first_name, other_names, surname, created_by, is_active, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    params: [username, hashedPassword, email, role, department, (sub_department || 'Unknown'), first_name, other_names, surname, created_by, is_active, user_id || null]
+                },
                 {
                     sql: 'INSERT INTO admin_users (username, password, email, role, department, sub_department, first_name, other_names, surname, created_by, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    params: [username, hashedPassword, email, role, department, sub_department, first_name, other_names, surname, created_by, is_active]
+                    params: [username, hashedPassword, email, role, department, (sub_department || 'Unknown'), first_name, other_names, surname, created_by, is_active]
                 },
                 {
                     sql: 'INSERT INTO admin_users (username, password, email, role, department, first_name, last_name, created_by, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',

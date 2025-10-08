@@ -752,48 +752,81 @@ exports.getAdminsMissingDepartment = async (req, res) => {
 
 exports.createAdmin = async (req, res) => {
   try {
-    const { username, password, email, role, first_name, other_names = null, surname: last_name, department } = req.body;
-    // Validate required fields
-    if (!username || !password || !first_name || !last_name) {
-      return res.status(400).json({ message: 'Username, password, first name, and surname are required.' });
+  const { username, password, email, role, first_name, other_names = null, surname: last_name, department, userId, nationalId, linkExistingUser = false } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ message: 'Username and password are required.' });
     }
-    // Validate role
     const allowedRoles = ['super_admin', 'hr_admin', 'finance_admin', 'it_admin'];
     const safeRole = role && allowedRoles.includes(role) ? role : 'hr_admin';
 
-    // Enforce department for any non-super role
-    if (safeRole !== 'super_admin' && !department) {
+    let finalFirst = first_name;
+    let finalSurname = last_name;
+    let finalEmail = email;
+    let finalDept = department;
+    let linkedUserId = null;
+
+    // Optional linking to existing user record (by userId or nationalId)
+    if (linkExistingUser) {
+      let urows = [];
+      if (userId) {
+        [urows] = await pool.query('SELECT id, first_name, other_names, surname, email, department, national_id FROM users WHERE id = ?', [userId]);
+      } else if (nationalId) {
+        [urows] = await pool.query('SELECT id, first_name, other_names, surname, email, department, national_id FROM users WHERE national_id = ?', [nationalId]);
+      } else {
+        return res.status(400).json({ message: 'Provide userId or nationalId when linkExistingUser=true.' });
+      }
+      if (!urows.length) {
+        return res.status(400).json({ message: 'User not found for provided identifier.' });
+      }
+      const u = urows[0];
+      linkedUserId = u.id;
+      // Prevent duplicate admin linkage to same user
+      const existingAdminForUser = await AdminUser.findByUserId(linkedUserId);
+      if (existingAdminForUser) {
+        return res.status(400).json({ message: 'This user already has a linked admin account.' });
+      }
+      if (!finalFirst) finalFirst = u.first_name || '';
+      if (!finalSurname) finalSurname = u.surname || '';
+      if (!finalEmail) finalEmail = u.email || null;
+      if (!finalDept && safeRole !== 'super_admin') finalDept = u.department || null;
+    }
+
+    if (!finalFirst || !finalSurname) {
+      return res.status(400).json({ message: 'First name and surname are required (either provided or derived from linked user).' });
+    }
+
+    if (safeRole !== 'super_admin' && !finalDept) {
       return res.status(400).json({ message: 'Department is required for non-super admin roles.' });
     }
-    // Prepare admin data
+
     const adminData = {
       username,
       password,
-      email,
+      email: finalEmail,
       role: safeRole,
-      department: safeRole === 'super_admin' ? null : department,
-      first_name,
+      department: safeRole === 'super_admin' ? null : finalDept,
+      first_name: finalFirst,
       other_names,
-      surname: last_name,
-      created_by: req.admin.adminId
+      surname: finalSurname,
+      created_by: req.admin.adminId,
+      user_id: linkedUserId
     };
     const newAdmin = await AdminUser.create(adminData);
 
     // Send notification email
     const sendEmail = require('../util/sendEmail');
-    const adminHtml = `<!DOCTYPE html><html><body style=\"font-family: Arial, sans-serif; background: #f7f7f7; padding: 20px;\"><div style=\"max-width: 500px; margin: auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #eee; padding: 24px;\"><h2 style=\"color: #2a7ae2;\">WDP Admin Account Created</h2><p>Dear <strong>${first_name}</strong>,</p><p>Your admin account has been successfully created. You now have access to the WDP Employee Declaration Portal with administrative privileges.</p><p style=\"margin-top: 24px;\">Best regards,<br><strong>WDP Team</strong></p><hr><small style=\"color: #888;\">This is an automated message. Please do not reply.</small></div></body></html>`;
+    const displayFirst = newAdmin.first_name || first_name;
+    const adminHtml = `<!DOCTYPE html><html><body style=\"font-family: Arial, sans-serif; background: #f7f7f7; padding: 20px;\"><div style=\"max-width: 500px; margin: auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #eee; padding: 24px;\"><h2 style=\"color: #2a7ae2;\">WDP Admin Account Created</h2><p>Dear <strong>${displayFirst}</strong>,</p><p>Your admin account has been successfully created.${linkedUserId ? ' It is linked to your existing user profile.' : ''}</p><p style=\"margin-top: 24px;\">Best regards,<br><strong>WDP Team</strong></p><hr><small style=\"color: #888;\">This is an automated message. Please do not reply.</small></div></body></html>`;
     await sendEmail({
-      to: email,
+      to: finalEmail,
       subject: 'Your WDP Admin Account Has Been Created',
-      text: `Hello ${first_name},\nYour admin account has been created.`,
+      text: `Hello ${displayFirst},\nYour admin account has been created.${linkedUserId ? ' It is linked to your existing user profile.' : ''}`,
       html: adminHtml
     });
 
-    res.status(201).json({
-      success: true,
-      message: 'Admin created successfully',
-      data: newAdmin.toJSON()
-    });
+    const resp = newAdmin.toJSON();
+    resp.linked_user_id = linkedUserId;
+    res.status(201).json({ success: true, message: 'Admin created successfully', data: resp });
   } catch (error) {
     console.error('Create admin error:', error);
     if (error.code === 'ER_DUP_ENTRY') {
