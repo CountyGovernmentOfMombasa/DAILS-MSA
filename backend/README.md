@@ -16,6 +16,7 @@ A Node.js/Express backend API for managing employee financial declarations.
 ## Removed / Deprecated Features
 
 - The separate "departmental admin" login & dashboard flow has been removed. Department filtering is now applied automatically for every non-super admin role (HR, Finance, IT). Any existing references to deprecated departmental components should be cleaned up; placeholder files may remain temporarily for build stability until fully pruned.
+- Admin password reset request queue (endpoints: `/api/admin/forgot-password-request`, `/api/admin/password-reset-requests`, `/api/admin/password-reset-requests/:id/resolve`) was removed on 2025-10-08. Rationale: simplified security model; direct privileged admins can perform a secure password change instead. The table `admin_password_reset_requests` is dropped via migration `20251008_drop_admin_password_reset_requests.sql`. If you still have build artifacts referencing these endpoints, rebuild the frontend.
 
 ## Prerequisites
 
