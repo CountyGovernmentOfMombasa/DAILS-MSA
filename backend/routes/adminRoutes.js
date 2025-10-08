@@ -24,9 +24,7 @@ const {
   deleteAdmin,
   changeAdminPassword,
   getAdminPasswordChangeAudit,
-  requestAdminPasswordReset,
-  listAdminPasswordResetRequests,
-  resolveAdminPasswordResetRequest,
+  // password reset request handlers removed
   getDepartmentDeclarationStats
 } = adminController;
 const { verifyAdminToken } = require('../middleware/adminMiddleware');
@@ -101,17 +99,7 @@ router.put('/admins/:adminId', verifyAdminToken, updateAdmin); // Update admin
 router.delete('/admins/:adminId', verifyAdminToken, deleteAdmin); // Delete admin
 router.put('/change-password', verifyAdminToken, changeAdminPassword); // Change admin password
 router.get('/password-change-audit', verifyAdminToken, getAdminPasswordChangeAudit); // Audit logs for admin password changes
-// Rate limit admin forgot password requests (public endpoint)
-const adminForgotPasswordRequestLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 3, // limit each IP
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { message: 'Too many admin password reset requests. Please try again later.' }
-});
-router.post('/forgot-password-request', adminForgotPasswordRequestLimiter, requestAdminPasswordReset); // Public request to reset admin password
-router.get('/password-reset-requests', verifyAdminToken, listAdminPasswordResetRequests); // View pending requests (super/it)
-router.post('/password-reset-requests/:id/resolve', verifyAdminToken, resolveAdminPasswordResetRequest); // Approve/reject/complete
+// Admin password reset request feature removed
 
 // --- Utility / Diagnostics ---
 router.post('/test-email', verifyAdminToken, adminController.sendTestEmail); // Send test email (optional ?to=address)
