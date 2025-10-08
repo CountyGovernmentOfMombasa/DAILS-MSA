@@ -69,12 +69,12 @@ router.get('/declarations/export/csv', verifyAdminToken, adminController.exportD
 // Static audit listing routes BEFORE parameterized :id
 router.get('/declarations/status-audit', verifyAdminToken, statusAuditValidators, handleValidation, adminController.listAllDeclarationStatusAudits);
 router.get('/declarations/status-audit/global', verifyAdminToken, adminController.listGlobalDeclarationStatusAudit);
+// List declaration edit requests (must be BEFORE parameterized :id route)
+router.get('/declarations/edit-requests', verifyAdminToken, declarationController.getAllEditRequests);
 router.get('/declarations/:id', verifyAdminToken, declarationController.getAdminDeclarationById); // Get single declaration details with relations
 router.put('/declarations/:declarationId/status', verifyAdminToken, declarationStatusUpdateValidators, handleValidation, adminController.updateDeclarationStatus);
 router.get('/declarations/:declarationId/status-audit', verifyAdminToken, statusAuditValidators, handleValidation, adminController.getDeclarationStatusAudit);
 router.get('/declarations/:declarationId/previous-corrections', verifyAdminToken, statusAuditValidators, handleValidation, adminController.getDeclarationPreviousCorrections);
-// List declaration edit requests
-router.get('/declarations/edit-requests', verifyAdminToken, declarationController.getAllEditRequests);
 
 // --- User Management ---
 router.get('/users', verifyAdminToken, adminUserListValidators, handleValidation, getAllUsers);
