@@ -11,6 +11,9 @@ exports.updateDeclaration = async (req, res) => {
         // Ensure the declaration exists
         const [existingDeclRows] = await db.execute('SELECT * FROM declarations WHERE id = ? AND user_id = ?', [declarationId, userId]);
         if (!existingDeclRows.length) {
+            if (process.env.DECLARATION_DEBUG === '1') {
+                console.warn(`[updateDeclaration] Declaration not found: id=${declarationId} user=${userId}`);
+            }
             return res.status(404).json({ success: false, message: 'Declaration not found' });
         }
         const existingRow = existingDeclRows[0];
@@ -266,6 +269,9 @@ exports.patchDeclaration = async (req, res) => {
         const db = require('../config/db');
         const [existing] = await db.execute('SELECT id FROM declarations WHERE id = ? AND user_id = ?', [declarationId, userId]);
         if (!existing.length) {
+            if (process.env.DECLARATION_DEBUG === '1') {
+                console.warn(`[patchDeclaration] Declaration not found: id=${declarationId} user=${userId}`);
+            }
             return res.status(404).json({ success: false, message: 'Declaration not found' });
         }
     const allowedScalar = new Set(['marital_status','witness_signed','witness_name','witness_address','witness_phone','biennial_income','assets','liabilities','other_financial_info','declaration_date','period_start_date','period_end_date','signature_path']);
@@ -427,6 +433,9 @@ exports.getDeclarationById = async (req, res) => {
         `, [declarationId, userId]);
 
         if (!declRows.length) {
+            if (process.env.DECLARATION_DEBUG === '1') {
+                console.warn(`[getDeclarationById] Declaration not found: id=${declarationId} user=${userId}`);
+            }
             return res.status(404).json({ success: false, message: 'Declaration not found' });
         }
 

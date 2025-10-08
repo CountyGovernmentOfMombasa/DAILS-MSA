@@ -1,6 +1,6 @@
 
 const pool = require('../config/db');
-const { DEPARTMENTS, SUB_DEPARTMENTS, SUB_DEPARTMENT_MAP } = require('./enums');
+const { getDepartmentConfig } = require('../util/departmentsCache');
 
 // Utility functions
 const formatBirthdate = (birthdate) => {
@@ -45,23 +45,15 @@ const User = {
     // Validate department & sub-department (now mandatory pair: if department provided must have valid sub_department; if sub_department given determines department)
     let validDepartment = null;
     let validSubDepartment = null;
+    const { departments: DEPARTMENTS, subDepartmentMap: SUB_DEPARTMENT_MAP } = await getDepartmentConfig();
     if (sub_department) {
-      // Derive department from mapping reverse lookup
       const found = Object.entries(SUB_DEPARTMENT_MAP).find(([, subs]) => subs.includes(sub_department));
-      if (found) {
-        validDepartment = found[0];
-        validSubDepartment = sub_department;
-      }
+      if (found) { validDepartment = found[0]; validSubDepartment = sub_department; }
     } else if (department) {
       if (DEPARTMENTS.includes(department)) {
         const allowedSubs = SUB_DEPARTMENT_MAP[department] || [];
-        // Require sub_department if more than one option exists
-        if (allowedSubs.length === 1) {
-          validDepartment = department;
-          validSubDepartment = allowedSubs[0];
-        } else {
-          throw new Error('sub_department is required for the selected department');
-        }
+        if (allowedSubs.length === 1) { validDepartment = department; validSubDepartment = allowedSubs[0]; }
+        else throw new Error('sub_department is required for the selected department');
       }
     }
     if (department && validDepartment && department !== validDepartment) {

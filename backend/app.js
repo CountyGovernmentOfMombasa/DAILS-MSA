@@ -18,6 +18,7 @@ const draftRoutes = require('./routes/draftRoutes');
 const userRoutes = require('./routes/userRoutes');
 const consentRoutes = require('./routes/consentRoutes');
 const progressRoutes = require('./routes/progressRoutes');
+const publicDepartments = require('./controllers/publicDepartmentsController');
 
 
 const app = express();
@@ -137,6 +138,8 @@ app.use('/api/drafts', draftRoutes);
 app.use('/api/admin/consent', consentRoutes); // legacy path
 app.use('/api/consent', consentRoutes);       // public/standardized path
 app.use('/api/progress', progressRoutes);
+// Public departments listing (for registration forms)
+app.get('/api/public/departments', publicDepartments.list);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

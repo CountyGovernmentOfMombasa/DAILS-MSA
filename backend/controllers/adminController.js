@@ -222,8 +222,8 @@ function normalizeDepartment(name) {
     .trim();
 }
 
-// Canonical departments (must stay in sync with frontend DepartmentOverview and models/enums.js)
-const CANONICAL_DEPARTMENTS = [
+// Canonical departments (dynamic DB-backed; fallback to static list if cache load fails)
+let CANONICAL_DEPARTMENTS = [
   'Executive',
   'Department of Public Service Administration, Youth, Gender and Sports',
   'Department of Blue Economy, Cooperatives, Agriculture and Livestock',
@@ -235,12 +235,22 @@ const CANONICAL_DEPARTMENTS = [
   'Department of Finance, Economic Planning and Digital Transformation',
   'Department of Health',
   'Department of Trade, Tourism and Culture',
-  // Newly added departments (2025-10-02 updates)
   'Mombasa County Public Service Board',
+  'Cooperatives'
 ];
-
+const { getDepartmentConfig } = require('../util/departmentsCache');
+async function refreshCanonicalDepartments() {
+  try {
+    const { departments } = await getDepartmentConfig();
+    if (departments && departments.length) {
+      CANONICAL_DEPARTMENTS = departments.slice();
+    }
+  } catch (e) { /* ignore, fallback to static */ }
+  canonicalIndex.clear();
+  CANONICAL_DEPARTMENTS.forEach(c => canonicalIndex.set(normalizeDepartment(c), c));
+}
 const canonicalIndex = new Map();
-CANONICAL_DEPARTMENTS.forEach(c => canonicalIndex.set(normalizeDepartment(c), c));
+refreshCanonicalDepartments();
 
 function mapToCanonical(raw) {
   const norm = normalizeDepartment(raw);
@@ -1891,9 +1901,105 @@ exports.elevateFromUser = async (req, res) => {
     await pool.query('UPDATE admin_users SET refresh_token_hash = ?, last_activity = NOW(), last_login = NOW() WHERE id = ?', [refreshHash, admin.id]);
     const jwt = require('jsonwebtoken');
     const adminToken = jwt.sign({ adminId: admin.id, username: admin.username, role: shortRole, department: admin.department || null, sub_department: admin.sub_department || null, isAdmin: true }, process.env.JWT_SECRET, { expiresIn: accessTtl });
-    return res.json({ message: 'Elevation successful', adminToken, refreshToken, accessTtl, admin: admin.toJSON() });
+    // Provide a normalized admin object with short role so frontend routing logic is consistent
+    const adminObj = { ...admin.toJSON(), role: shortRole };
+    return res.json({ message: 'Elevation successful', adminToken, refreshToken, accessTtl, admin: adminObj });
   } catch (error) {
     console.error('Admin elevation error:', error);
     return res.status(500).json({ message: 'Server error elevating user' });
+  }
+};
+
+// ---------------- CSV Export for Declarations (with Land size summary) ----------------
+exports.exportDeclarationsCsv = async (req, res) => {
+  try {
+    // Optional filters: department, fromDate, toDate
+    const { department, from, to } = req.query;
+    const conditions = [];
+    const params = [];
+    if (department) { conditions.push('u.department = ?'); params.push(department); }
+    if (from) { conditions.push('d.declaration_date >= ?'); params.push(from); }
+    if (to) { conditions.push('d.declaration_date <= ?'); params.push(to); }
+    const whereClause = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+
+    // Respect admin department scoping (non-super limited to their department)
+    if (req.admin && !['super','super_admin'].includes(req.admin.role) && req.admin.normalizedRole !== 'super') {
+      // If they supplied a different department filter, override to enforce their own
+      if (!req.admin.department) {
+        return res.status(403).json({ success:false, message:'Admin has no department assigned; cannot export.' });
+      }
+      const enforced = 'u.department = ?';
+      if (!conditions.includes(enforced)) {
+        conditions.push(enforced); params.push(req.admin.department);
+      }
+    }
+
+    const fullWhere = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+    const [rows] = await pool.query(`
+      SELECT d.id, d.user_id, d.declaration_date, d.submitted_at, d.assets, d.other_financial_info,
+             u.first_name, u.other_names, u.surname, u.department
+      FROM declarations d
+      JOIN users u ON d.user_id = u.id
+      ${fullWhere}
+      ORDER BY d.submitted_at DESC, d.id DESC
+      LIMIT 5000
+    `, params);
+
+    const parseArr = (val) => {
+      if (!val) return [];
+      if (Array.isArray(val)) return val;
+      if (typeof val === 'string') {
+        try { const j = JSON.parse(val); return Array.isArray(j) ? j : []; } catch { return []; }
+      }
+      return [];
+    };
+
+    const lines = [];
+  lines.push(['Declaration ID','User Name','Department','Submitted','Asset Count','Land Count','Land Sizes','Total Asset Value','Nil Income','Nil Assets','Nil Liabilities','Other Info Truncated'].join(','));
+    rows.forEach(r => {
+      const assets = parseArr(r.assets);
+      let assetCount = assets.length;
+      let landCount = 0;
+      let landSizes = [];
+      let totalValue = 0;
+      assets.forEach(a => {
+        const valueNum = Number(a.value); if (!isNaN(valueNum)) totalValue += valueNum;
+        if ((a.type||'') === 'Land') {
+          landCount += 1;
+          if (a.size) landSizes.push(`${a.size}${a.size_unit? ' '+a.size_unit: ''}`);
+        }
+      });
+      // Parse income & liabilities to detect Nil
+      const incomes = parseArr(r.biennial_income);
+      const liabilities = parseArr(r.liabilities);
+      const isNilIncome = incomes.length === 1 && incomes[0].type === 'Nil' && incomes[0].description === 'Nil';
+      const isNilAssets = assets.length === 1 && assets[0].type === 'Nil' && assets[0].description === 'Nil';
+      const isNilLiabilities = liabilities.length === 1 && liabilities[0].type === 'Nil' && liabilities[0].description === 'Nil';
+      const name = [r.first_name, r.other_names, r.surname].filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
+      const landSizesStr = landSizes.join('; ');
+      const truncatedInfo = (r.other_financial_info || '').replace(/\r?\n/g,' ').slice(0,120).replace(/,/g,';');
+      const csvRow = [
+        r.id,
+        '"'+name.replace(/"/g,'""')+'"',
+        '"'+(r.department||'').replace(/"/g,'""')+'"',
+        r.submitted_at ? new Date(r.submitted_at).toISOString() : '',
+        assetCount,
+        landCount,
+        '"'+landSizesStr.replace(/"/g,'""')+'"',
+        totalValue,
+        isNilIncome ? 'Yes' : 'No',
+        isNilAssets ? 'Yes' : 'No',
+        isNilLiabilities ? 'Yes' : 'No',
+        '"'+truncatedInfo.replace(/"/g,'""')+'"'
+      ].join(',');
+      lines.push(csvRow);
+    });
+
+    res.setHeader('Content-Type','text/csv');
+    res.setHeader('Content-Disposition','attachment; filename="declarations_export.csv"');
+    return res.send(lines.join('\n'));
+  } catch (error) {
+    console.error('Export declarations CSV error:', error);
+    return res.status(500).json({ success:false, message:'Server error exporting declarations CSV' });
   }
 };

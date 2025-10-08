@@ -131,6 +131,10 @@ function buildPDF({ declarationId, base, normalized }) {
     if (a.licence_no) parts.push(`Licence: ${a.licence_no}`);
     if (a.title_deed) parts.push(`Title Deed: ${a.title_deed}`);
     if (a.location) parts.push(`Location: ${a.location}`);
+    if (a.type === 'Land' && a.size) {
+      const unit = a.size_unit ? a.size_unit : '';
+      parts.push(`Size: ${a.size}${unit ? ' '+unit : ''}`);
+    }
     if (a.asset_other_type && a.type === 'Other') parts.push(`Type: ${a.asset_other_type}`);
     const extra = parts.join(', ');
     if (base && extra) return `${base} (${extra})`;

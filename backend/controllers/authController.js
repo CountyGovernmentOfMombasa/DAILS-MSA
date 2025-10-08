@@ -541,7 +541,8 @@ exports.getMe = async (req, res) => {
 exports.updateMe = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { DEPARTMENTS, SUB_DEPARTMENT_MAP } = require('../models/enums');
+  const { getDepartmentConfig } = require('../util/departmentsCache');
+  const { departments: DEPARTMENTS, subDepartmentMap: SUB_DEPARTMENT_MAP } = await getDepartmentConfig();
     const fields = [
       'surname', 'first_name', 'other_names', 'birthdate', 'place_of_birth', 'marital_status',
       'postal_address', 'physical_address', 'email', 'payroll_number', 'designation', 'department', 'sub_department', 'nature_of_employment', 'phone_number'

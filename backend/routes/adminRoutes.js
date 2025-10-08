@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 const settingsController = require('../controllers/settingsController');
 const adminController = require('../controllers/adminController');
 const declarationController = require('../controllers/declarationController');
+const deptMgmt = require('../controllers/departmentManagementController');
 const { 
   adminLogin, 
   adminRefresh,
@@ -63,6 +64,8 @@ router.get('/verify', verifyAdminToken, verifyAdmin); // Verify admin (auth requ
 // --- Declaration Management ---
 // Use adminController.getAllDeclarations so spouses & children are attached and department scoping is enforced
 router.get('/declarations', verifyAdminToken, adminController.getAllDeclarations); // Get all declarations (auth required)
+// CSV export of declarations (includes Land size summary)
+router.get('/declarations/export/csv', verifyAdminToken, adminController.exportDeclarationsCsv);
 // Static audit listing routes BEFORE parameterized :id
 router.get('/declarations/status-audit', verifyAdminToken, statusAuditValidators, handleValidation, adminController.listAllDeclarationStatusAudits);
 router.get('/declarations/status-audit/global', verifyAdminToken, adminController.listGlobalDeclarationStatusAudit);
@@ -138,6 +141,14 @@ router.post('/admins/:adminId/upload-signature', verifyAdminToken, upload.single
 router.get('/reports/departments', verifyAdminToken, getDepartmentDeclarationStats);
 // Department user declaration status (IT/HR/Finance & Super)
 router.get('/department/users-status', verifyAdminToken, adminController.getDepartmentUserDeclarationStatus);
+// Dynamic Department Management (super admin only)
+router.get('/dept-config', verifyAdminToken, deptMgmt.list);
+router.post('/dept-config/department', verifyAdminToken, deptMgmt.createDepartment);
+router.put('/dept-config/department/:id', verifyAdminToken, deptMgmt.renameDepartment);
+router.delete('/dept-config/department/:id', verifyAdminToken, deptMgmt.deleteDepartment);
+router.post('/dept-config/department/:id/sub', verifyAdminToken, deptMgmt.addSubDepartment);
+router.put('/dept-config/sub/:subId', verifyAdminToken, deptMgmt.renameSubDepartment);
+router.delete('/dept-config/sub/:subId', verifyAdminToken, deptMgmt.deleteSubDepartment);
 // Super admin metrics
 router.get('/super/metrics', verifyAdminToken, adminController.getSuperAdminMetrics);
 // Clear user lockout (super/it only)

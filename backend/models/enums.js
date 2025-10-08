@@ -14,7 +14,8 @@ const DEPARTMENTS = [
   'Department of Finance, Economic Planning and Digital Transformation',
   'Department of Health',
   'Department of Trade, Tourism and Culture',
-  'Mombasa County Public Service Board'
+  'Mombasa County Public Service Board',
+  'Cooperatives'
 ];
 
 // Hierarchical mapping: Department -> Array of sub-departments
@@ -65,6 +66,10 @@ const SUB_DEPARTMENT_MAP = {
   ],
   'Mombasa County Public Service Board': [
     'Mombasa County Public Service Board'
+  ],
+  'Cooperatives': [
+    'MOWASSCO',
+    'MIC'
   ]
 };
 

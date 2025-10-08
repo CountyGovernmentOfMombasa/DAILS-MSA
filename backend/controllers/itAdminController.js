@@ -74,36 +74,9 @@ exports.createAdminUser = async (req, res) => {
       email = null
     } = req.body;
 
-    // Allowed departments (must match front-end list exactly)
-    const ALLOWED_DEPARTMENTS = [
-      'Executive',
-      'Department of Public Service Administration, Youth, Gender and Sports',
-      'Department of Blue Economy, Cooperatives, Agriculture and Livestock',
-      'Department of Environment and Water',
-      'Department of Transport, Infrastructure and Governance',
-      'Department of Climate Change, Energy and Natural Resources',
-      'Department of Lands, Urban Planning, Housing and Serikali Mtaani',
-      'Department of Education and Vocational Training',
-      'Department of Finance, Economic Planning and Digital Transformation',
-      'Department of Health',
-      'Department of Trade, Tourism and Culture',
-      'Mombasa County Public Service Board'
-    ];
-
-    const SUB_DEPARTMENT_MAP = {
-      'Executive': ['Office of the Governor','Office of the Deputy Governor','Office of the County Secretary','Office of the County Attorney'],
-      'Department of Public Service Administration, Youth, Gender and Sports': ['Public Service Administration','Youth, Gender and Sports'],
-      'Department of Blue Economy, Cooperatives, Agriculture and Livestock': ['Department of Blue Economy, Cooperatives, Agriculture and Livestock'],
-      'Department of Environment and Water': ['Environment and Solid Waste Management','Water and Sanitation'],
-      'Department of Transport, Infrastructure and Governance': ['Transport and Infrastructure','Governance'],
-      'Department of Climate Change, Energy and Natural Resources': ['Department of Climate Change, Energy and Natural Resources'],
-      'Department of Lands, Urban Planning, Housing and Serikali Mtaani': ['Lands, Urban Planning and Housing','Serikali Mtaani'],
-      'Department of Education and Vocational Training': ['Department of Education and Vocational Training'],
-      'Department of Finance, Economic Planning and Digital Transformation': ['Finance and Investment','Economic Planning and Digital Transformation'],
-      'Department of Health': ['Medical Services','Public Health','Coast General Teaching and Referral Hospital'],
-      'Department of Trade, Tourism and Culture': ['Department of Trade, Tourism and Culture'],
-      'Mombasa County Public Service Board': ['Mombasa County Public Service Board']
-    };
+    // Dynamic department config (DB-backed with cache; fallback to static enums)
+    const { getDepartmentConfig } = require('../util/departmentsCache');
+    const { departments: ALLOWED_DEPARTMENTS, subDepartmentMap: SUB_DEPARTMENT_MAP } = await getDepartmentConfig();
 
     // Role normalization (front-end may send short forms)
     const roleMap = {
@@ -411,6 +384,7 @@ exports.getAdminCreationAudit = async (req, res) => {
       adminId,
       newRole,
       department,
+      sub_department,
       from,
       to,
       search = '',
