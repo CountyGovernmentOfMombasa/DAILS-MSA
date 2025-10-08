@@ -435,6 +435,12 @@ exports.getDeclarationById = async (req, res) => {
         if (!declRows.length) {
             if (process.env.DECLARATION_DEBUG === '1') {
                 console.warn(`[getDeclarationById] Declaration not found: id=${declarationId} user=${userId}`);
+                try {
+                    const [userDecls] = await db.execute('SELECT id, created_at FROM declarations WHERE user_id = ? ORDER BY created_at DESC LIMIT 15', [userId]);
+                    console.warn(`[getDeclarationById] Existing declarations for user ${userId}:`, userDecls.map(r=>r.id).join(', ') || '(none)');
+                } catch (dbgErr) {
+                    console.warn('[getDeclarationById] Debug list fetch failed:', dbgErr.message);
+                }
             }
             return res.status(404).json({ success: false, message: 'Declaration not found' });
         }
