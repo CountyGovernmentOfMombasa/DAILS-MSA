@@ -752,9 +752,9 @@ exports.getAdminsMissingDepartment = async (req, res) => {
 
 exports.createAdmin = async (req, res) => {
   try {
-  const { username, password, email, role, first_name, other_names = null, surname: last_name, department, userId, nationalId, linkExistingUser = false } = req.body;
-    if (!username || !password) {
-      return res.status(400).json({ message: 'Username and password are required.' });
+    const { username, password, email, role, first_name, other_names = null, surname: last_name, department, userId, nationalId, linkExistingUser = false } = req.body;
+    if (!username) {
+      return res.status(400).json({ message: 'Username is required.' });
     }
     const allowedRoles = ['super_admin', 'hr_admin', 'finance_admin', 'it_admin'];
     const safeRole = role && allowedRoles.includes(role) ? role : 'hr_admin';
@@ -799,9 +799,21 @@ exports.createAdmin = async (req, res) => {
       return res.status(400).json({ message: 'Department is required for non-super admin roles.' });
     }
 
+    // Derive a password if omitted (non-linked) so bcrypt hashing in model succeeds; linked admins reuse user authentication so password can be placeholder.
+    let finalPassword = password;
+    if (!finalPassword) {
+      if (linkedUserId) {
+        // Provide a random placeholder; not used for login (elevation flow uses user creds)
+        finalPassword = require('crypto').randomBytes(16).toString('hex') + 'Aa1!';
+      } else {
+        // Non-linked: must have password
+        return res.status(400).json({ message: 'Password required when not linking to an existing user.' });
+      }
+    }
+
     const adminData = {
       username,
-      password,
+      password: finalPassword,
       email: finalEmail,
       role: safeRole,
       department: safeRole === 'super_admin' ? null : finalDept,
