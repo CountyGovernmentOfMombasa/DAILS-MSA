@@ -18,6 +18,98 @@ A Node.js/Express backend API for managing employee financial declarations.
 - The separate "departmental admin" login & dashboard flow has been removed. Department filtering is now applied automatically for every non-super admin role (HR, Finance, IT). Any existing references to deprecated departmental components should be cleaned up; placeholder files may remain temporarily for build stability until fully pruned.
 - Admin password reset request queue (endpoints: `/api/admin/forgot-password-request`, `/api/admin/password-reset-requests`, `/api/admin/password-reset-requests/:id/resolve`) was removed on 2025-10-08. Rationale: simplified security model; direct privileged admins can perform a secure password change instead. The table `admin_password_reset_requests` is dropped via migration `20251008_drop_admin_password_reset_requests.sql`. If you still have build artifacts referencing these endpoints, rebuild the frontend.
 
+## Admin Linking Workflow (New)
+
+From 2025-10-08, newly created admin accounts can optionally be linked to an existing employee `users` record to unify identity (single source of truth for name, department, national ID, email) and allow future SSO or privilege elevation flows.
+
+### How Linking Works
+
+1. Frontend admin creation form exposes a toggle (linkExistingUser). When enabled the creator provides either:
+    - `userId` (primary key of `users` table), OR
+    - `nationalId` (unique national identifier in `users.national_id`).
+2. Backend validates the target user exists and that no other admin is already linked to that same user (`UNIQUE user_id` in `admin_users`).
+3. Missing admin profile fields (first_name, surname, email, department) are auto‑populated from the user record (department only for non `super_admin` roles).
+4. A placeholder random password is generated because linked admins authenticate via the underlying user account (future enhancement: token/SSO). For non‑linked admins a password is mandatory.
+5. Creation success triggers two audit trails:
+    - Existing `admin_creation_audit` (legacy) still captures the base creation event (when invoked through older IT admin route).
+    - New `admin_user_link_audit` captures linkage specifics (admin_id, user_id, linkage method (user_id or national_id), national_id & department snapshot, creator admin, IP, user agent).
+
+### Database Changes
+
+- `admin_users.user_id` (nullable) with `UNIQUE` constraint ensures one-to-one mapping when used.
+- Foreign key `fk_admin_users_user` enforces referential integrity.
+- New table `admin_user_link_audit` (see migration `20251008_create_admin_user_link_audit.sql`).
+
+### API Contract (POST /api/admin/admins)
+
+Request (linked via national ID example):
+
+```json
+{
+   "username": "jane.admin",
+   "role": "hr_admin",
+   "linkExistingUser": true,
+   "nationalId": "12345678"
+}
+```
+
+Request (linked via userId example):
+
+```json
+{
+   "username": "john.admin",
+   "role": "finance_admin",
+   "linkExistingUser": true,
+   "userId": 42
+}
+```
+
+Request (non‑linked legacy style):
+
+```json
+{
+   "username": "ext.contractor",
+   "role": "it_admin",
+   "password": "Str0ng!Pass",
+   "first_name": "Ext",
+   "surname": "Contractor",
+   "department": "IT"
+}
+```
+
+Response snippet (linked):
+
+```json
+{
+   "success": true,
+   "data": {
+      "id": 7,
+      "username": "jane.admin",
+      "role": "hr_admin",
+      "user_id": 15,
+      "linked_national_id": "12345678",
+      "linked_user_email": "jane.doe@org.test",
+      "link_method": "national_id"
+   }
+}
+```
+
+### Listing Enrichment
+
+`GET /api/admin/admins` now includes (when schema supports):
+
+- `user_id` – linked user PK (nullable)
+- `linked_national_id` – national ID from joined user (nullable)
+- `linked_user_email` – user email snapshot (nullable)
+
+Backwards compatibility: If older nodes or migrations haven't run, the API gracefully falls back to legacy SELECTs without these fields.
+
+### Operational Notes
+
+- Run migrations in order so the foreign key and audit table exist before heavy usage.
+- To audit link events: query `admin_user_link_audit` (add simple viewer endpoint in future if needed).
+- Unlinking is currently unsupported (would require policy & additional audit trail). To change linkage, create a new admin and deactivate the old one.
+
 ## Prerequisites
 
 - Node.js (v14 or higher)

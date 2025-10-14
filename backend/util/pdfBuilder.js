@@ -117,7 +117,7 @@ function buildPDF({ declarationId, base, normalized }) {
   const pageWidth=()=> doc.page.width - doc.page.margins.left - doc.page.margins.right;
   let pageCounter = 1;
   const moneyFormatter = new Intl.NumberFormat('en-KE',{ minimumFractionDigits:2, maximumFractionDigits:2 });
-  const formatMoney = (val) => {
+  const formatMoney = (val) => { 
     const num = Number(val);
     if (isNaN(num)) return val === undefined || val === null ? '' : String(val);
     return 'KES ' + moneyFormatter.format(num);
@@ -178,6 +178,11 @@ function buildPDF({ declarationId, base, normalized }) {
     // Heading now clearly separated from logo
     doc.fontSize(15).font('Helvetica-Bold').text('DECLARATION OF INCOME, ASSETS AND LIABILITIES',{align:'center'});
     doc.moveDown(0.25).fontSize(11).font('Helvetica').text('County Government of Mombasa',{align:'center'});
+    // Password instruction banner
+    doc.moveDown(0.4);
+    const banner = 'This PDF is password protected. The password is Your National ID number.';
+    doc.fontSize(9).font('Helvetica-Oblique').fillColor('#444').text(banner, { align:'center' });
+    doc.fillColor('#000');
     doc.moveDown(0.4);
   };
   const addPageFooter=()=>{
@@ -239,13 +244,16 @@ function buildPDF({ declarationId, base, normalized }) {
   };
   addHeader();
   section('Declaration Overview');
-  tableKV([
-    ['Declaration ID', declarationId],
-    ['Declaration Type', base.declaration_type||''],
-    ['Submitted At', fmtDate(base.submitted_at)||fmtDate(base.created_at)||''],
-    ['Status', base.status||'pending'],
-    ...(base.correction_message ? [['Correction Message', base.correction_message]]:[])
-  ]);
+    const statusLabel = base.status === 'pending'
+      ? 'Submitted'
+      : (base.status === 'rejected' ? 'Requesting Clarification' : (base.status || 'pending'));
+    tableKV([
+      ['Declaration ID', declarationId],
+      ['Declaration Type', base.declaration_type || ''],
+      ['Submitted At', fmtDate(base.submitted_at) || fmtDate(base.created_at) || ''],
+      ['Status', statusLabel],
+      ...(base.correction_message ? [['Correction Message', base.correction_message]] : [])
+    ]);
   section('Employee Profile');
   const fullName=[base.surname, base.first_name, base.other_names].filter(Boolean).join(', ');
   tableKV([
@@ -407,7 +415,14 @@ async function generateDeclarationPDF(declarationId) {
   const normalized = normalizeData(full);
   const rawBuffer = await buildPDF({ declarationId, base: full.base, normalized });
   const { buffer, applied, password } = await applyEncryptionIfPossible(rawBuffer, full.base);
-  return { buffer, base: full.base, password, encryptionApplied: applied };
+  // Provide a user-facing instruction so the UI / caller can notify the user which password to use.
+  // NOTE: The password prompt appears before the PDF contents are visible, so this must be surfaced
+  // externally (e.g. via API response metadata or a toast) — embedding inside the PDF alone is not
+  // sufficient. We therefore return a clear message when encryption is active.
+  const passwordInstruction = applied
+    ? 'This PDF is password protected. Use your National ID number as the password.'
+    : null;
+  return { buffer, base: full.base, password, encryptionApplied: applied, passwordInstruction };
 }
 
 module.exports = { generateDeclarationPDF };

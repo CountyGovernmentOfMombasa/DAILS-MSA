@@ -5,6 +5,7 @@ const upload = require('../middleware/fileUpload');
 const { validateDeclaration } = require('../middleware/validation');
 const router = express.Router();
 const { getDeclarationById, downloadDeclarationPDF, patchDeclaration } = require('../controllers/declarationController');
+const { enforceFinancialTypes } = require('../middleware/financialValidation');
 const { param } = require('express-validator');
 const { handleValidation, listQuery } = require('../middleware/requestValidators');
 const patchValidation = require('../middleware/patchValidation');
@@ -24,7 +25,7 @@ const { verifyAdminToken } = require('../middleware/adminMiddleware');
 router.get('/edit-requests/all', verifyAdminToken, getAllEditRequests);
 router.get('/edit-requests', verifyAdminToken, getAllEditRequests);
 
-router.post('/', verifyToken, validateDeclaration, async (req, res, next) => {
+router.post('/', verifyToken, validateDeclaration, handleValidation, enforceFinancialTypes, async (req, res, next) => {
 	// Normalize early so downstream logic & lock check share canonical form
 	if (req.body && req.body.declaration_type) {
 		req.body.declaration_type = normalizeDeclarationType(req.body.declaration_type);
@@ -54,9 +55,9 @@ router.get('/:id/download-pdf', verifyToken, param('id').isInt({min:1}), handleV
 
 // Update a declaration (edit)
 const { updateDeclaration } = require('../controllers/declarationController');
-router.put('/:id', verifyToken, param('id').isInt({min:1}), handleValidation, updateDeclaration);
+router.put('/:id', verifyToken, param('id').isInt({min:1}), handleValidation, enforceFinancialTypes, updateDeclaration);
 // Partial update (diff-based)
-router.patch('/:id', verifyToken, param('id').isInt({min:1}), handleValidation, patchValidation, patchDeclaration);
+router.patch('/:id', verifyToken, param('id').isInt({min:1}), handleValidation, patchValidation, enforceFinancialTypes, patchDeclaration);
 
 // Record an edit request for a declaration
 router.post('/:id/edit-request', verifyToken, param('id').isInt({min:1}), handleValidation, requestEdit);
@@ -80,11 +81,11 @@ router.post('/:declarationId/upload-document', verifyToken, upload.single('docum
 		// Fetch user email (example query, adjust as needed)
 		const [rows] = await db.execute('SELECT u.email, u.first_name FROM users u JOIN declarations d ON u.id = d.user_id WHERE d.id = ?', [declarationId]);
 		if (rows.length > 0) {
-			const docHtml = `<!DOCTYPE html><html><body style=\"font-family: Arial, sans-serif; background: #f7f7f7; padding: 20px;\"><div style=\"max-width: 500px; margin: auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #eee; padding: 24px;\"><h2 style=\"color: #2a7ae2;\">Document Uploaded Successfully</h2><p>Dear <strong>${rows[0].first_name}</strong>,</p><p>Your declaration document has been uploaded and is now securely stored in your WDP account.</p><p>If you did not perform this action, please contact support immediately.</p><p style=\"margin-top: 24px;\">Best regards,<br><strong>WDP Team</strong></p><hr><small style=\"color: #888;\">This is an automated message. Please do not reply.</small></div></body></html>`;
+			const docHtml = `<!DOCTYPE html><html><body style=\"font-family: Arial, sans-serif; background: #f7f7f7; padding: 20px;\"><div style=\"max-width: 500px; margin: auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #eee; padding: 24px;\"><h2 style=\"color: #2a7ae2;\">Document Uploaded Successfully</h2><p>Dear <strong>${rows[0].first_name}</strong>,</p><p>Your declaration document has been uploaded and is now securely stored in your WDP account.</p><p><strong>The password for the attached PDF is Your National ID number.</strong></p><p>If you did not perform this action, please contact support immediately.</p><p style=\"margin-top: 24px;\">Best regards,<br><strong>WDP Team</strong></p><hr><small style=\"color: #888;\">This is an automated message. Please do not reply.</small></div></body></html>`;
 			await sendEmail({
 				to: rows[0].email,
 				subject: 'Your Declaration Document Was Uploaded',
-				text: `Hello ${rows[0].first_name},\nYour document has been uploaded successfully!`,
+				text: `Hello ${rows[0].first_name},\nYour document has been uploaded successfully!\n\nThe password for the attached PDF is Your National ID number.`,
 				html: docHtml
 			});
 		}

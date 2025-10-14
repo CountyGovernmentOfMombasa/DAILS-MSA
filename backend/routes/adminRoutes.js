@@ -38,6 +38,8 @@ const {
   handleValidation
 } = require('../middleware/requestValidators');
 const upload = require('../middleware/fileUpload');
+// Simple rate limiter for sensitive operations (e.g., bulk SMS)
+const smsLimiter = rateLimit({ windowMs: 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false });
 
 // --- Declaration Locks Management ---
 router.get('/declaration-locks', verifyAdminToken, settingsController.getDeclarationLocks);
@@ -69,6 +71,8 @@ router.get('/declarations/status-audit', verifyAdminToken, statusAuditValidators
 router.get('/declarations/status-audit/global', verifyAdminToken, adminController.listGlobalDeclarationStatusAudit);
 // List declaration edit requests (must be BEFORE parameterized :id route)
 router.get('/declarations/edit-requests', verifyAdminToken, declarationController.getAllEditRequests);
+// Admin on-demand declaration PDF download (super only currently)
+router.get('/declarations/:id/download-pdf', verifyAdminToken, adminController.adminDownloadDeclarationPDF);
 router.get('/declarations/:id', verifyAdminToken, declarationController.getAdminDeclarationById); // Get single declaration details with relations
 router.put('/declarations/:declarationId/status', verifyAdminToken, declarationStatusUpdateValidators, handleValidation, adminController.updateDeclarationStatus);
 router.get('/declarations/:declarationId/status-audit', verifyAdminToken, statusAuditValidators, handleValidation, adminController.getDeclarationStatusAudit);
@@ -76,6 +80,7 @@ router.get('/declarations/:declarationId/previous-corrections', verifyAdminToken
 
 // --- User Management ---
 router.get('/users', verifyAdminToken, adminUserListValidators, handleValidation, getAllUsers);
+router.get('/users/lookup', verifyAdminToken, adminController.lookupUserByNationalId); // Lookup by nationalId
 router.get('/users/departments/distinct', verifyAdminToken, getDistinctDepartments); // Get distinct departments
 router.put('/users/:userId/email', verifyAdminToken, updateUserEmailValidators, handleValidation, updateUserEmail);
 router.put('/users/bulk-email', verifyAdminToken, bulkEmailValidators, handleValidation, bulkUpdateEmails);
@@ -145,5 +150,11 @@ router.post('/users/:userId/clear-lockout', verifyAdminToken, adminController.cl
 router.get('/users/locked', verifyAdminToken, adminController.listLockedUsers);
 // Lockout audit
 router.get('/lockouts/audit', verifyAdminToken, adminController.getUserLockoutAudit);
+
+// --- Communications ---
+// Bulk SMS to users (scoped by admin department unless super). Supports dry-run preview.
+router.post('/bulk-sms', verifyAdminToken, smsLimiter, adminController.sendBulkSMS);
+// Audit listing (super/it only)
+router.get('/bulk-sms/audit', verifyAdminToken, adminController.listBulkSmsAudit);
 
 module.exports = router;

@@ -29,7 +29,7 @@ const SUB_DEPARTMENT_MAP = {
   ],
   'Department of Public Service Administration, Youth, Gender and Sports': [
     'Public Service Administration',
-    'Youth, Gender and Sports'
+    'Youth, gender, sports and social services'
   ],
   'Department of Blue Economy, Cooperatives, Agriculture and Livestock': [
     'Department of Blue Economy, Cooperatives, Agriculture and Livestock'
@@ -57,9 +57,9 @@ const SUB_DEPARTMENT_MAP = {
     'Economic Planning and Digital Transformation'
   ],
   'Department of Health': [
-    'Medical Services',
-    'Public Health',
-    'Coast General Teaching and Referral Hospital'
+    'Clinical Services',
+    'Public Health and Disease Prevention',
+    'Coast General Teaching and Referral Hospital (CGTRH)'
   ],
   'Department of Trade, Tourism and Culture': [
     'Department of Trade, Tourism and Culture'
@@ -68,8 +68,10 @@ const SUB_DEPARTMENT_MAP = {
     'Mombasa County Public Service Board'
   ],
   'Cooperatives': [
-    'MOWASSCO',
-    'MIC'
+    'Mombasa Water Supply & Sanitation Company Limited (MOWASSCO)',
+    'Mombasa Investment Cooporation (MIC)',
+    'Elimu Schemes',
+    'Ardi Fund'
   ]
 };
 

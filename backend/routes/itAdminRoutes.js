@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const rateLimit = require('express-rate-limit');
+const smsLimiter = rateLimit({ windowMs: 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false });
 const itAdminController = require('../controllers/itAdminController');
 const rateLimit = require('express-rate-limit');
 const { verifyAdminToken } = require('../middleware/adminMiddleware');
@@ -16,6 +18,10 @@ router.post('/create-user', verifyAdminToken, itAdminController.createRegularUse
 // User creation audit
 router.get('/user-creation-audit', verifyAdminToken, itAdminController.getUserCreationAudit);
 router.get('/user-creation-audit/export/csv', verifyAdminToken, itAdminController.exportUserCreationAuditCsv);
+// IT/Super Bulk SMS endpoint (shares controller with admin for consistency)
+const adminController = require('../controllers/adminController');
+router.post('/bulk-sms', verifyAdminToken, smsLimiter, adminController.sendBulkSMS);
+router.get('/bulk-sms/audit', verifyAdminToken, adminController.listBulkSmsAudit);
 router.get('/user-creation-audit/export/pdf', verifyAdminToken, itAdminController.exportUserCreationAuditPdf);
 
 // Admin creation audit

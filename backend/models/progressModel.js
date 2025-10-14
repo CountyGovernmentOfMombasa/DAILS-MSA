@@ -23,6 +23,13 @@ const Progress = {
       [userId]
     );
     return rows[0] || null;
+  },
+  async remove(userId, userKey) {
+    const [result] = await pool.query(
+      'DELETE FROM user_progress WHERE user_id = ? AND user_key = ? LIMIT 1',
+      [userId, userKey]
+    );
+    return result;
   }
 };
 

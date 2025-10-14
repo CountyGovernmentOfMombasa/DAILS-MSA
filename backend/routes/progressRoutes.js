@@ -19,5 +19,6 @@ router.post('/', verifyToken, [
 	body('data').exists().withMessage('data payload required')
 ], handleValidation, progressController.saveProgress);
 router.get('/', verifyToken, progressController.getProgress);
+router.delete('/', verifyToken, progressController.deleteProgress);
 
 module.exports = router;

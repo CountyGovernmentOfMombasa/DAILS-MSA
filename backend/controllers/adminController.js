@@ -211,6 +211,8 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const AdminUser = require('../models/AdminUser'); 
 const PDFDocument = require('pdfkit');
+const sendSMSUtil = require('../util/sendSMS');
+const { isValidPhone, normalizePhone } = require('../util/phone');
 
 // --- Helper: normalize department similar to frontend logic ---
 function normalizeDepartment(name) {
@@ -825,6 +827,29 @@ exports.createAdmin = async (req, res) => {
     };
     const newAdmin = await AdminUser.create(adminData);
 
+    // Linkage audit (best-effort). Separate table to allow future enrichment without bloating creation audit.
+    if (linkedUserId) {
+      try {
+        await pool.query(`
+          INSERT INTO admin_user_link_audit (admin_id, user_id, linked_via, national_id_snapshot, department_snapshot, created_by_admin_id, creator_role, ip_address, user_agent)
+          SELECT ?, u.id, ?, u.national_id, u.department, ?, ?, ?, ?
+            FROM users u
+           WHERE u.id = ?
+           LIMIT 1
+        `, [
+          newAdmin.id,
+          nationalId ? 'national_id' : 'user_id',
+          (req.admin && req.admin.adminId) || null,
+          (req.admin && req.admin.role) || null,
+          req.ip || req.headers['x-forwarded-for'] || null,
+          req.headers['user-agent'] || null,
+          linkedUserId
+        ]);
+      } catch (auditErr) {
+        console.warn('Admin linkage audit insert failed:', auditErr.message);
+      }
+    }
+
     // Send notification email
     const sendEmail = require('../util/sendEmail');
     const displayFirst = newAdmin.first_name || first_name;
@@ -838,6 +863,9 @@ exports.createAdmin = async (req, res) => {
 
     const resp = newAdmin.toJSON();
     resp.linked_user_id = linkedUserId;
+    if (linkedUserId) {
+      resp.link_method = nationalId ? 'national_id' : 'user_id';
+    }
     res.status(201).json({ success: true, message: 'Admin created successfully', data: resp });
   } catch (error) {
     console.error('Create admin error:', error);
@@ -1204,6 +1232,36 @@ exports.exportEmailChangeAuditPdf = async (req, res) => {
   } catch (error) {
     console.error('Export email audit PDF error:', error);
     res.status(500).json({ success: false, message: 'Failed to export PDF' });
+  }
+};
+
+// Admin on-demand Declaration PDF download (super or department scoped if allowed)
+// Route intention: GET /api/admin/declarations/:id/download-pdf
+// This mirrors user route but allows super admin (and future: department admins if policy added) to fetch PDF
+exports.adminDownloadDeclarationPDF = async (req, res) => {
+  try {
+    const declarationId = req.params.id;
+    if (!declarationId) return res.status(400).json({ success: false, message: 'Missing declaration id' });
+    // Only super admins for now (avoid accidental exposure). Extend later if needed.
+    if (!req.admin || !['super','super_admin'].includes(req.admin.role) && req.admin.normalizedRole !== 'super') {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+    const [declRows] = await pool.query('SELECT d.id, d.user_id, u.national_id FROM declarations d JOIN users u ON d.user_id = u.id WHERE d.id = ? LIMIT 1', [declarationId]);
+    if (!declRows.length) return res.status(404).json({ success: false, message: 'Declaration not found' });
+    const { generateDeclarationPDF } = require('../util/pdfBuilder');
+    const { buffer, base, password, encryptionApplied, passwordInstruction } = await generateDeclarationPDF(declarationId);
+    const safeNatId = (base.national_id || 'declaration').toString().replace(/[^A-Za-z0-9_-]/g, '_');
+    const filename = `${safeNatId}_DAILs_Form.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    if (encryptionApplied && password) {
+      res.setHeader('X-PDF-Password', password);
+      if (passwordInstruction) res.setHeader('X-PDF-Password-Note', passwordInstruction);
+    }
+    return res.send(buffer);
+  } catch (err) {
+    console.error('Admin declaration PDF generation failed:', err);
+    return res.status(500).json({ success: false, message: 'Failed to generate PDF', error: err.message });
   }
 };
 
@@ -1911,7 +1969,7 @@ exports.exportDeclarationsCsv = async (req, res) => {
       let totalValue = 0;
       assets.forEach(a => {
         const valueNum = Number(a.value); if (!isNaN(valueNum)) totalValue += valueNum;
-        if ((a.type||'') === 'Land') {
+        if ((a.type||'').toLowerCase().includes('land')) {
           landCount += 1;
           if (a.size) landSizes.push(`${a.size}${a.size_unit? ' '+a.size_unit: ''}`);
         }
@@ -1948,5 +2006,221 @@ exports.exportDeclarationsCsv = async (req, res) => {
   } catch (error) {
     console.error('Export declarations CSV error:', error);
     return res.status(500).json({ success:false, message:'Server error exporting declarations CSV' });
+  }
+};
+
+// Lightweight lookup for a single user by nationalId (used for admin creation auto-populate)
+// GET /api/admin/users/lookup?nationalId=XXXX
+exports.lookupUserByNationalId = async (req, res) => {
+  try {
+    const { nationalId } = req.query;
+    if (!nationalId || String(nationalId).trim().length < 3) {
+      return res.status(400).json({ success: false, message: 'nationalId query parameter required (min length 3)' });
+    }
+    // Department scoping: non-super admins only allowed to see users in their department
+    const params = [nationalId.trim()];
+    let where = 'WHERE national_id = ?';
+    if (req.admin && req.admin.department && !['super','super_admin'].includes(req.admin.role) && req.admin.normalizedRole !== 'super') {
+      where += ' AND department = ?';
+      params.push(req.admin.department);
+    }
+    const [rows] = await pool.query(`SELECT id, first_name, other_names, surname, department, sub_department, national_id FROM users ${where} LIMIT 1`, params);
+    if (!rows.length) {
+      return res.json({ success: true, user: null });
+    }
+    return res.json({ success: true, user: rows[0] });
+  } catch (error) {
+    console.error('lookupUserByNationalId error:', error);
+    res.status(500).json({ success: false, message: 'Server error during lookup' });
+  }
+};
+
+// POST /api/admin/bulk-sms and /api/it-admin/bulk-sms
+// Body: { message: string, userIds?: number[], departments?: string[], status?: 'pending'|'approved'|'rejected', includeNoDeclaration?: boolean, dryRun?: boolean, maxChunkSize?: number }
+// Behavior: Scope to admin department unless super. Select users with valid phone_number. Optional filters by department/status/userIds.
+// Returns: { success, dryRun, totalRecipients, chunks, sent } and errors per chunk when applicable.
+exports.sendBulkSMS = async (req, res) => {
+  try {
+    const {
+      message,
+      userIds = [],
+      departments = [],
+      status = null,
+      includeNoDeclaration = false,
+      dryRun = false,
+      maxChunkSize = 150
+    } = req.body || {};
+
+    // Role check: allow super, it_admin, hr_admin, finance_admin. Department scoping applies to non-super.
+    const role = (req.admin && (req.admin.normalizedRole || req.admin.role)) || '';
+    const allowed = new Set(['super','super_admin','it','it_admin','hr','hr_admin','finance','finance_admin']);
+    if (!allowed.has(role)) {
+      return res.status(403).json({ success: false, message: 'Insufficient role to send bulk SMS' });
+    }
+
+    // Validate message
+    const msg = (message || '').toString().trim();
+    if (!msg) return res.status(400).json({ success: false, code: 'EMPTY_MESSAGE', message: 'Message is required' });
+    if (msg.length > 480) return res.status(400).json({ success: false, code: 'MESSAGE_TOO_LONG', message: 'Message too long (max 480 chars)' });
+
+    // Build base query: users with phone_number, optionally scoped by admin department
+    const params = [];
+    const where = [];
+    where.push('u.phone_number IS NOT NULL AND TRIM(u.phone_number) <> ""');
+    // Department scoping for non-super
+    if (req.admin && req.admin.department && !['super','super_admin'].includes(role)) {
+      where.push('u.department = ?');
+      params.push(req.admin.department);
+    }
+    // Departments filter if provided (for super/department-specific send)
+    if (Array.isArray(departments) && departments.length) {
+      where.push(`u.department IN (${departments.map(() => '?').join(',')})`);
+      params.push(...departments);
+    }
+    // Status filter: join latest declaration per user
+    let joinDecl = '';
+    if (status && ['pending','approved','rejected'].includes(status)) {
+      joinDecl = `JOIN (
+        SELECT d1.user_id, d1.status
+        FROM declarations d1
+        JOIN (
+          SELECT user_id, MAX(id) AS max_id
+          FROM declarations
+          GROUP BY user_id
+        ) m ON d1.user_id = m.user_id AND d1.id = m.max_id
+      ) ld ON ld.user_id = u.id`;
+      where.push('ld.status = ?');
+      params.push(status);
+    } else if (!includeNoDeclaration) {
+      // Default: only users with at least one declaration if no explicit includeNoDeclaration
+      joinDecl = 'JOIN declarations d ON d.user_id = u.id';
+    }
+    // Explicit userIds override/augment selection
+    if (Array.isArray(userIds) && userIds.length) {
+      where.push(`u.id IN (${userIds.map(() => '?').join(',')})`);
+      params.push(...userIds);
+    }
+
+    const sql = `SELECT DISTINCT u.id, u.phone_number, u.first_name, u.surname, u.department
+                   FROM users u
+                   ${joinDecl}
+                  ${where.length ? 'WHERE ' + where.join(' AND ') : ''}`;
+    const [rows] = await pool.query(sql, params);
+
+    // Filter and normalize phones
+    const recipients = [];
+    for (const r of rows) {
+      const p = normalizePhone(r.phone_number);
+      if (isValidPhone(p)) recipients.push(p);
+    }
+
+    // Deduplicate
+    const unique = Array.from(new Set(recipients));
+
+    if (dryRun) {
+      return res.json({ success: true, dryRun: true, totalRecipients: unique.length, sample: unique.slice(0, 10) });
+    }
+
+    // Chunk sending to avoid extremely long msisdn query param payloads at provider level
+    const chunkSize = Math.max(1, Math.min(parseInt(maxChunkSize) || 150, 500));
+    const chunks = [];
+    for (let i = 0; i < unique.length; i += chunkSize) {
+      chunks.push(unique.slice(i, i + chunkSize));
+    }
+
+    const results = [];
+    for (const chunk of chunks) {
+      try {
+        const result = await sendSMSUtil({ to: chunk, body: msg });
+        results.push({ ok: true, count: chunk.length, result });
+      } catch (err) {
+        results.push({ ok: false, count: chunk.length, error: err.message || String(err) });
+      }
+    }
+
+    const sent = results.filter(r => r.ok).reduce((sum, r) => sum + r.count, 0);
+    // Audit log insert (best effort, non-blocking on failure)
+    try {
+      const crypto = require('crypto');
+      const sha = crypto.createHash('sha256').update(msg, 'utf8').digest('hex');
+      const apiPath = req.originalUrl || (req.baseUrl + req.path) || '/api/admin/bulk-sms';
+      const failedChunks = results.filter(r => !r.ok).length;
+      await pool.query(
+        `INSERT INTO bulk_sms_audit
+          (initiated_by_admin_id, admin_username, admin_role, api_path, ip_address, departments_json, status_filter,
+           include_no_declaration, user_ids_count, message_length, message_sha256, total_recipients, sent_ok, chunks, failed_chunks)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [
+          (req.admin && req.admin.adminId) || null,
+          (req.admin && req.admin.username) || null,
+          (req.admin && (req.admin.normalizedRole || req.admin.role)) || null,
+          apiPath,
+          req.ip || req.headers['x-forwarded-for'] || null,
+          JSON.stringify(Array.isArray(departments) ? departments : []),
+          status || null,
+          includeNoDeclaration ? 1 : 0,
+          Array.isArray(userIds) ? userIds.length : 0,
+          msg.length,
+          sha,
+          unique.length,
+          sent,
+          results.length,
+          failedChunks
+        ]
+      );
+    } catch (auditErr) {
+      console.warn('bulk_sms_audit insert failed:', auditErr.message);
+    }
+
+    return res.json({ success: true, dryRun: false, totalRecipients: unique.length, chunks: results.length, sent, results });
+  } catch (error) {
+    console.error('sendBulkSMS error:', error);
+    return res.status(500).json({ success: false, message: 'Server error sending bulk SMS', error: error.message });
+  }
+};
+
+// GET /api/admin/bulk-sms/audit or /api/it-admin/bulk-sms/audit
+// Query: page, limit, adminUsername, role, from, to
+exports.listBulkSmsAudit = async (req, res) => {
+  try {
+    const role = (req.admin && (req.admin.normalizedRole || req.admin.role)) || '';
+    const allowed = new Set(['super','super_admin','it','it_admin']);
+    if (!allowed.has(role)) {
+      return res.status(403).json({ success: false, message: 'Insufficient role to view bulk SMS audit.' });
+    }
+
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(Math.max(1, parseInt(req.query.limit) || 50), 200);
+    const offset = (page - 1) * limit;
+    const conditions = [];
+    const params = [];
+    if (req.query.adminUsername) { conditions.push('LOWER(admin_username) LIKE ?'); params.push('%' + String(req.query.adminUsername).toLowerCase() + '%'); }
+    if (req.query.role) { conditions.push('(admin_role = ? OR admin_role = ?)'); params.push(req.query.role, req.query.role.toLowerCase()); }
+    if (req.query.from) { conditions.push('created_at >= ?'); params.push(req.query.from + ' 00:00:00'); }
+    if (req.query.to) { conditions.push('created_at <= ?'); params.push(req.query.to + ' 23:59:59'); }
+    const where = conditions.length ? ('WHERE ' + conditions.join(' AND ')) : '';
+    const [countRows] = await pool.query(`SELECT COUNT(*) AS total FROM bulk_sms_audit ${where}`, params);
+    const total = countRows[0]?.total || 0;
+    const [rows] = await pool.query(
+      `SELECT id, initiated_by_admin_id, admin_username, admin_role, api_path, ip_address,
+              JSON_EXTRACT(departments_json, '$') AS departments_json,
+              status_filter, include_no_declaration, user_ids_count, message_length,
+              total_recipients, sent_ok, chunks, failed_chunks, created_at
+         FROM bulk_sms_audit
+         ${where}
+         ORDER BY created_at DESC, id DESC
+         LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+    // MySQL returns JSON as strings; normalize departments_json to array when possible
+    const data = rows.map(r => ({
+      ...r,
+      departments: (() => { try { return JSON.parse(r.departments_json || '[]'); } catch { return []; } })(),
+      departments_json: undefined
+    }));
+    return res.json({ success: true, page, limit, total, pages: Math.ceil(total/limit), data });
+  } catch (err) {
+    console.error('listBulkSmsAudit error:', err);
+    return res.status(500).json({ success: false, message: 'Server error listing bulk SMS audit', error: err.message });
   }
 };

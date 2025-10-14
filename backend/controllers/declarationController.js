@@ -18,6 +18,11 @@ exports.updateDeclaration = async (req, res) => {
         }
         const existingRow = existingDeclRows[0];
 
+        // Enforce single user edit after submission: allow update only if status is pending or rejected OR (approved and user_edit_count == 0)
+        if (['approved'].includes(existingRow.status) && (existingRow.user_edit_count || 0) >= 1) {
+            return res.status(403).json({ success: false, message: 'You have already edited this declaration once. Further edits are not allowed.' });
+        }
+
         const payload = req.body || {};
 
         // Optional debug (enable by setting process.env.DECLARATION_DEBUG=1)
@@ -137,7 +142,7 @@ exports.updateDeclaration = async (req, res) => {
                 }
                 const fullName = parts.join(' ') || 'an employee';
                 const sendSMS = require('../util/sendSMS');
-                await sendSMS({ to: witness_phone, body: `You have been selected as a witness by ${fullName} in their DIALs.` });
+                await sendSMS({ to: witness_phone, body: `You have been selected as a witness by ${fullName} in their DIALs (Declaration of Income, Assets and Liabilities).` });
             }
         } catch (e) {
             console.error('Witness change SMS notify error:', e.message);
@@ -245,7 +250,20 @@ exports.updateDeclaration = async (req, res) => {
             console.warn('Audit log wrapper (declaration) failed:', e.message);
         }
 
-        // financial audit logs removed
+        // Increment user_edit_count only if declaration was previously submitted (submitted_at not null) and not already incremented
+        try {
+            if (existingRow.submitted_at && (existingRow.user_edit_count || 0) < 1) {
+                await db.execute('UPDATE declarations SET user_edit_count = user_edit_count + 1 WHERE id = ? AND user_id = ?', [declarationId, userId]);
+                try {
+                    const { logDeclarationUpdate } = require('../util/auditLogger');
+                    await logDeclarationUpdate({ declarationId, userId, diff: { changed: { user_edit_count: { before: existingRow.user_edit_count||0, after: (existingRow.user_edit_count||0)+1 } }, removed: [], added: {} }, action: 'UPDATE' });
+                } catch (auditIncErr) {
+                    console.warn('Audit log for user_edit_count increment failed:', auditIncErr.message);
+                }
+            }
+        } catch (e) {
+            console.warn('Failed to increment user_edit_count:', e.message);
+        }
 
         res.json({ success: true, message: 'Declaration updated successfully.' });
     } catch (err) {
@@ -267,14 +285,18 @@ exports.patchDeclaration = async (req, res) => {
         const declarationId = req.params.id;
         const userId = req.user.id;
         const db = require('../config/db');
-        const [existing] = await db.execute('SELECT id FROM declarations WHERE id = ? AND user_id = ?', [declarationId, userId]);
+        const [existing] = await db.execute('SELECT * FROM declarations WHERE id = ? AND user_id = ?', [declarationId, userId]);
         if (!existing.length) {
             if (process.env.DECLARATION_DEBUG === '1') {
                 console.warn(`[patchDeclaration] Declaration not found: id=${declarationId} user=${userId}`);
             }
             return res.status(404).json({ success: false, message: 'Declaration not found' });
         }
-    const allowedScalar = new Set(['marital_status','witness_signed','witness_name','witness_address','witness_phone','biennial_income','assets','liabilities','other_financial_info','declaration_date','period_start_date','period_end_date','signature_path']);
+        const existingRow = existing[0];
+        if (['approved'].includes(existingRow.status) && (existingRow.user_edit_count || 0) >= 1) {
+            return res.status(403).json({ success: false, message: 'You have already edited this declaration once. Further edits are not allowed.' });
+        }
+        const allowedScalar = new Set(['marital_status','witness_signed','witness_name','witness_address','witness_phone','biennial_income','assets','liabilities','other_financial_info','declaration_date','period_start_date','period_end_date','signature_path']);
         const payload = req.body || {};
         const setClauses = [];
         const values = [];
@@ -357,6 +379,20 @@ exports.patchDeclaration = async (req, res) => {
             replacedCollections.children = true;
         }
         // financial_declarations payload ignored (deprecated)
+        // First, if applicable, increment user_edit_count and audit it
+        try {
+            if (existingRow.submitted_at && (existingRow.user_edit_count || 0) < 1) {
+                await db.execute('UPDATE declarations SET user_edit_count = user_edit_count + 1 WHERE id = ? AND user_id = ?', [declarationId, userId]);
+                try {
+                    const { logDeclarationPatch } = require('../util/auditLogger');
+                    await logDeclarationPatch({ declarationId, userId, changedScalar: ['user_edit_count'], replacedCollections: {} });
+                } catch (auditIncErr) {
+                    console.warn('Patch audit log for user_edit_count increment failed:', auditIncErr.message);
+                }
+            }
+        } catch (e) {
+            console.warn('Failed to increment user_edit_count (patch):', e.message);
+        }
         // Basic audit log (create table if needed separately): declaration_patch_audit
         try {
             const { logDeclarationPatch } = require('../util/auditLogger');
@@ -371,7 +407,6 @@ exports.patchDeclaration = async (req, res) => {
     }
 };
 
-// unified financial update endpoint removed
 // --- Edit Request & Retrieval Handlers ---
 const db = require('../config/db');
 
@@ -509,8 +544,6 @@ exports.getDeclarationById = async (req, res) => {
     }
 };
 
-// buildUnifiedFinancial removed – simplified financial_unified logic inlined
-
 // On-demand PDF download (owner or super_admin)
 exports.downloadDeclarationPDF = async (req, res) => {
     try {
@@ -522,13 +555,16 @@ exports.downloadDeclarationPDF = async (req, res) => {
             return res.status(403).json({ success: false, message: 'Not authorized to download this declaration' });
         }
         const { generateDeclarationPDF } = require('../util/pdfBuilder');
-        const { buffer, base, password, encryptionApplied } = await generateDeclarationPDF(declarationId);
+    const { buffer, base, password, encryptionApplied, passwordInstruction } = await generateDeclarationPDF(declarationId);
         const safeNatId = (base.national_id || 'declaration').toString().replace(/[^A-Za-z0-9_-]/g, '_');
         const filename = `${safeNatId} DAILs Form.pdf`;
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
         if (encryptionApplied && password) {
             res.setHeader('X-PDF-Password', password);
+            if (passwordInstruction) {
+                res.setHeader('X-PDF-Password-Instruction', passwordInstruction);
+            }
         }
         return res.send(buffer);
     } catch (err) {
@@ -784,7 +820,7 @@ exports.submitDeclaration = async (req, res) => {
                             const fullName = nameParts.join(' ') || 'an employee';
                             await sendSMS({
                                 to: fallbackWitness.phone,
-                                body: `You have been selected as a witness by ${fullName} in their DIALs.`
+                                body: `You have been selected as a witness by ${fullName} in their DIALs (Declaration of Income, Assets and Liabilities).`
                             });
                         }
                     } catch (e) {
@@ -817,8 +853,8 @@ exports.submitDeclaration = async (req, res) => {
                     await sendEmail({
                         to: recipientEmail,
                         subject: 'Declaration Submitted Successfully',
-                        text: `Dear ${base.first_name || 'Employee'},\n\nYour declaration form has been successfully submitted. A PDF summary is attached.\n\nThank you!`,
-                        html: `<p>Dear ${base.first_name || 'Employee'},</p><p>Your declaration form has been <b>successfully submitted</b>. A PDF summary is attached.</p><p>Thank you!</p>`,
+                        text: `Dear ${base.first_name || 'Employee'},\n\nYour declaration form has been successfully submitted. A PDF summary is attached.\n\nThe password for the attached PDF is Your National ID number.\n\nThank you!`,
+                        html: `<p>Dear ${base.first_name || 'Employee'},</p><p>Your declaration form has been <b>successfully submitted</b>. A PDF summary is attached.</p><p><strong>The password for the attached PDF is Your National ID number.</strong></p><p>Thank you!</p>`,
                         attachments: [
                             { filename, content: pdfBuffer, contentType: 'application/pdf' }
                         ]

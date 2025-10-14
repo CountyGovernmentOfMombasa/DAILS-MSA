@@ -99,3 +99,17 @@ exports.getProgress = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to load progress' });
   }
 };
+
+exports.deleteProgress = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const userKey = req.query.userKey || req.query.user_key;
+    if (!userKey) return res.status(400).json({ success: false, message: 'userKey required' });
+    await Progress.remove(userId, userKey);
+    return res.json({ success: true });
+  } catch (e) {
+    console.error('deleteProgress error', e);
+    res.status(500).json({ success: false, message: 'Failed to delete progress' });
+  }
+};

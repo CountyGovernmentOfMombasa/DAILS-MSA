@@ -75,6 +75,24 @@ exports.validateDeclaration = [
         .notEmpty().withMessage('marital_status required')
         .isIn(['single','married','divorced','widowed','separated'])
         .withMessage('Invalid marital_status'),
+    // If married, require at least one spouse entry in the spouses array
+    body('spouses')
+        .custom((value, { req }) => {
+            if ((req.body?.marital_status || '').toLowerCase() !== 'married') return true;
+            const arr = value;
+            if (!Array.isArray(arr) || arr.length === 0) return false;
+            // Ensure at least one spouse has a name field populated
+            const hasNamedSpouse = arr.some(s => {
+                if (!s || typeof s !== 'object') return false;
+                const full = (s.full_name || '').trim();
+                const fn = (s.first_name || '').trim();
+                const sn = (s.surname || '').trim();
+                const on = (s.other_names || '').trim();
+                return !!(full || fn || sn || on);
+            });
+            return hasNamedSpouse;
+        })
+        .withMessage('At least one spouse must be provided with a name when marital_status is married'),
     body('declaration_type')
         .notEmpty().withMessage('declaration_type required')
         .isString().trim().isLength({ max: 20 }),

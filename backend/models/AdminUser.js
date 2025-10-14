@@ -12,6 +12,10 @@ class AdminUser {
         this.surname = data.surname || data.last_name || null;
         this.department = data.department || null;
     this.sub_department = data.sub_department || data.subDepartment || null;
+    // Linkage fields (may be absent in legacy rows)
+    this.user_id = Object.prototype.hasOwnProperty.call(data, 'user_id') ? data.user_id : null;
+    this.linked_national_id = data.linked_national_id || data.national_id || null;
+    this.linked_user_email = data.linked_user_email || data.user_email || null;
         this.is_active = data.is_active;
         this.created_at = data.created_at;
         this.updated_at = data.updated_at;
@@ -53,6 +57,13 @@ class AdminUser {
     static async getAllActive() {
         // Try modern schema, fall back progressively
         const attempts = [
+            // Preferred: include linkage + joined user snapshot
+            `SELECT au.id, au.username, au.email, au.role, au.department, au.sub_department, au.first_name, au.other_names, au.surname, au.created_at, au.updated_at, au.last_login, au.user_id,
+                    u.national_id AS linked_national_id, u.email AS linked_user_email
+               FROM admin_users au
+               LEFT JOIN users u ON au.user_id = u.id
+              WHERE au.is_active = TRUE
+              ORDER BY au.created_at DESC`,
             'SELECT id, username, email, role, department, sub_department, first_name, other_names, surname, created_at, updated_at, last_login FROM admin_users WHERE is_active = TRUE ORDER BY created_at DESC',
             'SELECT id, username, email, role, department, first_name, last_name, created_at, updated_at, last_login FROM admin_users WHERE is_active = TRUE ORDER BY created_at DESC',
             'SELECT id, username, email, role, first_name, last_login, created_at, updated_at, last_name FROM admin_users WHERE is_active = TRUE ORDER BY created_at DESC' // last fallback (no department)
@@ -203,6 +214,9 @@ class AdminUser {
             created_at: this.created_at,
             updated_at: this.updated_at,
             last_login: this.last_login
+            ,user_id: this.user_id
+            ,linked_national_id: this.linked_national_id
+            ,linked_user_email: this.linked_user_email
         };
     }
 }
