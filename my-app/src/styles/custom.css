@@ -1,0 +1,234 @@
+/* Custom Bootstrap utilities for blue and green theme */
+
+/* Custom CSS variables for consistent theming */
+:root {
+  --primary-blue: #007bff;
+  --primary-blue-dark: #0056b3;
+  --secondary-green: #28a745;
+  --secondary-green-dark: #1e7e34;
+  --light-blue: #e3f2fd;
+  --light-green: #e8f5e8;
+}
+
+/* Custom button styles */
+.btn-blue {
+  background: linear-gradient(to right, #007bff, #0056b3);
+  color: white;
+  font-weight: 600;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.75rem;
+  border: none;
+  transition: all 0.2s;
+  transform: scale(1);
+}
+
+.btn-blue:hover {
+  background: linear-gradient(to right, #0056b3, #004085);
+  color: white;
+  transform: scale(1.05);
+}
+
+.btn-green {
+  background: linear-gradient(to right, #28a745, #1e7e34);
+  color: white;
+  font-weight: 600;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.75rem;
+  border: none;
+  transition: all 0.2s;
+  transform: scale(1);
+}
+
+.btn-green:hover {
+  background: linear-gradient(to right, #1e7e34, #155724);
+  color: white;
+  transform: scale(1.05);
+}
+
+.btn-outline-blue {
+  border: 2px solid #007bff;
+  color: #007bff;
+  background: transparent;
+  font-weight: 600;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.75rem;
+  transition: all 0.2s;
+}
+
+.btn-outline-blue:hover {
+  background-color: rgba(0, 123, 255, 0.1);
+  color: #007bff;
+}
+
+.btn-outline-green {
+  border: 2px solid #28a745;
+  color: #28a745;
+  background: transparent;
+  font-weight: 600;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.75rem;
+  transition: all 0.2s;
+}
+
+.btn-outline-green:hover {
+  background-color: rgba(40, 167, 69, 0.1);
+  color: #28a745;
+}
+
+/* Custom form styles */
+.form-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid #dee2e6;
+  border-radius: 0.75rem;
+  transition: all 0.2s;
+  outline: none;
+}
+
+.form-input:focus {
+  border-color: #007bff;
+  box-shadow: 0 0 0 0.125rem rgba(0, 123, 255, 0.25);
+}
+
+.form-select {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid #dee2e6;
+  border-radius: 0.75rem;
+  transition: all 0.2s;
+  outline: none;
+}
+
+.form-select:focus {
+  border-color: #007bff;
+  box-shadow: 0 0 0 0.125rem rgba(0, 123, 255, 0.25);
+}
+
+.form-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #495057;
+  margin-bottom: 0.5rem;
+}
+
+/* Custom card styles */
+.card-blue {
+  background: white;
+  border-radius: 1.5rem;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+  padding: 2rem;
+  border: 1px solid rgba(0, 123, 255, 0.2);
+  transition: all 0.3s;
+}
+
+.card-blue:hover {
+  box-shadow: 0 1rem 2rem rgba(0, 0, 0, 0.15);
+  border-color: #007bff;
+}
+
+.card-green {
+  background: white;
+  border-radius: 1.5rem;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+  padding: 2rem;
+  border: 1px solid rgba(40, 167, 69, 0.2);
+  transition: all 0.3s;
+}
+
+.card-green:hover {
+  box-shadow: 0 1rem 2rem rgba(0, 0, 0, 0.15);
+  border-color: #28a745;
+}
+
+/* Custom gradient backgrounds */
+.bg-blue-green-gradient {
+  background: linear-gradient(135deg, rgba(0, 123, 255, 0.1), rgba(40, 167, 69, 0.1));
+}
+
+.bg-blue-gradient {
+  background: linear-gradient(to right, #007bff, #0056b3);
+}
+
+.bg-green-gradient {
+  background: linear-gradient(to right, #28a745, #1e7e34);
+}
+
+/* Icon containers */
+.icon-container-blue {
+  width: 4rem;
+  height: 4rem;
+  background: linear-gradient(to right, #007bff, #0056b3);
+  border-radius: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-container-green {
+  width: 4rem;
+  height: 4rem;
+  background: linear-gradient(to right, #28a745, #1e7e34);
+  border-radius: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-container-mixed {
+  width: 4rem;
+  height: 4rem;
+  background: linear-gradient(to right, #007bff, #28a745);
+  border-radius: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Custom text gradients */
+.text-blue-green-gradient {
+  background: linear-gradient(to right, #007bff, #28a745);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Custom shadows */
+.shadow-blue {
+  box-shadow: 0 0.25rem 1.5rem rgba(0, 123, 255, 0.15);
+}
+
+.shadow-green {
+  box-shadow: 0 0.25rem 1.5rem rgba(40, 167, 69, 0.15);
+}
+
+.shadow-strong {
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+/* Animation utilities */
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+/* Bootstrap utility extensions */
+.rounded-3xl {
+  border-radius: 1.5rem !important;
+}
+
+.rounded-xl {
+  border-radius: 0.75rem !important;
+}
+
+.rounded-2xl {
+  border-radius: 1rem !important;
+}

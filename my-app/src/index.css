@@ -1,0 +1,31 @@
+/* Import Bootstrap CSS */
+@import url('https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css');
+
+/* Import custom styles */
+@import './styles/custom.css';
+
+/* Custom styles */
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f8f9fa;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* Custom color scheme - Blue and Green */
+:root {
+  --primary-blue: #007bff;
+  --primary-blue-dark: #0056b3;
+  --secondary-green: #28a745;
+  --secondary-green-dark: #1e7e34;
+  --light-blue: #e3f2fd;
+  --light-green: #e8f5e8;
+}

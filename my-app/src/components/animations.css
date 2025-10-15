@@ -1,0 +1,61 @@
+.logout-fab {
+  opacity: 0;
+  transform: scale(.6) translateY(-8px);
+  transition: opacity .45s cubic-bezier(.25,.8,.25,1),
+              transform .45s cubic-bezier(.25,.8,.25,1),
+              box-shadow .3s ease;
+  box-shadow: 0 4px 12px -2px rgba(0,0,0,0.25), 0 2px 4px rgba(0,0,0,0.15);
+  backdrop-filter: blur(4px) saturate(160%);
+}
+.logout-fab.visible {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+.logout-fab:focus-visible {
+  outline: 3px solid var(--primary-blue, #0d6efd);
+  outline-offset: 2px;
+}
+.logout-fab:hover {
+  transform: scale(1.07) translateY(-2px);
+  box-shadow: 0 6px 18px -2px rgba(0,0,0,0.35), 0 2px 6px rgba(0,0,0,0.2);
+}
+.logout-fab:active {
+  transform: scale(.95) translateY(1px);
+}
+
+/* Profile error toast animation container */
+.profile-error-toast-wrapper {
+  transition: transform .5s cubic-bezier(.22,1,.36,1), opacity .5s ease;
+  transform: translateY(-12px) scale(.96);
+  opacity: 0;
+  pointer-events: none;
+}
+.profile-error-toast-wrapper.in {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+.profile-error-toast-wrapper.out {
+  transform: translateY(-10px) scale(.95);
+  opacity: 0;
+  pointer-events: none;
+}
+.profile-error-toast-wrapper .toast {
+  box-shadow: 0 6px 20px -4px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.25);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.profile-error-toast-wrapper .toast-header {
+  background: linear-gradient(135deg, #dc3545, #b30017);
+  color: #fff;
+}
+.profile-error-toast-wrapper .btn.btn-light {
+  font-size: .75rem;
+  padding: .35rem .65rem;
+  border-radius: 20px;
+  transition: background .25s, transform .25s;
+}
+.profile-error-toast-wrapper .btn.btn-light:hover {
+  background: #f1f1f1;
+  transform: translateY(-1px);
+}

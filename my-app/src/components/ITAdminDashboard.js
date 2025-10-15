@@ -1,0 +1,78 @@
+import AdminConsentLogs from './AdminConsentLogs';
+import React, { useState, useEffect } from 'react';
+import EmailManagement from './EmailManagement';
+import ReportsAndAnalytics from './ReportsAndAnalytics';
+import AdminUserCreation from './AdminUserCreation';
+import AddUserForm from './AddUserForm';
+import ITAdminAuditsAndRequests from './ITAdminAuditsAndRequests';
+import DepartmentUserStatus from './DepartmentUserStatus';
+import BulkSMSPanel from './BulkSMSPanel';
+import 'bootstrap/dist/css/bootstrap.min.css';
+import './AdminPage.css';
+
+const ITAdminDashboard = ({ adminUser }) => {
+  const [declarations, setDeclarations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  // Default to the new Add User tab since declarations tab is removed
+  const [currentTab, setCurrentTab] = useState('add-user');
+  // const [usersCount, setUsersCount] = useState(0); // Removed unused variable
+
+  const adminToken = localStorage.getItem('adminToken');
+
+  useEffect(() => {
+    // Fetch declarations (excluding financial data)
+    const fetchDeclarations = async () => {
+      try {
+        const res = await fetch('/api/it-admin/declarations', {
+          headers: { Authorization: `Bearer ${adminToken}` }
+        });
+        if (!res.ok) throw new Error('Failed to fetch declarations');
+  const data = await res.json();
+  // Use the correct property from the API response
+  setDeclarations(Array.isArray(data.data) ? data.data : []);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchDeclarations();
+  }, [adminToken]);
+
+  // Removed usersCount effect since usersCount is not used
+
+  return (
+    <div className="container mt-4">
+      <h2>Digital Transformation Team Dashboard</h2>
+      <div className="mb-3 d-flex flex-wrap gap-2 align-items-center">
+        <button className="btn btn-outline-primary" onClick={() => setCurrentTab('add-user')}>Add User</button>
+        <button className="btn btn-outline-primary" onClick={() => setCurrentTab('email')}>Email Management</button>
+        <button className="btn btn-outline-primary" onClick={() => setCurrentTab('reports')}>Reports & Analytics</button>
+        <button className="btn btn-outline-primary" onClick={() => setCurrentTab('audits')}>Audits & Edit Requests</button>
+        <button className="btn btn-outline-primary" onClick={() => setCurrentTab('dept-users')}>Dept User Status</button>
+  <button className="btn btn-outline-primary" onClick={() => setCurrentTab('bulk-sms')}>Bulk SMS</button>
+        <button className="btn btn-outline-success" onClick={() => setCurrentTab('adminUser')}>Admin User Creation</button>
+        <button className="btn btn-outline-primary" onClick={() => setCurrentTab('consent-logs')}>Consent Logs</button>
+        <div className="ms-auto d-flex gap-2">
+        </div>
+      </div>
+      {loading && <div>Loading...</div>}
+      {error && <div className="alert alert-danger">{error}</div>}
+      {!loading && !error && (
+        <div>
+          {currentTab === 'add-user' && <AddUserForm />}
+          {currentTab === 'email' && <EmailManagement adminUser={adminUser} />}
+          {currentTab === 'audits' && <ITAdminAuditsAndRequests />}
+          {currentTab === 'dept-users' && <DepartmentUserStatus adminUser={adminUser} />}
+          {currentTab === 'reports' && <ReportsAndAnalytics declarations={declarations} reportData={{}} adminUser={adminUser} />}
+          {currentTab === 'adminUser' && <AdminUserCreation adminUser={adminUser} />}
+          {currentTab === 'consent-logs' && <AdminConsentLogs adminUser={adminUser}/>}
+          {currentTab === 'bulk-sms' && <BulkSMSPanel itAdmin />}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default ITAdminDashboard;
