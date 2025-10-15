@@ -51,9 +51,9 @@ exports.updateDeclarationStatus = async (req, res) => {
         if (status === 'rejected') {
           await sendEmail({
             to: rows[0].email,
-            subject: 'Declaration Rejected',
-            text: `Dear ${firstName},\n\nYour declaration was rejected. Please correct the following: ${correction_message || ''}`,
-            html: `<p>Dear ${firstName},</p><p>Your declaration was <b>rejected</b>.</p><p>Please correct the following:</p><p>${correction_message || ''}</p>`
+            subject: 'Declaration of Income, Assets and Liabilities Rejected',
+            text: `Dear ${firstName},\n\nYour Declaration of Income, Assets and Liabilities was rejected. Please correct the following: ${correction_message || ''}`,
+            html: `<p>Dear ${firstName},</p><p>Your <b>Declaration of Income, Assets and Liabilities</b> was <b>rejected</b>.</p><p>Please correct the following:</p><p>${correction_message || ''}</p>`
           });
           if (rows[0].phone_number) {
             try { await sendSMS({ to: rows[0].phone_number, body: 'Your declaration was rejected. Please check the portal for details.' }); } catch {}
@@ -61,9 +61,9 @@ exports.updateDeclarationStatus = async (req, res) => {
         } else if (status === 'approved') {
           await sendEmail({
             to: rows[0].email,
-            subject: 'Declaration Approved',
-            text: `Dear ${firstName},\n\nYour declaration has been approved.`,
-            html: `<p>Dear ${firstName},</p><p>Your declaration has been <b>approved</b>.</p>`
+            subject: 'Declaration of Income, Assets and Liabilities Approved',
+            text: `Dear ${firstName},\n\nYour Declaration of Income, Assets and Liabilities has been approved.`,
+            html: `<p>Dear ${firstName},</p><p>Your <b>Declaration of Income, Assets and Liabilities</b> has been <b>approved</b>.</p>`
           });
           if (rows[0].phone_number) {
             try { await sendSMS({ to: rows[0].phone_number, body: 'Your declaration has been approved.' }); } catch {}

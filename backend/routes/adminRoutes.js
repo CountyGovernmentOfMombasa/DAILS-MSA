@@ -4,6 +4,7 @@ const express = require('express');
 const router = express.Router();
 const rateLimit = require('express-rate-limit');
 const settingsController = require('../controllers/settingsController');
+const windowAdminController = require('../controllers/windowAdminController');
 const adminController = require('../controllers/adminController');
 const declarationController = require('../controllers/declarationController');
 const deptMgmt = require('../controllers/departmentManagementController');
@@ -44,6 +45,14 @@ const smsLimiter = rateLimit({ windowMs: 60 * 1000, max: 5, standardHeaders: tru
 // --- Declaration Locks Management ---
 router.get('/declaration-locks', verifyAdminToken, settingsController.getDeclarationLocks);
 router.put('/declaration-locks', verifyAdminToken, settingsController.setDeclarationLock);
+
+// --- Biennial Windows & Overrides (Admin) ---
+router.get('/windows/biennial', verifyAdminToken, windowAdminController.listWindows);
+router.post('/windows/biennial', verifyAdminToken, windowAdminController.upsertWindow);
+router.get('/overrides/declaration-edits', verifyAdminToken, windowAdminController.listOverrides);
+router.post('/overrides/declaration-edits', verifyAdminToken, windowAdminController.createOverride);
+router.delete('/overrides/declaration-edits/:id', verifyAdminToken, windowAdminController.deactivateOverride);
+router.get('/windows/audit', verifyAdminToken, windowAdminController.listAudit);
 
 // Settings Locks Management
 router.get('/settings/locks', verifyAdminToken, settingsLocksController.getAllLocks);

@@ -3,7 +3,6 @@ const router = express.Router();
 const rateLimit = require('express-rate-limit');
 const smsLimiter = rateLimit({ windowMs: 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false });
 const itAdminController = require('../controllers/itAdminController');
-const rateLimit = require('express-rate-limit');
 const { verifyAdminToken } = require('../middleware/adminMiddleware');
 
 // Get all declarations for IT admin (no financial data)

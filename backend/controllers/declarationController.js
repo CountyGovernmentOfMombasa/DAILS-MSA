@@ -142,7 +142,8 @@ exports.updateDeclaration = async (req, res) => {
                 }
                 const fullName = parts.join(' ') || 'an employee';
                 const sendSMS = require('../util/sendSMS');
-                await sendSMS({ to: witness_phone, body: `You have been selected as a witness by ${fullName} in their DIALs (Declaration of Income, Assets and Liabilities).` });
+                const { buildWitnessSmsBody } = require('../util/witnessSms');
+                await sendSMS({ to: witness_phone, body: buildWitnessSmsBody(fullName) });
             }
         } catch (e) {
             console.error('Witness change SMS notify error:', e.message);
@@ -800,6 +801,7 @@ exports.submitDeclaration = async (req, res) => {
                     address: req.body.witness_address,
                     phone: req.body.witness_phone
                 } : null);
+                let witnessSmsSent = false;
                 if (fallbackWitness && (!declaration.witness_name && fallbackWitness.name)) {
                     await pool.query(
                         'UPDATE declarations SET witness_signed = ?, witness_name = ?, witness_address = ?, witness_phone = ? WHERE id = ?',
@@ -818,14 +820,33 @@ exports.submitDeclaration = async (req, res) => {
                                 if (urows[0].surname) nameParts.push(urows[0].surname);
                             }
                             const fullName = nameParts.join(' ') || 'an employee';
-                            await sendSMS({
-                                to: fallbackWitness.phone,
-                                body: `You have been selected as a witness by ${fullName} in their DIALs (Declaration of Income, Assets and Liabilities).`
-                            });
+                            const { buildWitnessSmsBody } = require('../util/witnessSms');
+                            await sendSMS({ to: fallbackWitness.phone, body: buildWitnessSmsBody(fullName) });
+                            witnessSmsSent = true;
                         }
                     } catch (e) {
                         console.error('Witness SMS notify error:', e.message);
                     }
+                }
+                // If witness was captured during initial create (not via fallback), still notify them
+                try {
+                    const effectiveWitnessPhone = declaration.witness_phone || (witness && witness.phone) || req.body.witness_phone || null;
+                    if (!witnessSmsSent && effectiveWitnessPhone) {
+                        const sendSMS = require('../util/sendSMS');
+                        const [urows] = await pool.query('SELECT first_name, other_names, surname FROM users WHERE id = ?', [req.user.id]);
+                        const parts = [];
+                        if (urows && urows[0]) {
+                            if (urows[0].first_name) parts.push(urows[0].first_name);
+                            if (urows[0].other_names) parts.push(urows[0].other_names);
+                            if (urows[0].surname) parts.push(urows[0].surname);
+                        }
+                        const fullName = parts.join(' ') || 'an employee';
+                        const { buildWitnessSmsBody } = require('../util/witnessSms');
+                        await sendSMS({ to: effectiveWitnessPhone, body: buildWitnessSmsBody(fullName) });
+                        witnessSmsSent = true;
+                    }
+                } catch (e) {
+                    console.error('Witness SMS (initial create) error:', e.message);
                 }
                 // Send confirmation email to user with PDF attachment via shared builder
                 try {
@@ -852,9 +873,9 @@ exports.submitDeclaration = async (req, res) => {
 
                     await sendEmail({
                         to: recipientEmail,
-                        subject: 'Declaration Submitted Successfully',
-                        text: `Dear ${base.first_name || 'Employee'},\n\nYour declaration form has been successfully submitted. A PDF summary is attached.\n\nThe password for the attached PDF is Your National ID number.\n\nThank you!`,
-                        html: `<p>Dear ${base.first_name || 'Employee'},</p><p>Your declaration form has been <b>successfully submitted</b>. A PDF summary is attached.</p><p><strong>The password for the attached PDF is Your National ID number.</strong></p><p>Thank you!</p>`,
+                        subject: 'Declaration of Income, Assets and Liabilities Submitted Successfully',
+                        text: `Dear ${base.first_name || 'Employee'},\n\nYour Declaration of Income, Assets and Liabilities form has been successfully submitted. A PDF summary is attached.\n\nThe password for the attached PDF is Your National ID number.\n\nThank you!`,
+                        html: `<p>Dear ${base.first_name || 'Employee'},</p><p>Your <b>Declaration of Income, Assets and Liabilities</b> form has been <b>successfully submitted</b>. A PDF summary is attached.</p><p><strong>The password for the attached PDF is Your National ID number.</strong></p><p>Thank you!</p>`,
                         attachments: [
                             { filename, content: pdfBuffer, contentType: 'application/pdf' }
                         ]
