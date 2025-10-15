@@ -93,36 +93,55 @@ def convert_csv_to_sql(csv_file_path, output_file_path):
         - ID Number -> national_id (optional)
 
     Any missing optional field will be inserted as NULL.
-    Email and phone_number are set to NULL by default to avoid conflicts.
+    Email is set to a unique placeholder based on payroll_number (e.g., 12345@mombasa.go.ke)
+    and phone_number is set to NULL by default to avoid conflicts.
     """
 
     sql_statements = []
     sql_statements.append("-- Generated SQL INSERT statements for users table")
     sql_statements.append("-- Generated on: " + datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
     sql_statements.append("-- Default password for all users: '' (empty string)")
-    sql_statements.append("-- Email and phone fields set to NULL - users can add later")
+    sql_statements.append("-- Email set to <payroll_number>@mombasa.go.ke; phone set to NULL")
+    sql_statements.append("-- Placeholder policy for incomplete rows: missing names -> 'UNKNOWN'; missing payroll -> 'MISSING_<rowno>'; duplicate payroll -> 'DUP_<orig>_<rowno>'; missing/invalid birthdate -> '1900-01-01'.")
     sql_statements.append("")
     
-    # Default password set to empty string
+    # Default password set to blank as requested
     default_password_hash = ""
+
+    # Placeholder policies
+    MISSING_PLACEHOLDER_PREFIX = "MISSING_"
+    DUP_PLACEHOLDER_PREFIX = "DUP_"
+    FALLBACK_BIRTHDATE = "1900-01-01"
+    UNKNOWN_NAME = "UNKNOWN"
     
     insert_statements = []
-    
+
     try:
-        with open(csv_file_path, 'r', encoding='utf-8') as csvfile:
+        # Use utf-8-sig to safely strip BOM that can appear in CSVs saved by Excel
+        with open(csv_file_path, 'r', encoding='utf-8-sig', newline='') as csvfile:
             reader = csv.DictReader(csvfile)
 
             # Normalize header keys for easier access
+            def _norm_key(s: str) -> str:
+                # Normalize header keys: lowercase, strip spaces, remove BOM/NBSP, collapse interior spaces
+                if not isinstance(s, str):
+                    return ''
+                s = s.replace('\ufeff', '')  # BOM
+                s = s.replace('\xa0', ' ')   # NBSP
+                s = ' '.join(s.split())       # collapse whitespace
+                return s.lower().strip()
+
             def get_val(row, *keys):
+                # Direct match first
                 for k in keys:
                     if k in row:
                         return row[k]
-                # Try case-insensitive/trimmed match
-                lower_map = {kk.lower().strip(): kk for kk in row.keys()}
+                # Build a normalized lookup map
+                norm_map = {_norm_key(kk): kk for kk in row.keys()}
                 for k in keys:
-                    lk = k.lower().strip()
-                    if lk in lower_map:
-                        return row[lower_map[lk]]
+                    nk = _norm_key(k)
+                    if nk in norm_map:
+                        return row[norm_map[nk]]
                 return ''
 
             seen_payroll = set()
@@ -137,20 +156,34 @@ def convert_csv_to_sql(csv_file_path, output_file_path):
                     birthdate = format_date(get_val(row, 'Birth Date', 'birthdate'))
                     national_id = get_val(row, 'ID Number', 'National ID', 'national_id').strip()
 
-                    # Skip if essential data is missing
-                    if not payroll_number or not first_name or not surname:
-                        print(f"Warning: Skipping row {row_num} - missing essential name or payroll number")
-                        continue
+                    notes = []
+                    # Handle missing/duplicate essentials with placeholders
+                    if not payroll_number:
+                        placeholder = f"{MISSING_PLACEHOLDER_PREFIX}{row_num:05d}"
+                        notes.append(f"missing payroll -> {placeholder}")
+                        payroll_number = placeholder
+                    elif payroll_number in seen_payroll:
+                        replacement = f"{DUP_PLACEHOLDER_PREFIX}{payroll_number}_{row_num:05d}"
+                        notes.append(f"duplicate payroll {payroll_number} -> {replacement}")
+                        payroll_number = replacement
+                    # Track seen after final value chosen
+                    if payroll_number in seen_payroll:
+                        # extremely unlikely after replacement, but guard anyway
+                        replacement = f"{payroll_number}_{row_num:05d}"
+                        notes.append(f"dedupe guard -> {replacement}")
+                        payroll_number = replacement
+                    seen_payroll.add(payroll_number)
+
+                    if not surname:
+                        notes.append("missing surname -> 'UNKNOWN'")
+                        surname = UNKNOWN_NAME
+                    if not first_name:
+                        notes.append("missing first_name -> 'UNKNOWN'")
+                        first_name = UNKNOWN_NAME
 
                     if not birthdate:
-                        print(f"Warning: Skipping row {row_num} - invalid/missing birth date for {first_name} {surname}")
-                        continue
-
-                    # De-duplicate by payroll number
-                    if payroll_number in seen_payroll:
-                        print(f"Warning: Skipping duplicate payroll_number on row {row_num}: {payroll_number}")
-                        continue
-                    seen_payroll.add(payroll_number)
+                        notes.append(f"missing/invalid birthdate -> {FALLBACK_BIRTHDATE}")
+                        birthdate = FALLBACK_BIRTHDATE
 
                     # Generate a guaranteed-unique, valid placeholder email from payroll number
                     email = f"{payroll_number.lower()}@mombasa.go.ke"
@@ -169,7 +202,9 @@ def convert_csv_to_sql(csv_file_path, output_file_path):
                     values.append("FALSE")                              # password_changed
                     values.append(f"'{sql_escape(national_id)}'" if national_id else "NULL")  # national_id
 
-                    insert_statement = f"({', '.join(values)})"
+                    # Attach inline block comment with any notes
+                    comment = f" /* {'; '.join(notes)} */" if notes else ""
+                    insert_statement = f"({', '.join(values)}){comment}"
                     insert_statements.append(insert_statement)
 
                 except Exception as e:
@@ -199,10 +234,11 @@ def convert_csv_to_sql(csv_file_path, output_file_path):
         with open(output_file_path, 'w', encoding='utf-8') as outfile:
             outfile.write('\n'.join(sql_statements))
 
+        # Success messages
         print(f"✅ Successfully converted {len(insert_statements)} records")
         print(f"📄 SQL file saved to: {output_file_path}")
         print(f"🔑 Default password for all users: '' (empty)")
-        print(f"📧 Email fields set to NULL - users will add emails later")
+        print(f"📧 Email set to <payroll_number>@mombasa.go.ke; phone set to NULL")
 
     except Exception as e:
         print(f"❌ Error reading CSV file: {e}")
