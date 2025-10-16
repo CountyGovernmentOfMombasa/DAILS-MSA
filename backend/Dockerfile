@@ -14,13 +14,35 @@ COPY . .
 # RUN npm run build
 
 # --- Production Stage ---
-FROM node:18-alpine
+FROM node:18-alpine AS runner
+RUN apk update && apk upgrade && \
+	apk add --no-cache tini
 
 WORKDIR /app
 
 COPY package*.json ./
 # Install only production dependencies
-RUN npm install --production
+RUN npm install --production --omit=dev
+
+
+# Copy built application from the builder stage
+COPY --from=builder /app .
+
+EXPOSE 5000
+
+# Create and use a non-root user for security
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+USER appuser
+
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "app.js"]
+
+WORKDIR /app
+
+COPY package*.json ./
+# Install only production dependencies
+RUN npm install --production --omit=dev
+
 
 # Copy built application from the builder stage
 COPY --from=builder /app .
