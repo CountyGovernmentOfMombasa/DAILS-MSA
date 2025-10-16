@@ -1389,7 +1389,7 @@ const incomeDescriptionPlaceholder = (type) => {
                   )}
 
                   {/* Section C: Assets */}
-                  {renderTableSection('C. Assets', 'assets', 'Ksh', 'Including but not limited to; land, building, vehicles, investments and financial obligations owed to the person for whom the statement is made as of the statemnt date. Kindly include Location and registration details/ numbers of the asset where applicable. Include assets that are within and outside the country.')}
+                  {renderTableSection('C. Assets', 'assets', 'Ksh', 'Including but not limited to; land, building, vehicles, investments and financial obligations owed to the person for whom the statement is made as of the statemnt date. Kindly include Location and registration details/ numbers of the asset where applicable. Income, assets and liabilities that a public officer may have outside Kenya, should be declared. Joint assets, properties, personal and business accounts within and outside Kenya should also be declared.')}
 
                   {/* Section D: Liabilities */}
                   {renderTableSection('D. Liabilities', 'liabilities', 'Ksh', 'Including but not limited to; bank loans, sacco loans , vehicles loans and financial obligations owed as of the statemnt date.')}
