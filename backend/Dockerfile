@@ -22,7 +22,7 @@ WORKDIR /app
 
 COPY package*.json ./
 # Install only production dependencies
-RUN npm install --omit=dev
+RUN npm install --omit=dev --legacy-peer-deps
 
 
 # Copy built application from the builder stage
@@ -41,7 +41,7 @@ WORKDIR /app
 
 COPY package*.json ./
 # Install only production dependencies
-RUN npm install --omit=dev
+RUN npm install --omit=dev --legacy-peer-deps
 
 
 # Copy built application from the builder stage
