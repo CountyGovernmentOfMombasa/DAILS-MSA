@@ -1,56 +1,41 @@
 # --- Build Stage ---
+# This stage installs ALL dependencies (including dev) and compiles native modules.
 FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files and install all dependencies (including dev) for potential build steps/tests
+# Install build tools required for native modules like 'hummus-recipe'
+RUN apk add --no-cache python3 make g++
+
+# Copy package files and install dependencies
 COPY package*.json ./
 RUN npm install
 
 # Copy the rest of the application source code
 COPY . .
 
-# Optional: If you had a build step (e.g., for TypeScript), you would run it here.
-# RUN npm run build
-
 # --- Production Stage ---
-FROM node:18-alpine AS runner
-RUN apk update && apk upgrade && \
-	apk add --no-cache tini
+# This stage creates the final, lean image for running the application.
+FROM node:18-alpine
 
 WORKDIR /app
 
-COPY package*.json ./
-# Install only production dependencies
-RUN npm install --omit=dev --legacy-peer-deps
+# Install Tini, a lightweight init system for containers, to properly handle signals.
+RUN apk add --no-cache tini
 
+# Copy package files and install ONLY production dependencies
+COPY package*.json ./
+RUN npm install --omit=dev
 
 # Copy built application from the builder stage
 COPY --from=builder /app .
 
 EXPOSE 5000
 
-# Create and use a non-root user for security
+# Create a non-root user for security
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 USER appuser
 
+# Use Tini as the entrypoint to manage the Node.js process
 ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["node", "app.js"]
-
-WORKDIR /app
-
-COPY package*.json ./
-# Install only production dependencies
-RUN npm install --omit=dev --legacy-peer-deps
-
-
-# Copy built application from the builder stage
-COPY --from=builder /app .
-
-EXPOSE 5000
-
-# Create and use a non-root user for security
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
-USER appuser
-
 CMD ["node", "app.js"]
