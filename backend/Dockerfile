@@ -23,11 +23,8 @@ WORKDIR /app
 # Install Tini, a lightweight init system for containers, to properly handle signals.
 RUN apk add --no-cache tini
 
-# Copy package files and install ONLY production dependencies
-COPY package*.json ./
-RUN npm install --omit=dev
-
-# Copy built application from the builder stage
+# Copy the entire application, including the compiled node_modules, from the builder stage.
+# This ensures we don't need to run `npm install` again.
 COPY --from=builder /app .
 
 EXPOSE 5000
