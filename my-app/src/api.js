@@ -1,8 +1,7 @@
 import axios from "axios";
-// In your frontend's api.js or similar
-const API_BASE_URL =
-  process.env.REACT_APP_API_BASE_URL || "http://localhost:5000";
-//const API_URL = 'http://localhost:5000/api';
+
+const API_URL = "https://dials.mombasa.go.ke/api";
+// const API_URL = 'http://localhost:5000/api';
 
 // Global Axios interceptor for uniform 401 / 404 handling
 let interceptorInstalled = false;
