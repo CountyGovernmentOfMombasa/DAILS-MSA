@@ -28,9 +28,22 @@ app.use(helmet());
 app.use(morgan("combined"));
 
 // CORS configuration early so even 429 responses include headers
+const allowedOrigins = ["https://dials.mombasa.go.ke"];
+if (process.env.FRONTEND_URL) {
+  allowedOrigins.push(process.env.FRONTEND_URL);
+}
+
+// CORS configuration early so even 429 responses include headers
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "https://dials.mombasa.go.ke",
+    origin: allowedOrigins,
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "Accept",
+    ],
+
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   })
