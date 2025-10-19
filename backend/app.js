@@ -30,7 +30,7 @@ app.use(morgan("combined"));
 // CORS configuration early so even 429 responses include headers
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "https://diala.mombasa.go.ke",
+    origin: process.env.FRONTEND_URL || "https://dials.mombasa.go.ke",
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   })
