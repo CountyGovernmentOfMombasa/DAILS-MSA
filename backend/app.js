@@ -28,15 +28,27 @@ app.use(helmet());
 app.use(morgan("combined"));
 
 // CORS configuration early so even 429 responses include headers
-const allowedOrigins = ["https://dials.mombasa.go.ke"];
-if (process.env.FRONTEND_URL) {
-  allowedOrigins.push(process.env.FRONTEND_URL);
-}
-
-// CORS configuration early so even 429 responses include headers
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      // In production, only allow specific origins.
+      const prodOrigins = ["https://dials.mombasa.go.ke"];
+      if (process.env.FRONTEND_URL) {
+        prodOrigins.push(process.env.FRONTEND_URL);
+      }
+
+      if (process.env.NODE_ENV === "production") {
+        if (prodOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          // Block requests from unknown origins in production
+          callback(new Error("Not allowed by CORS"));
+        }
+      } else {
+        // Allow requests from any origin in development for flexibility.
+        callback(null, true);
+      }
+    },
     allowedHeaders: [
       "Content-Type",
       "Authorization",
