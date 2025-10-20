@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_URL = "https://dials.mombasa.go.ke/api";
+const API_URL = "https://cgm-dials-22kfe.ondigitalocean.app/api";
 // const API_URL = 'http://localhost:5000/api';
 
 // Global Axios interceptor for uniform 401 / 404 handling
