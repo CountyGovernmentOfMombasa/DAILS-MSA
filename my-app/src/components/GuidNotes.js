@@ -2,23 +2,26 @@ import React, { useState } from "react";
 import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
 
+// New guidelines content per request
+const guidelinesIntroTitle = 'DECLARATION OF INCOME ASSETS AND LIABILITIES';
+const guidelinesIntroParagraph = 'The attention of all public officers is drawn to their obligation to declare their Income, Assets and Liabilities under the Conflict of Interest Act No.11 of 2025. All Public Officers are advised to familiarize themselves with the provisions of the Act and the applicable Code of Conduct and Ethics for their respective reporting entity.';
+const guidelinesHeadingTitle = 'GUIDELINES ON THE COMPLETION OF THE DECLARATION OF INCOME, ASSETS AND LIABILITIES';
+const guidelinesIntro = 'A public officer should read these guidelines carefully and follow the instructions in the form before completing it. When completing the form, a public officer shall write legibly, type or print the required information.';
+
 const guidelines = [
-  "A public officer should read these guidelines carefully and follow the instructions in the form before completing it.",
-  "When completing the form, a public officer shall write legibly, type or print the required information.",
-  "1. Where the responsible Commission has a web application for filing the declaration, a public officer may fill and submit the declaration online. In such a case, a physical signature or delivery acknowledgment slip will not be necessary.",
-  "2. The declaration is for the income, assets and liabilities of a public official, his spouse or spouses and his dependent children under the age of 18 years.",
-  "3. All public officers are required to complete and submit their declarations to their responsible Commission, unless their responsible Commission has delegated its functions to another body.",
-  "4. The obligation to make declarations applies to all state and public officers including those on leave, under disciplinary action, secondment and overseas assignments, unless the Attorney General has granted a dispensation exempting an officer or a certain category of public official from filing their declarations, for reasons to be published in the Gazette.",
-  "5. The responsibility of ensuring that a declaration has been received by the appropriate reporting authority or its agent lies on the public officer. Provided that where the officer sends the form under confidential cover directly to the responsible Commission, the officer should label the envelope with the words 'Declaration of Incomes, Assets and Liabilities'. The organization and job group of the officer should also be indicated on the envelope.",
-  "6. A public officer is required to complete an initial declaration within thirty days of appointment and the statement date of the declaration will be the date the officer became a public officer.",
-  "7. A public officer is required to make a biennial declaration on or before the 31st day of December every other year or as may be provided for under the Act. The statement date for the biennial declaration will be 1st of November of the year in which the declaration is required.",
-  "8. A public officer is required to make a final declaration within thirty days of ceasing to be a public officer. The statement date of the final declaration shall be the date the public official ceased to be a public official.",
-  "9. A person submitting a declaration or providing a clarification shall ensure that the declaration or clarification is correct to the best of their knowledge.",
-  "10. If space on the form is not adequate, additional information may be included on separate sheets, while clearly indicating the number and paragraph being continued.",
-  "11. For each form submitted, there will be an acknowledgment slip issued by the responsible Commission or its agent.",
-  "12. Where a declaration is submitted electronically in accordance with the regulations made under this Act or administrative procedures adopted by the responsible Commission or any other competent authority, the declaration shall be valid notwithstanding the absence of a signature or acknowledgement stamp or receipt or slip.",
-  "13. Income, assets and liabilities that a public officer may have outside Kenya, should be declared. Joint assets, properties, personal and business accounts within and outside Kenya should also be declared.",
-  "14. Where a public officer has contravened the provisions of the Code of Conduct and Ethics relating to the declaration of Income, Assets and Liabilities, appropriate disciplinary action will be taken by the responsible Commission, or other appropriate authority, in accordance with the applicable disciplinary procedures."
+  '1. Where the responsible Commission (Mombasa County Public Service Board) has a web application for filing the declaration, a public officer may fill and submit the declaration online. In such a case, a physical signature or delivery acknowledgment slip will not be necessary.',
+  '2. The declaration is for the income, assets and liabilities of a public official, his spouse or spouses and his dependent children under the age of 18 years.',
+  '3. All public officers are required to complete and submit their declarations to their responsible Commission (Mombasa County Public Service Board) unless their responsible Commission has delegated its functions to another body.',
+  '4. The obligation to make declarations applies to all state and public officers including those on leave, under disciplinary action, secondment and overseas assignments, unless the Attorney General has granted a dispensation exempting an officer or a certain category of public official from filing their declarations, for reasons to be published in the Gazette.',
+  '5. The responsibility of ensuring that a declaration has been received by the appropriate reporting authority or its agent lies on the public officer.',
+  '6. A public officer is required to complete an initial declaration within thirty days of appointment and the statement date of the declaration will be the date the officer became a public officer.',
+  '7. A public officer is required to make a biennial declaration on or before the 31st day of December every other year or as may be provided for under the Act. The statement date for the biennial declaration will be 1st of November of the year in which the declaration is required.',
+  '8. A public officer is required to make a final declaration within thirty days of ceasing to be a public officer. The statement date of the final declaration shall be the date the public official ceased to be a public official.',
+  '9. A person submitting a declaration or providing a clarification shall ensure that the declaration or clarification is correct to the best of their knowledge.',
+  '10. For each form submitted, there will be an acknowledgment slip (email or SMS) issued by the responsible Commission (Mombasa County Public Service Board)',
+  '11. Where a declaration is submitted electronically in accordance with the regulations made under the Conflict of Interest Act or administrative procedures adopted by the responsible Commission or any other competent authority, the declaration shall be valid notwithstanding the absence of a signature or acknowledgement stamp or receipt or slip.',
+  '12. Income, assets and liabilities that a public officer may have outside Kenya, should be declared. Joint assets, properties, personal and business accounts within and outside Kenya should also be declared.',
+  '13. Where a public officer has contravened the provisions of the Code of Conduct and Ethics relating to the declaration of Income, Assets and Liabilities, appropriate disciplinary action will be taken by the responsible Commission(Mombasa County Public Service Board), or other appropriate authority, in accordance with the applicable disciplinary procedures.'
 ];
 
 
@@ -126,8 +129,11 @@ function GuidNotes() {
         {/* Guidelines */}
 
         <div style={{ flex: 2, minWidth: 340, background: '#fff', padding: 24, borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-          <h1 style={{ fontSize: 28, marginBottom: 16 }}>Guidelines on the Completion of the Declaration of Income, Assets and Liabilities</h1>
-          <ol style={{ paddingLeft: 20 }}>
+          <h1 style={{ fontSize: 26, marginBottom: 8, textTransform: 'uppercase' }}>{guidelinesIntroTitle}</h1>
+          <p style={{ fontSize: 16, marginBottom: 18 }}>{guidelinesIntroParagraph}</p>
+          <h2 style={{ fontSize: 22, marginBottom: 8 }}>{guidelinesHeadingTitle}</h2>
+          <p style={{ fontSize: 16 }}>{guidelinesIntro}</p>
+          <ol style={{ paddingLeft: 20, marginTop: 12 }}>
             {guidelines.map((note, idx) => (
               <li key={idx} style={{ marginBottom: 12, fontSize: 16 }}>{note}</li>
             ))}

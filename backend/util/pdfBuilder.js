@@ -112,7 +112,8 @@ function normalizeData(full) {
 
 function buildPDF({ declarationId, base, normalized }) {
   // Base PDF generation without encryption (will encrypt in a second pass if enabled)
-  const doc = new PDFDocument({ margin: 28 });
+  // Use A4 portrait and wider margins to resemble the official form print
+  const doc = new PDFDocument({ margin: 56, size: 'A4' });
   const buffers=[]; doc.on('data',d=>buffers.push(d));
   const pageWidth=()=> doc.page.width - doc.page.margins.left - doc.page.margins.right;
   let pageCounter = 1;
@@ -163,44 +164,60 @@ function buildPDF({ declarationId, base, normalized }) {
     return s; // fallback original
   };
   const addHeader=()=>{ 
+    // Optional logo centered if present
     try { 
       const logo=path.resolve(__dirname,'../../my-app/public/logo192.png'); 
       if (fs.existsSync(logo)) {
         const logoWidth=60; const centerX = doc.page.margins.left + (pageWidth()-logoWidth)/2; 
-        // Draw logo at the very top with some breathing space after it
-        doc.image(logo, centerX, 18, { width:logoWidth });
-        // Push cursor below full logo height + gap (assuming roughly square logo)
-        doc.y = 18 + logoWidth + 10; 
+        doc.image(logo, centerX, 20, { width:logoWidth });
+        doc.y = 20 + logoWidth + 8; 
       } else {
-        doc.moveDown(0.6);
+        doc.moveDown(0.4);
       }
-    } catch { doc.moveDown(0.6); }
-    // Heading now clearly separated from logo
-    doc.fontSize(15).font('Helvetica-Bold').text('DECLARATION OF INCOME, ASSETS AND LIABILITIES',{align:'center'});
-    doc.moveDown(0.25).fontSize(11).font('Helvetica').text('County Government of Mombasa',{align:'center'});
-    // Password instruction banner
-    doc.moveDown(0.4);
-    const banner = 'This PDF is password protected. The password is Your National ID number.';
-    doc.fontSize(9).font('Helvetica-Oblique').fillColor('#444').text(banner, { align:'center' });
+    } catch { doc.moveDown(0.4); }
+    // Official header styled similar to the attached form
+    doc.font('Times-Bold').fontSize(12).text('KENYA ANTI-CORRUPTION COMMISSION', { align:'center' });
+    doc.moveDown(0.15);
+    doc.font('Times-Bold').fontSize(15).text('DECLARATION OF INCOME, ASSETS AND LIABILITIES', { align:'center' });
+    doc.moveDown(0.1);
+    doc.font('Times-Italic').fontSize(10).fillColor('#333').text('Public Officer Ethics Act, 2003', { align:'center' });
     doc.fillColor('#000');
-    doc.moveDown(0.4);
+    // Thin rule
+    const x = doc.page.margins.left; const w = pageWidth(); const y = doc.y + 6; 
+    doc.moveTo(x, y).lineTo(x + w, y).stroke('#666');
+    doc.y = y + 8;
+    // Password note (small, centered)
+    const banner = 'If prompted, use your National ID number as the PDF password.';
+    doc.font('Times-Italic').fontSize(8).fillColor('#555').text(banner, { align:'center' });
+    doc.fillColor('#000');
+    doc.moveDown(0.3);
   };
   const addPageFooter=()=>{
     // Draw footer page number inside the content area (avoid pushing content or creating blank pages)
     const currentY = doc.y; // remember cursor
     const footerY = doc.page.height - doc.page.margins.bottom - 12; // inside bottom margin
     doc.save();
-    doc.fontSize(8).fillColor('#555');
+    doc.font('Times-Roman').fontSize(8).fillColor('#555');
     doc.text(`Page ${pageCounter}`, doc.page.margins.left, footerY, { width: pageWidth(), align:'center' });
     doc.restore();
     doc.y = currentY; // restore cursor to continue content if needed
   };
   const ensureSpace=n=>{ if(doc.y + n > doc.page.height - doc.page.margins.bottom){ addPageFooter(); doc.addPage(); pageCounter++; addHeader(); } };
-  const section=t=>{ ensureSpace(40); doc.moveDown(0.6); doc.fontSize(12).font('Helvetica-Bold').fillColor('#003366').text(t.toUpperCase(), { underline:false }); doc.moveDown(0.25).fontSize(9).font('Helvetica').fillColor('#000'); };
+  const section=(t, subtitle=null)=>{ 
+    ensureSpace(40); 
+    doc.moveDown(0.5); 
+    doc.font('Times-Bold').fontSize(12).fillColor('#000').text(t.toUpperCase(), { align:'left' }); 
+    if (subtitle) {
+      doc.moveDown(0.1);
+      doc.font('Times-Italic').fontSize(9).fillColor('#444').text(subtitle, { align:'left' });
+      doc.fillColor('#000');
+    }
+    doc.moveDown(0.2).font('Times-Roman').fontSize(10).fillColor('#000');
+  };
   // Generic table renderer (updated padding & spacing)
   const table=(rows,headers, opts={})=>{
     const { emptyMessage='None', columnWidths=null, fontSize=8 } = opts;
-    if(!rows.length){ doc.font('Helvetica-Oblique').fontSize(fontSize).text(emptyMessage); doc.moveDown(0.4); return; }
+    if(!rows.length){ doc.font('Times-Italic').fontSize(fontSize).text(emptyMessage); doc.moveDown(0.4); return; }
     const w=pageWidth();
     const totalCols = headers.length;
     const colWidths = columnWidths && columnWidths.length===totalCols ? columnWidths : headers.map(()=>Math.floor(w/totalCols));
@@ -227,7 +244,7 @@ function buildPDF({ declarationId, base, normalized }) {
       vals.forEach((val,i)=>{
         const cellWidth = colWidths[i];
         doc.rect(offsetX, rowY, cellWidth, rowHeight).stroke('#cccccc');
-        doc.font(isHeader?'Helvetica-Bold':'Helvetica').fontSize(isHeader?fontSize+1:fontSize).fillColor('#000');
+        doc.font(isHeader?'Times-Bold':'Times-Roman').fontSize(isHeader?fontSize+1:fontSize).fillColor('#000');
         doc.text((val===undefined||val===null?'':String(val)), offsetX+4, rowY+paddingY, { width: cellWidth-8, continued:false });
         offsetX += cellWidth;
       });
@@ -240,41 +257,55 @@ function buildPDF({ declarationId, base, normalized }) {
   // Helper to build key/value tables uniformly
   const tableKV=(pairs, headerLabel='Field')=>{
     const filtered = (pairs||[]).filter(p=>p && p.length===2);
-    table(filtered, [headerLabel,'Value'], { fontSize:8, zebra:true });
+    table(filtered, [headerLabel,'Value'], { fontSize:9, zebra:true });
   };
   addHeader();
-  section('Declaration Overview');
-    const statusLabel = base.status === 'pending'
-      ? 'Submitted'
-      : (base.status === 'rejected' ? 'Requesting Clarification' : (base.status || 'pending'));
-    tableKV([
-      ['Declaration ID', declarationId],
-      ['Declaration Type', base.declaration_type || ''],
-      ['Submitted At', fmtDate(base.submitted_at) || fmtDate(base.created_at) || ''],
-      ['Status', statusLabel],
-      ...(base.correction_message ? [['Correction Message', base.correction_message]] : [])
-    ]);
-  section('Employee Profile');
-  const fullName=[base.surname, base.first_name, base.other_names].filter(Boolean).join(', ');
-  tableKV([
-    ['Name', fullName],
-    ['National ID', base.national_id||''],
-    ['Payroll Number', base.payroll_number||''],
-    ['Department', base.department||''],
-    ['Designation', base.designation||''],
-    ['Marital Status', base.marital_status||base.user_marital_status||''],
-    ['Birthdate', fmtDate(base.birthdate)||''],
-    ['Place of Birth', base.place_of_birth||''],
-    ['Email', base.email||''],
-    ['Postal Address', base.postal_address||''],
-    ['Physical Address', base.physical_address||''],
-    ['Nature of Employment', base.nature_of_employment||'']
-  ]);
-  section('Financial Period');
-  tableKV([
-    ['Period Start', fmtDate(base.period_start_date || (normalized.finDeclExpanded[0]?.period_start_date) || '')],
-    ['Period End', fmtDate(base.period_end_date || (normalized.finDeclExpanded[0]?.period_end_date) || '')]
-  ]);
+  // PART A: Personal Details (styled as lined fields like the official form)
+  section('Part A: Personal Details');
+  const fullName=[base.surname, base.first_name, base.other_names].filter(Boolean).join(' ').trim();
+  const drawLineField = (label, value='')=>{
+    ensureSpace(24);
+    const startX = doc.x; const y0 = doc.y;
+    doc.font('Times-Roman').fontSize(10).text(label, { continued:true });
+    const labelW = doc.widthOfString(label);
+    const lineStart = startX + labelW + 6; const lineEnd = doc.page.margins.left + pageWidth();
+    // Place value text and underline
+    const val = value ? String(value) : '';
+    const display = val || ' ';
+    doc.text(display, lineStart, y0, { width: lineEnd - lineStart, continued:false });
+    const underlineY = y0 + doc.currentLineHeight() - 2;
+    doc.moveTo(lineStart, underlineY).lineTo(lineEnd, underlineY).stroke('#999');
+    doc.y = y0 + doc.currentLineHeight() + 4;
+  };
+  drawLineField('1. Name of Public Officer: ', fullName);
+  drawLineField('2. National ID Number: ', base.national_id||'');
+  drawLineField('3. Personal/Payroll Number: ', base.payroll_number||'');
+  drawLineField('4. Department/Section: ', base.department||'');
+  drawLineField('5. Designation/Position: ', base.designation||'');
+  drawLineField('6. Nature of Employment: ', base.nature_of_employment||'');
+  drawLineField('7. Marital Status: ', base.marital_status||base.user_marital_status||'');
+  drawLineField('8. Email Address: ', base.email||'');
+  drawLineField('9. Postal Address: ', base.postal_address||'');
+  drawLineField('10. Physical Address: ', base.physical_address||'');
+  // Period block on one line
+  ensureSpace(24);
+  doc.font('Times-Roman').fontSize(10);
+  const ps = fmtDate(base.period_start_date || (normalized.finDeclExpanded[0]?.period_start_date) || '');
+  const pe = fmtDate(base.period_end_date || (normalized.finDeclExpanded[0]?.period_end_date) || '');
+  const lineLabel = '11. Declaration Period: From ';
+  const fromW = doc.widthOfString(lineLabel);
+  const startX = doc.x; const y0 = doc.y;
+  doc.text(lineLabel, { continued:true });
+  let lineStart = startX + fromW + 2; let lineEnd = lineStart + 120;
+  doc.text(ps || ' ', lineStart, y0, { width: 120, continued:true });
+  doc.moveTo(lineStart, y0 + doc.currentLineHeight() - 2).lineTo(lineEnd, y0 + doc.currentLineHeight() - 2).stroke('#999');
+  const mid = '  To ';
+  doc.text(mid, { continued:true });
+  const toW = doc.widthOfString(mid);
+  lineStart = doc.x + toW; lineEnd = lineStart + 120;
+  doc.text(pe || ' ', lineStart, y0, { width: 120, continued:false });
+  doc.moveTo(lineStart, y0 + doc.currentLineHeight() - 2).lineTo(lineEnd, y0 + doc.currentLineHeight() - 2).stroke('#999');
+  doc.y = y0 + doc.currentLineHeight() + 6;
 
   // Integrate root financial data into the Financial Declaration list (single synthetic user entry)
   const userDisplayName = [base.surname, base.first_name, base.other_names].filter(Boolean).join(' ').trim() || 'User';
@@ -305,39 +336,91 @@ function buildPDF({ declarationId, base, normalized }) {
     // Rebuild expanded list with single consolidated user entry at the front
     normalized.finDeclExpanded = [primary, ...normalized.finDeclExpanded.filter(fd => (fd.member_type||'').toLowerCase() !== 'user')];
   }
+  // PART B: Financial Declaration per member (matching form sections)
   normalized.finDeclExpanded.forEach(fd=>{
-    section(`Financial Declaration – ${fd.member_type.toUpperCase()} (${fd.member_name})`);
+    section(`Part B: Financial Declaration – ${fd.member_type.toUpperCase()} (${fd.member_name})`);
     tableKV([
       ['Declaration Date', fmtDate(fd.declaration_date)||''],
-      ['Period', `${fmtDate(fd.period_start_date||'')} -> ${fmtDate(fd.period_end_date||'')}`]
-    ]);
-    doc.font('Helvetica-Bold').text('Income').moveDown(0.2);
-    table((fd.incomes||[]).map(i=>[i.type,i.description,formatMoney(i.value)]), ['Type','Description','Value'], { zebra:true });
-    doc.font('Helvetica-Bold').text('Assets').moveDown(0.2);
-    table((fd.assets||[]).map(a=>[a.type === 'Other' && a.asset_other_type ? a.asset_other_type : a.type, buildAssetDescription(a), formatMoney(a.value)]), ['Type','Description','Value'], { zebra:true });
-    doc.font('Helvetica-Bold').text('Liabilities').moveDown(0.2);
-    table((fd.liabilities||[]).map(l=>[l.type === 'Other' && l.liability_other_type ? l.liability_other_type : l.type, buildLiabilityDescription(l), formatMoney(l.value)]), ['Type','Description','Value'], { zebra:true });
+      ['Period', `${fmtDate(fd.period_start_date||'')} to ${fmtDate(fd.period_end_date||'')}`]
+    ], 'Field');
+    doc.font('Times-Bold').fontSize(10).text('Income', { underline:false }).moveDown(0.15);
+    table((fd.incomes||[]).map(i=>[i.type,i.description,formatMoney(i.value)]), ['Type/Source','Description/Details','Value (KES)'], { zebra:true, fontSize:9 });
+    doc.font('Times-Bold').fontSize(10).text('Assets').moveDown(0.15);
+    table((fd.assets||[]).map(a=>[a.type === 'Other' && a.asset_other_type ? a.asset_other_type : a.type, buildAssetDescription(a), formatMoney(a.value)]), ['Type','Description/Details','Value (KES)'], { zebra:true, fontSize:9 });
+    doc.font('Times-Bold').fontSize(10).text('Liabilities').moveDown(0.15);
+    table((fd.liabilities||[]).map(l=>[l.type === 'Other' && l.liability_other_type ? l.liability_other_type : l.type, buildLiabilityDescription(l), formatMoney(l.value)]), ['Type','Description/Details','Value (KES)'], { zebra:true, fontSize:9 });
   });
-  normalized.spousesArr.forEach((s,i)=>{ section(`Spouse ${i+1}: ${s.name||'Unnamed'}`); doc.font('Helvetica-Bold').text('Income').moveDown(0.15); table(s.incomes.map(i=>[i.type,i.description,formatMoney(i.value)]), ['Type','Description','Value'], { zebra:true }); doc.font('Helvetica-Bold').text('Assets').moveDown(0.15); table(s.assets.map(a=>[a.type === 'Other' && a.asset_other_type ? a.asset_other_type : a.type, buildAssetDescription(a), formatMoney(a.value)]), ['Type','Description','Value'], { zebra:true }); doc.font('Helvetica-Bold').text('Liabilities').moveDown(0.15); table(s.liabilities.map(l=>[l.type === 'Other' && l.liability_other_type ? l.liability_other_type : l.type, buildLiabilityDescription(l), formatMoney(l.value)]), ['Type','Description','Value'], { zebra:true }); });
-  normalized.childrenArr.forEach((c,i)=>{ section(`Child ${i+1}: ${c.name||'Unnamed'}`); doc.font('Helvetica-Bold').text('Income').moveDown(0.15); table(c.incomes.map(i=>[i.type,i.description,formatMoney(i.value)]), ['Type','Description','Value'], { zebra:true }); doc.font('Helvetica-Bold').text('Assets').moveDown(0.15); table(c.assets.map(a=>[a.type === 'Other' && a.asset_other_type ? a.asset_other_type : a.type, buildAssetDescription(a), formatMoney(a.value)]), ['Type','Description','Value'], { zebra:true }); doc.font('Helvetica-Bold').text('Liabilities').moveDown(0.15); table(c.liabilities.map(l=>[l.type === 'Other' && l.liability_other_type ? l.liability_other_type : l.type, buildLiabilityDescription(l), formatMoney(l.value)]), ['Type','Description','Value'], { zebra:true }); });
-  const sum=a=>a.reduce((t,x)=>t+(Number(x.value)||0),0); section('Totals Summary'); const allIncomes = normalized.finDeclExpanded.flatMap(f=>f.incomes||[]); const allAssets = normalized.finDeclExpanded.flatMap(f=>f.assets||[]); const allLiabilities = normalized.finDeclExpanded.flatMap(f=>f.liabilities||[]); tableKV([
-    ['Total Income (All)', formatMoney(sum(allIncomes))],
-    ['Total Assets (All)', formatMoney(sum(allAssets))],
-    ['Total Liabilities (All)', formatMoney(sum(allLiabilities))]
+
+  // PART C: Spouse and Children (summary tables akin to the form annexures)
+  if (normalized.spousesArr.length) {
+    normalized.spousesArr.forEach((s,i)=>{ 
+      section(`Part C: Spouse ${i+1} – ${s.name||'Unnamed'}`);
+      doc.font('Times-Bold').fontSize(10).text('Income').moveDown(0.1);
+      table(s.incomes.map(i=>[i.type,i.description,formatMoney(i.value)]), ['Type','Description','Value (KES)'], { zebra:true, fontSize:9 });
+      doc.font('Times-Bold').fontSize(10).text('Assets').moveDown(0.1);
+      table(s.assets.map(a=>[a.type === 'Other' && a.asset_other_type ? a.asset_other_type : a.type, buildAssetDescription(a), formatMoney(a.value)]), ['Type','Description','Value (KES)'], { zebra:true, fontSize:9 });
+      doc.font('Times-Bold').fontSize(10).text('Liabilities').moveDown(0.1);
+      table(s.liabilities.map(l=>[l.type === 'Other' && l.liability_other_type ? l.liability_other_type : l.type, buildLiabilityDescription(l), formatMoney(l.value)]), ['Type','Description','Value (KES)'], { zebra:true, fontSize:9 }); 
+    });
+  }
+  if (normalized.childrenArr.length) {
+    normalized.childrenArr.forEach((c,i)=>{ 
+      section(`Part D: Child ${i+1} – ${c.name||'Unnamed'}`);
+      doc.font('Times-Bold').fontSize(10).text('Income').moveDown(0.1);
+      table(c.incomes.map(i=>[i.type,i.description,formatMoney(i.value)]), ['Type','Description','Value (KES)'], { zebra:true, fontSize:9 });
+      doc.font('Times-Bold').fontSize(10).text('Assets').moveDown(0.1);
+      table(c.assets.map(a=>[a.type === 'Other' && a.asset_other_type ? a.asset_other_type : a.type, buildAssetDescription(a), formatMoney(a.value)]), ['Type','Description','Value (KES)'], { zebra:true, fontSize:9 });
+      doc.font('Times-Bold').fontSize(10).text('Liabilities').moveDown(0.1);
+      table(c.liabilities.map(l=>[l.type === 'Other' && l.liability_other_type ? l.liability_other_type : l.type, buildLiabilityDescription(l), formatMoney(l.value)]), ['Type','Description','Value (KES)'], { zebra:true, fontSize:9 }); 
+    });
+  }
+
+  // Totals summary (optional footer like many official forms)
+  const sum=a=>a.reduce((t,x)=>t+(Number(x.value)||0),0); 
+  section('Totals Summary'); 
+  const allIncomes = normalized.finDeclExpanded.flatMap(f=>f.incomes||[]); 
+  const allAssets = normalized.finDeclExpanded.flatMap(f=>f.assets||[]); 
+  const allLiabilities = normalized.finDeclExpanded.flatMap(f=>f.liabilities||[]); 
+  tableKV([
+    ['Total Income (All Members)', formatMoney(sum(allIncomes))],
+    ['Total Assets (All Members)', formatMoney(sum(allAssets))],
+    ['Total Liabilities (All Members)', formatMoney(sum(allLiabilities))]
   ], 'Metric');
+
+  // Declaration & Signature lines similar to the form
   const declarationDate = fmtDate(base.declaration_date || normalized.finDeclExpanded.find(fd => (fd.member_type||'').toLowerCase()==='user')?.declaration_date || normalized.finDeclExpanded[0]?.declaration_date || '');
-  section('Signatures'); ensureSpace(120); tableKV([
-    ['Declarant Signature', 'Signed'],
-    ['Declarant Date', declarationDate || ''],
-    ...(base.witness_name||base.witness_phone||base.witness_address ? [
-      ['Witness Name', base.witness_name||''],
-      ['Witness Phone', base.witness_phone||''],
-      ['Witness Address', base.witness_address||''],
-      ['Witness Signature', 'Informed'],
-      ['Witness Date', declarationDate || '']
-    ] : [['Witness Information', 'No witness information provided.']])
-  ], 'Field');
-  ensureSpace(40); doc.moveDown(0.5).fontSize(8).fillColor('#555').text('Generated by Mombasa County DAILs Portal – retain for your records.', { align:'center', width: pageWidth() });
+  section('Declaration and Signature');
+  const declarationText = 'I hereby declare that the information given herein is to the best of my knowledge true and complete.';
+  doc.font('Times-Roman').fontSize(10).text(declarationText);
+  doc.moveDown(0.6);
+  const line = (label, val='')=>{
+    ensureSpace(22);
+    const sx = doc.x; const y = doc.y;
+    doc.font('Times-Roman').fontSize(10).text(label, { continued:true });
+    const lw = doc.widthOfString(label) + 6; const start = sx + lw; const end = doc.page.margins.left + pageWidth();
+    doc.text(val || ' ', start, y, { width: end - start, continued:false });
+    const uy = y + doc.currentLineHeight() - 2; doc.moveTo(start, uy).lineTo(end, uy).stroke('#999');
+    doc.y = y + doc.currentLineHeight() + 6;
+  };
+  line('Signature of Declarant: ', 'Signed');
+  line('Date: ', declarationDate || '');
+  if (base.witness_name || base.witness_phone || base.witness_address) {
+    doc.moveDown(0.2);
+    doc.font('Times-Bold').fontSize(10).text('Witness Details');
+    line('Witness Name: ', base.witness_name||'');
+    line('Witness Phone: ', base.witness_phone||'');
+    line('Witness Address: ', base.witness_address||'');
+  }
+
+  // Official use block (admin acknowledgement)
+  ensureSpace(60);
+  doc.moveDown(0.2);
+  doc.font('Times-Italic').fontSize(9).fillColor('#444').text('For Official Use:', { align:'left' });
+  doc.fillColor('#000');
+  line('Received/Reviewed by (Admin): ', base.approved_admin_name || '');
+  line('Admin Action Date: ', base.approved_at ? fmtDate(base.approved_at) : '');
+
+  ensureSpace(40); doc.moveDown(0.5).font('Times-Italic').fontSize(8).fillColor('#555').text('Generated by Mombasa County DAILs Portal.', { align:'center', width: pageWidth() });
   addPageFooter();
   doc.end();
   return new Promise(resolve => doc.on('end', ()=> resolve(Buffer.concat(buffers))));

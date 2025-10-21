@@ -32,13 +32,16 @@ app.use(
   cors({
     origin: (origin, callback) => {
       // In production, only allow specific origins.
-      const prodOrigins = ["https://cgm-dials-22kfe.ondigitalocean.app"];
+      const prodOrigins = [
+        "https://localhost:3000",
+        "https://cgm-dials-22kfe.ondigitalocean.app"
+      ];
       if (process.env.FRONTEND_URL) {
         prodOrigins.push(process.env.FRONTEND_URL);
       }
 
       if (process.env.NODE_ENV === "production") {
-        if (prodOrigins.includes(origin)) {
+        if (!origin || prodOrigins.includes(origin)) {
           callback(null, true);
         } else {
           // Block requests from unknown origins in production
@@ -55,7 +58,6 @@ app.use(
       "X-Requested-With",
       "Accept",
     ],
-
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   })

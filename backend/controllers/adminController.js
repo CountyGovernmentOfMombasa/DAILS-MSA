@@ -1256,7 +1256,11 @@ exports.adminDownloadDeclarationPDF = async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     if (encryptionApplied && password) {
       res.setHeader('X-PDF-Password', password);
-      if (passwordInstruction) res.setHeader('X-PDF-Password-Note', passwordInstruction);
+      if (passwordInstruction) {
+        // Maintain both headers for backward/forward compatibility
+        res.setHeader('X-PDF-Password-Note', passwordInstruction);
+        res.setHeader('X-PDF-Password-Instruction', passwordInstruction);
+      }
     }
     return res.send(buffer);
   } catch (err) {
