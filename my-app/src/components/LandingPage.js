@@ -5,38 +5,39 @@ import { Container, Row, Col, Card, Form, Button, Alert, Spinner, Table, Badge, 
 import useAdminSession from '../hooks/useAdminSession';
 import './LandingPage.css';
 import { getDeclarations, getProgress } from '../api';
-// Department logic now mirrors UserForm: user selects sub_department, department auto-derived (read-only)
 import { SUB_DEPARTMENTS, SUB_DEPARTMENT_PARENT } from '../constants/departments';
-// PDF now generated server-side; client just downloads
-// import { appendDeclarationIdToPath } from '../utilis/editContext'; // no longer needed after draft removal
 import { loadProgress, stepToPath, deriveUserKey, clearProgress, saveProgress, isProgressSuppressed } from '../utilis/persistProgress';
 
 const LandingPage = () => {
-  const { profile, setProfile } = useUser();
+  const { profile, loading, setProfile } = useUser();
   const [editMode, setEditMode] = useState(false);
   const [form, setForm] = useState({});
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [declarations, setDeclarations] = useState([]);
   const [declarationsLoading, setDeclarationsLoading] = useState(true);
   const [declarationsError, setDeclarationsError] = useState('');
-  // Local persisted progress (client side replacement for drafts)
   const [progress, setProgress] = useState(null);
   const [showDiscardModal, setShowDiscardModal] = useState(false);
   const [resumeToast, setResumeToast] = useState({ show: false, step: '' });
   const [pdfToast, setPdfToast] = useState({ show: false, message: '' });
-  // Pagination state for declarations
   const [declPage, setDeclPage] = useState(1);
   const [declPageSize, setDeclPageSize] = useState(10);
-  // Declaration detail modal state
   const [showDeclModal, setShowDeclModal] = useState(false);
   const [declModalLoading, setDeclModalLoading] = useState(false);
   const [declModalError, setDeclModalError] = useState('');
   const [selectedDecl, setSelectedDecl] = useState(null);
   const navigate = useNavigate();
   const { hasAdminAccess, adminToken, roleAbbrev, elevating, error: elevationError, elevateAndGo } = useAdminSession();
+
+  useEffect(() => {
+  const token = localStorage.getItem('token');
+  // Only redirect if profile fetch is complete, no profile, and no token
+  if (!loading && !profile && !token) {
+    navigate('/login');
+  }
+}, [loading, profile, navigate]);
 
   const handleExportPDF = async (declaration) => {
     try {
@@ -67,7 +68,6 @@ const LandingPage = () => {
     }
   };
 
-  // Map backend 'pending' to user-facing 'Submitted'
   const formatStatus = (s) => {
     if (!s) return 'N/A';
     if (s === 'pending') return 'Submitted';
@@ -150,7 +150,7 @@ const LandingPage = () => {
       nature_of_employment: profile.nature_of_employment || '',
       sub_department: profile.sub_department || ''
     });
-    setLoading(false);
+  // Profile loading is managed by UserContext
   }, [profile]);
 
   const handleChange = (e) => {

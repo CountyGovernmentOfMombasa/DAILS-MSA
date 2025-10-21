@@ -137,7 +137,7 @@ const LoginPage = () => {
                 body: JSON.stringify(loginData)
             });
 
-             if (response.ok) {
+            if (response.ok) {
                 const data = await response.json();
                 // OTP-first flow for first-time login
                 if (data.otpRequired) {
@@ -154,23 +154,23 @@ const LoginPage = () => {
                     navigate('/change-password', {
                         state: { token: data.token }
                     });
-                                } else {
-                                        // Store user access token(s) + new admin hint flags
-                                        localStorage.setItem('token', data.token);
-                                        if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
-                                        if (data.accessExpiresInMs) {
-                                            localStorage.setItem('tokenExpiresAt', String(Date.now() + data.accessExpiresInMs));
-                                        }
-                                        if (typeof data.hasAdminAccess !== 'undefined') {
-                                            localStorage.setItem('hasAdminAccess', data.hasAdminAccess ? '1' : '0');
-                                        }
-                                        if (data.adminRole) {
-                                            localStorage.setItem('adminRawRoleHint', data.adminRole);
-                                        } else {
-                                            localStorage.removeItem('adminRawRoleHint');
-                                        }
+                } else {
+                    // Store user access token(s) + new admin hint flags
+                    localStorage.setItem('token', data.token);
+                    if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
+                    if (data.accessExpiresInMs) {
+                        localStorage.setItem('tokenExpiresAt', String(Date.now() + data.accessExpiresInMs));
+                    }
+                    if (typeof data.hasAdminAccess !== 'undefined') {
+                        localStorage.setItem('hasAdminAccess', data.hasAdminAccess ? '1' : '0');
+                    }
+                    if (data.adminRole) {
+                        localStorage.setItem('adminRawRoleHint', data.adminRole);
+                    } else {
+                        localStorage.removeItem('adminRawRoleHint');
+                    }
                     // Immediately warm profile cache; no flicker on landing
-                    refreshProfile();
+                    await refreshProfile();
                     navigate('/landing');
                 }
             } else {
