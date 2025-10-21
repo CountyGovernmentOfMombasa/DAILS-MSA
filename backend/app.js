@@ -183,10 +183,7 @@ try {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/declarations", declarationRoutes);
-app.use("/api/admin", adminRoutes);
-app.use("/api/hr-admin", hrAdminRoutes);
-app.use("/api/it-admin", itAdminRoutes);
-app.use("/api/finance-admin", financeAdminRoutes);
+app.use("/api/admin", adminRoutes); // All admin routes are now consolidated here
 app.use("/api/users", userRoutes);
 app.use("/api/drafts", draftRoutes);
 // Consent submission was originally mounted only under /api/admin/consent/consent
