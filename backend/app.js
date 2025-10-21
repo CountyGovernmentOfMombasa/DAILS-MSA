@@ -99,9 +99,9 @@ const authLimiter = rateLimit({
       "/api/auth/check-password-status",
       "/api/admin/login",
     ];
-    // This limiter should ONLY run for sensitive paths.
-    // Therefore, we SKIP if the path is NOT in the sensitive list.
-    return !sensitiveAuthPaths.some((p) => req.path.startsWith(p));
+    // This limiter should ONLY run for the sensitive paths defined above.
+    // We return `true` (to skip) if the path is NOT one of them.
+    return !sensitiveAuthPaths.includes(req.path);
   },
   message: {
     success: false,
@@ -135,7 +135,7 @@ const generalLimiter = rateLimit({
       "/api/auth/check-password-status",
       "/api/admin/login",
     ];
-    return sensitiveAuthPaths.some((p) => req.path.startsWith(p));
+    return sensitiveAuthPaths.includes(req.path);
   },
   message: { success: false, message: "Too many requests, slow down." },
   handler: (req, res, next, options) => {
