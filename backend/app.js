@@ -4,6 +4,9 @@ const helmet = require("helmet");
 const cookieParser = require("cookie-parser");
 const morgan = require("morgan");
 const rateLimit = require("express-rate-limit");
+const crypto = require("crypto"); // Import crypto once at the top
+const pool = require("./config/db"); // Import db pool for health check
+
 require("dotenv").config();
 const authRoutes = require("./routes/authRoutes");
 const declarationRoutes = require("./routes/declarationRoutes");
@@ -27,29 +30,24 @@ app.set("trust proxy", 1);
 app.use(helmet());
 app.use(morgan("combined"));
 
+// Define allowed origins for CORS
+const allowedOrigins = [
+  "https://cgm-dials-22kfe.ondigitalocean.app", // Production frontend
+  "http://localhost:3000", // Local development
+];
+if (process.env.FRONTEND_URL) {
+  allowedOrigins.push(process.env.FRONTEND_URL);
+}
+
 // CORS configuration early so even 429 responses include headers
 app.use(
   cors({
     origin: (origin, callback) => {
-      // In production, only allow specific origins.
-      const prodOrigins = [
-        "https://localhost:3000",
-        "https://cgm-dials-22kfe.ondigitalocean.app",
-      ];
-      if (process.env.FRONTEND_URL) {
-        prodOrigins.push(process.env.FRONTEND_URL);
-      }
-
-      if (process.env.NODE_ENV === "production") {
-        if (!origin || prodOrigins.includes(origin)) {
-          callback(null, true);
-        } else {
-          // Block requests from unknown origins in production
-          callback(new Error("Not allowed by CORS"));
-        }
-      } else {
-        // Allow requests from any origin in development for flexibility.
+      // Allow requests with no origin (like mobile apps, curl) and from the allowed list.
+      if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
       }
     },
     allowedHeaders: [
@@ -76,16 +74,9 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => {
-    const crypto = require("crypto");
     let idPart = "";
     if (req.body && typeof req.body.nationalId === "string") {
-      idPart =
-        ":" +
-        crypto
-          .createHash("sha256")
-          .update(req.body.nationalId)
-          .digest("hex")
-          .slice(0, 16);
+      idPart = ":" + crypto.createHash("sha256").update(req.body.nationalId).digest("hex").slice(0, 16);
     }
     return req.ip + idPart;
   },
@@ -172,25 +163,13 @@ app.get("/api/server-date", (req, res) => {
 try {
   const { locksCache } = require("./middleware/locksCache");
   app.get("/api/settings/locks", locksCache, async (req, res) => {
-    // locksCache already attached req.declarationLocks (best-effort)
-    if (req.declarationLocks) {
-      return res.json({
-        success: true,
-        locks: req.declarationLocks,
-        cached: true,
-      });
-    }
-    // Fallback (unlikely) – direct fetch
-    try {
-      const settingsModel = require("./models/settingsModel");
-      const locks = await settingsModel.getDeclarationLocks();
-      return res.json({ success: true, locks, cached: false });
-    } catch (err) {
-      console.error("Error fetching public locks (fallback):", err.message);
-      return res
-        .status(500)
-        .json({ success: false, message: "Error fetching locks" });
-    }
+    // The locksCache middleware is responsible for populating req.declarationLocks.
+    // If it's not there, the middleware would have already handled the error.
+    return res.json({
+      success: true,
+      locks: req.declarationLocks || {}, // Provide empty object as a safe default
+      cached: req.cached, // The middleware should also set this flag
+    });
   });
 } catch (e) {
   console.warn("Unable to initialize cached public locks route:", e.message);
@@ -212,12 +191,26 @@ app.use("/api/progress", progressRoutes);
 // Public departments listing (for registration forms)
 app.get("/api/public/departments", publicDepartments.list);
 
-// Health check endpoint
-app.get("/api/health", (req, res) => {
-  res.json({
+// Enhanced health check endpoint
+app.get("/api/health", async (req, res) => {
+  const healthcheck = {
     status: "OK",
     timestamp: new Date().toISOString(),
     message: "Employee Declaration API is running",
+    checks: {},
+  };
+
+  try {
+    // Check database connection
+    const [dbResult] = await pool.query("SELECT 1");
+    healthcheck.checks.database = "OK";
+    res.status(200).json(healthcheck);
+  } catch (error) {
+    healthcheck.status = "ERROR";
+    healthcheck.message = "One or more services are unhealthy.";
+    healthcheck.checks.database = "UNHEALTHY";
+    console.error("Health check failed:", error.message);
+    res.status(503).json(healthcheck);
   });
 });
 
