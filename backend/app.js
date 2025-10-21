@@ -76,7 +76,13 @@ const authLimiter = rateLimit({
   keyGenerator: (req) => {
     let idPart = "";
     if (req.body && typeof req.body.nationalId === "string") {
-      idPart = ":" + crypto.createHash("sha256").update(req.body.nationalId).digest("hex").slice(0, 16);
+      idPart =
+        ":" +
+        crypto
+          .createHash("sha256")
+          .update(req.body.nationalId)
+          .digest("hex")
+          .slice(0, 16);
     }
     return req.ip + idPart;
   },
@@ -211,7 +217,7 @@ app.get("/api/health", async (req, res) => {
     healthcheck.checks.database = "UNHEALTHY";
     console.error("Health check failed:", error.message);
     res.status(503).json(healthcheck);
-  });
+  }
 });
 
 // 404 handler
