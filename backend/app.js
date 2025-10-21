@@ -32,7 +32,7 @@ app.use(
   cors({
     origin: (origin, callback) => {
       // In production, only allow specific origins.
-      const prodOrigins = ["https://dials.mombasa.go.ke"];
+      const prodOrigins = ["https://localhost:3000"];
       if (process.env.FRONTEND_URL) {
         prodOrigins.push(process.env.FRONTEND_URL);
       }
