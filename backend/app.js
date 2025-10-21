@@ -34,7 +34,7 @@ app.use(
       // In production, only allow specific origins.
       const prodOrigins = [
         "https://localhost:3000",
-        "https://cgm-dials-22kfe.ondigitalocean.app"
+        "https://cgm-dials-22kfe.ondigitalocean.app",
       ];
       if (process.env.FRONTEND_URL) {
         prodOrigins.push(process.env.FRONTEND_URL);
@@ -89,13 +89,26 @@ const authLimiter = rateLimit({
     }
     return req.ip + idPart;
   },
-  // Only apply limiter to authentication-related endpoints
+  // Only apply limiter to sensitive, unauthenticated authentication endpoints
   skip: (req) => {
     if (req.method === "OPTIONS") return true;
-    const url = req.originalUrl;
-    return !(url.startsWith("/api/auth") || url.startsWith("/api/admin/login"));
+    const sensitiveAuthPaths = [
+      "/api/auth/login",
+      "/api/auth/register",
+      "/api/auth/resend-otp",
+      "/api/auth/verify-otp",
+      "/api/auth/forgot-password",
+      "/api/auth/forgot-password/verify",
+      "/api/auth/check-password-status",
+      "/api/admin/login",
+    ];
+    // Apply the limiter ONLY if the path is one of the sensitive ones.
+    return !sensitiveAuthPaths.includes(req.path);
   },
-  message: { success: false, message: "Too many auth attempts, please wait." },
+  message: {
+    success: false,
+    message: "Too many authentication attempts, please wait.",
+  },
   handler: (req, res, next, options) => {
     console.warn(`[RATE-LIMIT][AUTH] ip=${req.ip} path=${req.originalUrl}`);
     res.status(options.statusCode).json(options.message);
@@ -111,8 +124,21 @@ const generalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req, res) => req.ip, // Keep it simple for general traffic
-  skip: (req) =>
-    req.method === "OPTIONS" || req.originalUrl.startsWith("/api/auth"),
+  // Skip OPTIONS and the sensitive auth paths handled by authLimiter
+  skip: (req) => {
+    if (req.method === "OPTIONS") return true;
+    const sensitiveAuthPaths = [
+      "/api/auth/login",
+      "/api/auth/register",
+      "/api/auth/resend-otp",
+      "/api/auth/verify-otp",
+      "/api/auth/forgot-password",
+      "/api/auth/forgot-password/verify",
+      "/api/auth/check-password-status",
+      "/api/admin/login",
+    ];
+    return sensitiveAuthPaths.includes(req.path);
+  },
   message: { success: false, message: "Too many requests, slow down." },
   handler: (req, res, next, options) => {
     console.warn(`[RATE-LIMIT][GENERAL] ip=${req.ip} path=${req.originalUrl}`);
