@@ -9,6 +9,46 @@ import { SUB_DEPARTMENTS, SUB_DEPARTMENT_PARENT } from '../constants/departments
 import { loadProgress, stepToPath, deriveUserKey, clearProgress, saveProgress, isProgressSuppressed } from '../utilis/persistProgress';
 
 const LandingPage = () => {
+  // Format dates as local date string, no time, and fix off-by-one (ensure correct parsing)
+  const formatDate = (dateStr) => {
+    console.log('formatDate input:', dateStr, typeof dateStr);
+    if (!dateStr) return '';
+    // If already a Date object
+    if (dateStr instanceof Date) {
+      if (isNaN(dateStr.getTime())) {
+        console.warn('formatDate: Invalid Date object', dateStr);
+        return 'Invalid date';
+      }
+      // Return as YYYY-MM-DD
+      return dateStr.toISOString().slice(0, 10);
+    }
+    // If string contains 'T', split and use only the date part
+    let dStr = dateStr;
+    if (typeof dStr === 'string' && dStr.includes('T')) {
+      dStr = dStr.split('T')[0];
+    }
+    // If string in YYYY-MM-DD, just return as-is (matches DB exactly)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dStr)) {
+      return dStr;
+    }
+    // If string in DD/MM/YYYY
+    const slashParts = dStr.split('/');
+    if (slashParts.length === 3 && slashParts[2].length === 4) {
+      const d = new Date(Number(slashParts[2]), Number(slashParts[1]) - 1, Number(slashParts[0]));
+      if (isNaN(d.getTime())) {
+        console.warn('formatDate: Invalid DD/MM/YYYY', dateStr, d);
+        return 'Invalid date';
+      }
+      return d.toISOString().slice(0, 10);
+    }
+    // fallback
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) {
+      console.warn('formatDate: Fallback invalid', dateStr, d);
+      return 'Invalid date';
+    }
+    return d.toISOString().slice(0, 10);
+  };
   const { profile, loading, setProfile } = useUser();
   const [editMode, setEditMode] = useState(false);
   const [form, setForm] = useState({});
@@ -357,18 +397,23 @@ const LandingPage = () => {
               const firstFinDecl = Array.isArray(decl.financial_unified) && decl.financial_unified.length > 0
                 ? decl.financial_unified[0]
                 : null;
+              // Fallbacks for period and date
+              const periodStart = (firstFinDecl && firstFinDecl.period_start_date) || decl.period_start_date;
+              const periodEnd = (firstFinDecl && firstFinDecl.period_end_date) || decl.period_end_date;
+              const declDate = (firstFinDecl && firstFinDecl.declaration_date) || decl.declaration_date;
+              // Use top-level formatDate for all date formatting (with logging)
               return (
                 <tr key={decl.id}>
                   <td>{startIdx + localIdx + 1}</td>
                   <td>{decl.declaration_type || 'N/A'}</td>
                   <td>{
-                    firstFinDecl && firstFinDecl.period_start_date && firstFinDecl.period_end_date
-                      ? `${firstFinDecl.period_start_date} to ${firstFinDecl.period_end_date}`
+                    periodStart && periodEnd
+                      ? `${formatDate(periodStart)} to ${formatDate(periodEnd)}`
                       : 'N/A'
                   }</td>
                   <td>{
-                    firstFinDecl && firstFinDecl.declaration_date
-                      ? new Date(firstFinDecl.declaration_date).toLocaleDateString()
+                    declDate
+                      ? formatDate(declDate)
                       : 'N/A'
                   }</td>
                   <td>
@@ -803,9 +848,9 @@ const LandingPage = () => {
                   <Col md={3}><strong>ID:</strong> {selectedDecl.id}</Col>
                   <Col md={3}><strong>Type:</strong> {selectedDecl.declaration_type}</Col>
                   <Col md={3}><strong>Status:</strong> <Badge bg={selectedDecl.status === 'approved' ? 'success' : selectedDecl.status === 'pending' ? 'warning' : selectedDecl.status === 'rejected' ? 'danger' : 'secondary'}>{formatStatus(selectedDecl.status)}</Badge></Col>
-                  <Col md={3}><strong>Decl Date:</strong> {selectedDecl.declaration_date || '—'}</Col>
-                  <Col md={3}><strong>Period Start:</strong> {selectedDecl.period_start_date || '—'}</Col>
-                  <Col md={3}><strong>Period End:</strong> {selectedDecl.period_end_date || '—'}</Col>
+                  <Col md={3}><strong>Decl Date:</strong> {selectedDecl.declaration_date ? formatDate(selectedDecl.declaration_date) : '—'}</Col>
+                  <Col md={3}><strong>Period Start:</strong> {selectedDecl.period_start_date ? formatDate(selectedDecl.period_start_date) : '—'}</Col>
+                  <Col md={3}><strong>Period End:</strong> {selectedDecl.period_end_date ? formatDate(selectedDecl.period_end_date) : '—'}</Col>
                   <Col md={3}><strong>Updated:</strong> {selectedDecl.updated_at ? new Date(selectedDecl.updated_at).toLocaleString() : '—'}</Col>
                   <Col md={3}><strong>Submitted:</strong> {selectedDecl.submitted_at || '—'}</Col>
                 </Row>
