@@ -32,12 +32,14 @@ const LandingPage = () => {
   const { hasAdminAccess, adminToken, roleAbbrev, elevating, error: elevationError, elevateAndGo } = useAdminSession();
 
   useEffect(() => {
-  const token = localStorage.getItem('token');
-  // Only redirect if profile fetch is complete, no profile, and no token
-  if (!loading && !profile && !token) {
-    navigate('/login');
-  }
-}, [loading, profile, navigate]);
+    const token = localStorage.getItem('token');
+    // Only redirect if profile fetch is complete, no profile, and no token
+    if (!loading && !profile && !token) {
+      navigate('/login');
+    }
+    // No return value needed here (no cleanup)
+  }, [loading, profile, navigate]);
+  
 
   const handleExportPDF = async (declaration) => {
     try {
@@ -911,6 +913,6 @@ const LandingPage = () => {
       </Container>
     </div>
   );
-};
+}
 
 export default LandingPage;
