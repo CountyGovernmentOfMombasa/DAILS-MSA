@@ -273,7 +273,7 @@ const LandingPage = () => {
       return;
     }
 
-    const payload = getChangedFields(profile, form);
+    const payload = getChangedFields(profile, form); // This will now use the corrected logic
 
     if (Object.keys(payload).length === 0) {
       setSuccess("No changes to save.");
