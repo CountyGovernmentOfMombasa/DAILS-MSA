@@ -108,7 +108,9 @@ const authLimiter = rateLimit({
     message: "Too many authentication attempts, please wait.",
   },
   handler: (req, res, next, options) => {
-    console.warn(`[RATE-LIMIT][AUTH] ip=${req.ip} path=${req.originalUrl}`);
+    console.warn(
+      `[RATE-LIMIT][AUTH] ip=${req.ip} method=${req.method} path=${req.originalUrl}`
+    );
     res.status(options.statusCode).json(options.message);
   },
 });
@@ -139,7 +141,9 @@ const generalLimiter = rateLimit({
   },
   message: { success: false, message: "Too many requests, slow down." },
   handler: (req, res, next, options) => {
-    console.warn(`[RATE-LIMIT][GENERAL] ip=${req.ip} path=${req.originalUrl}`);
+    console.warn(
+      `[RATE-LIMIT][GENERAL] ip=${req.ip} method=${req.method} path=${req.originalUrl}`
+    );
     res.status(options.statusCode).json(options.message);
   },
 });
