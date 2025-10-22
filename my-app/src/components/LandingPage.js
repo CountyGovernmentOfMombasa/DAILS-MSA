@@ -268,19 +268,6 @@ const LandingPage = () => {
       setError("Please select a sub department for the chosen department.");
       return;
     }
-<<<<<<< HEAD
-
-    const payload = getChangedFields(profile, form); // This will now use the corrected logic
-
-    if (Object.keys(payload).length === 0) {
-      setSuccess("No changes to save.");
-      setEditMode(false);
-      setSaving(false);
-      return;
-    }
-
-=======
->>>>>>> parent of 22d571c (landing page update)
     try {
       const token = localStorage.getItem("token");
       const res = await fetch("/api/auth/me", {
