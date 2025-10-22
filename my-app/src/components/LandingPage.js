@@ -32,6 +32,7 @@ import {
   isProgressSuppressed,
 } from "../utilis/persistProgress";
 
+import { useRenderLoopDetector } from "../hooks/useRenderLoopDetector";
 const LandingPage = () => {
   // Format dates as local date string, no time, and fix off-by-one (ensure correct parsing)
   const formatDate = (dateStr) => {
@@ -105,6 +106,9 @@ const LandingPage = () => {
     error: elevationError,
     elevateAndGo,
   } = useAdminSession();
+
+  // Add the render loop detector hook for debugging purposes.
+  useRenderLoopDetector("LandingPage");
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -268,6 +272,16 @@ const LandingPage = () => {
       setError("Please select a sub department for the chosen department.");
       return;
     }
+
+    const payload = getChangedFields(profile, form);
+
+    if (Object.keys(payload).length === 0) {
+      setSuccess("No changes to save.");
+      setEditMode(false);
+      setSaving(false);
+      return;
+    }
+
     try {
       const token = localStorage.getItem("token");
       const res = await fetch("/api/auth/me", {
@@ -276,7 +290,7 @@ const LandingPage = () => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error("Failed to update profile");
       setSuccess("Profile updated successfully.");
