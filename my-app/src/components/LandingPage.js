@@ -254,19 +254,6 @@ const LandingPage = () => {
       }));
       return;
     }
-    // Department is auto-derived and read-only; any attempt to change it manually clears sub_department if mismatch (defensive)
-    if (name === "department") {
-      setForm((prev) => {
-        if (
-          prev.sub_department &&
-          SUB_DEPARTMENT_PARENT[prev.sub_department] !== value
-        ) {
-          return { ...prev, department: value, sub_department: "" };
-        }
-        return { ...prev, department: value };
-      });
-      return;
-    }
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
