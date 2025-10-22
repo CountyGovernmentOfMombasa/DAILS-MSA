@@ -257,6 +257,25 @@ const LandingPage = () => {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
+  // Helper to find only the changed fields to prevent unnecessary updates.
+  // It treats null, undefined, and empty strings as equivalent to avoid false positives.
+  const getChangedFields = (originalProfile, currentForm) => {
+    const changed = {};
+    if (!originalProfile) return currentForm; // Should not happen, but as a fallback
+
+    Object.keys(currentForm).forEach((key) => {
+      // Normalize both values to an empty string if they are null or undefined.
+      const originalValue = originalProfile[key] ?? "";
+      const currentValue = currentForm[key] ?? "";
+
+      // Compare values after trimming.
+      if (String(originalValue).trim() !== String(currentValue).trim()) {
+        changed[key] = currentValue;
+      }
+    });
+    return changed;
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -268,6 +287,16 @@ const LandingPage = () => {
       setError("Please select a sub department for the chosen department.");
       return;
     }
+
+    const payload = getChangedFields(profile, form);
+
+    if (Object.keys(payload).length === 0) {
+      setSuccess("No changes to save.");
+      setEditMode(false);
+      setSaving(false);
+      return;
+    }
+
     try {
       const token = localStorage.getItem("token");
       const res = await fetch("/api/auth/me", {
@@ -276,7 +305,7 @@ const LandingPage = () => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error("Failed to update profile");
       setSuccess("Profile updated successfully.");
