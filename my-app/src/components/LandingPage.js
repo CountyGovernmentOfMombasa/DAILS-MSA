@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useUser } from '../context/UserContext';
+import ProfileErrorToast from './ProfileErrorToast';
 import { useNavigate } from 'react-router-dom';
 import { Container, Row, Col, Card, Form, Button, Alert, Spinner, Table, Badge, Modal, Toast, ToastContainer } from 'react-bootstrap';
 import useAdminSession from '../hooks/useAdminSession';
@@ -441,7 +442,9 @@ const LandingPage = () => {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #e3f2fd 0%, #e8f5e8 100%)', position: 'relative' }}>
+    <>
+      <ProfileErrorToast />
+      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #e3f2fd 0%, #e8f5e8 100%)', position: 'relative' }}>
       <div style={{ position: 'absolute', top: 24, right: 32, zIndex: 10, display: 'flex', gap: '0.5rem' }}>
         {hasAdminAccess && (
           adminToken ? (
@@ -957,6 +960,7 @@ const LandingPage = () => {
         </Modal>
       </Container>
     </div>
+    </>
   );
 }
 

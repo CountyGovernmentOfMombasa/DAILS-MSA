@@ -24,20 +24,20 @@ import './App.css';
 import { UserProvider } from './context/UserContext';
 import GlobalLogoutButton from './components/GlobalLogoutButton';
 import IdleSessionMonitor from './components/IdleSessionMonitor';
-import ProfileErrorToast from './components/ProfileErrorToast';
+// import ProfileErrorToast from './components/ProfileErrorToast';
+import CustomTranslateButton from './components/CustomTranslateButton';
 
 function App() {
   return (
     <ErrorBoundary>
       <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <UserProvider>
-          <IdleSessionMonitor />
           <GlobalLogoutButton />
-          <ProfileErrorToast />
+          <IdleSessionMonitor />
+          <CustomTranslateButton />
           <div className="App">
             <Routes>
               <Route path="/" element={<LoginPage />} />
-              {/* Legacy /login path support for redirects coming from older code */}
               <Route path="/login" element={<LoginPage />} />
               <Route path="/landing" element={<LandingPage />} />
               <Route path="/admin-access" element={<AdminAccessChoice />} />

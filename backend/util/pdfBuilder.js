@@ -136,7 +136,7 @@ function buildPDF({ declarationId, base, normalized }) {
       const unit = a.size_unit ? a.size_unit : '';
       parts.push(`Size: ${a.size}${unit ? ' '+unit : ''}`);
     }
-    if (a.asset_other_type && a.type === 'Other') parts.push(`Type: ${a.asset_other_type}`);
+    if (a.asset_other_type) parts.push(`Type: ${a.asset_other_type}`);
     const extra = parts.join(', ');
     if (base && extra) return `${base} (${extra})`;
     return base || extra;
@@ -145,7 +145,7 @@ function buildPDF({ declarationId, base, normalized }) {
     if(!l || typeof l !== 'object') return '';
     const base = (l.description || l.details || '').trim();
     const parts = [];
-    if (l.liability_other_type && l.type === 'Other') parts.push(`Type: ${l.liability_other_type}`);
+    if (l.liability_other_type) parts.push(`Type: ${l.liability_other_type}`);
     if (l.liability_other_description) parts.push(`Details: ${l.liability_other_description}`);
     const extra = parts.join(', ');
     if (base && extra) return `${base} (${extra})`;
@@ -154,43 +154,49 @@ function buildPDF({ declarationId, base, normalized }) {
   const fmtDate = (val)=> {
     if(!val) return '';
     // Accept Date, ISO string, MySQL datetime
-    if (val instanceof Date) return val.toISOString().slice(0,10);
+    if (val instanceof Date) {
+      return `${val.getDate().toString().padStart(2,'0')}/${(val.getMonth()+1).toString().padStart(2,'0')}/${val.getFullYear()}`;
+    }
     const s = String(val).trim();
     // Already date only
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+      const [y,m,d] = s.split('-');
+      return `${d}/${m}/${y}`;
+    }
     // MySQL datetime or other parseable string
     const d = new Date(s.replace(' ', 'T'));
-    if(!isNaN(d)) return d.toISOString().slice(0,10);
+    if(!isNaN(d)) return `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getFullYear()}`;
     return s; // fallback original
   };
-  const addHeader=()=>{ 
-    // Optional logo centered if present
-    try { 
-      const logo=path.resolve(__dirname,'../../my-app/public/logo192.png'); 
-      if (fs.existsSync(logo)) {
-        const logoWidth=60; const centerX = doc.page.margins.left + (pageWidth()-logoWidth)/2; 
-        doc.image(logo, centerX, 20, { width:logoWidth });
-        doc.y = 20 + logoWidth + 8; 
-      } else {
-        doc.moveDown(0.4);
-      }
-    } catch { doc.moveDown(0.4); }
-    // Official header styled similar to the attached form
-    doc.font('Times-Bold').fontSize(12).text('KENYA ANTI-CORRUPTION COMMISSION', { align:'center' });
-    doc.moveDown(0.15);
-    doc.font('Times-Bold').fontSize(15).text('DECLARATION OF INCOME, ASSETS AND LIABILITIES', { align:'center' });
+  const addHeader=()=>{
+    // Add county logo at the top center
+    const logoPath = path.resolve(__dirname, '../../my-app/public/logo192.png');
+    const logoWidth = 100;
+    const logoY = 50;
+    if (fs.existsSync(logoPath)) {
+      const centerX = doc.page.margins.left + (pageWidth() - logoWidth) / 2;
+      doc.image(logoPath, centerX, logoY, { width: logoWidth });
+      doc.y = logoY + logoWidth + 8;
+    } else {
+      doc.y = 60;
+    }
+    doc.font('Times-Bold').fontSize(20).text('COUNTY GOVERNMENT OF MOMBASA', doc.page.margins.left, doc.y, { width: pageWidth(), align:'center' });
     doc.moveDown(0.1);
-    doc.font('Times-Italic').fontSize(10).fillColor('#333').text('Public Officer Ethics Act, 2003', { align:'center' });
+    doc.font('Times-Bold').fontSize(20).text('MOMBASA COUNTY PUBLIC SERVICE BOARD', doc.page.margins.left, doc.y, { width: pageWidth(), align:'center' });
+    doc.moveDown(0.5);
+    doc.font('Times-Bold').fontSize(15).text('DECLARATION OF INCOME, ASSETS AND LIABILITIES', doc.page.margins.left, doc.y, { width: pageWidth(), align:'center' });
+    doc.moveDown(0.2);
+    doc.font('Times-Italic').fontSize(12).fillColor('#333').text('Section 26 of the Public Officer Ethics Act, No. 4 of 2003', doc.page.margins.left, doc.y, { width: pageWidth(), align:'center' });
     doc.fillColor('#000');
     // Thin rule
-    const x = doc.page.margins.left; const w = pageWidth(); const y = doc.y + 6; 
+    const x = doc.page.margins.left; const w = pageWidth(); const y = doc.y + 8;
     doc.moveTo(x, y).lineTo(x + w, y).stroke('#666');
-    doc.y = y + 8;
+    doc.y = y + 10;
     // Password note (small, centered)
     const banner = 'If prompted, use your National ID number as the PDF password.';
-    doc.font('Times-Italic').fontSize(8).fillColor('#555').text(banner, { align:'center' });
+    doc.font('Times-Italic').fontSize(8).fillColor('#555').text(banner, doc.page.margins.left, doc.y, { width: pageWidth(), align:'center' });
     doc.fillColor('#000');
-    doc.moveDown(0.3);
+    doc.y += 10;
   };
   const addPageFooter=()=>{
     // Draw footer page number inside the content area (avoid pushing content or creating blank pages)
@@ -202,7 +208,7 @@ function buildPDF({ declarationId, base, normalized }) {
     doc.restore();
     doc.y = currentY; // restore cursor to continue content if needed
   };
-  const ensureSpace=n=>{ if(doc.y + n > doc.page.height - doc.page.margins.bottom){ addPageFooter(); doc.addPage(); pageCounter++; addHeader(); } };
+  const ensureSpace=n=>{ if(doc.y + n > doc.page.height - doc.page.margins.bottom){ addPageFooter(); doc.addPage(); pageCounter++; addPageFooter(); } };
   const section=(t, subtitle=null)=>{ 
     ensureSpace(40); 
     doc.moveDown(0.5); 
@@ -260,52 +266,134 @@ function buildPDF({ declarationId, base, normalized }) {
     table(filtered, [headerLabel,'Value'], { fontSize:9, zebra:true });
   };
   addHeader();
-  // PART A: Personal Details (styled as lined fields like the official form)
-  section('Part A: Personal Details');
-  const fullName=[base.surname, base.first_name, base.other_names].filter(Boolean).join(' ').trim();
-  const drawLineField = (label, value='')=>{
-    ensureSpace(24);
-    const startX = doc.x; const y0 = doc.y;
-    doc.font('Times-Roman').fontSize(10).text(label, { continued:true });
-    const labelW = doc.widthOfString(label);
-    const lineStart = startX + labelW + 6; const lineEnd = doc.page.margins.left + pageWidth();
-    // Place value text and underline
-    const val = value ? String(value) : '';
-    const display = val || ' ';
-    doc.text(display, lineStart, y0, { width: lineEnd - lineStart, continued:false });
-    const underlineY = y0 + doc.currentLineHeight() - 2;
-    doc.moveTo(lineStart, underlineY).lineTo(lineEnd, underlineY).stroke('#999');
-    doc.y = y0 + doc.currentLineHeight() + 4;
-  };
-  drawLineField('1. Name of Public Officer: ', fullName);
-  drawLineField('2. National ID Number: ', base.national_id||'');
-  drawLineField('3. Personal/Payroll Number: ', base.payroll_number||'');
-  drawLineField('4. Department/Section: ', base.department||'');
-  drawLineField('5. Designation/Position: ', base.designation||'');
-  drawLineField('6. Nature of Employment: ', base.nature_of_employment||'');
-  drawLineField('7. Marital Status: ', base.marital_status||base.user_marital_status||'');
-  drawLineField('8. Email Address: ', base.email||'');
-  drawLineField('9. Postal Address: ', base.postal_address||'');
-  drawLineField('10. Physical Address: ', base.physical_address||'');
-  // Period block on one line
-  ensureSpace(24);
-  doc.font('Times-Roman').fontSize(10);
-  const ps = fmtDate(base.period_start_date || (normalized.finDeclExpanded[0]?.period_start_date) || '');
-  const pe = fmtDate(base.period_end_date || (normalized.finDeclExpanded[0]?.period_end_date) || '');
-  const lineLabel = '11. Declaration Period: From ';
-  const fromW = doc.widthOfString(lineLabel);
-  const startX = doc.x; const y0 = doc.y;
-  doc.text(lineLabel, { continued:true });
-  let lineStart = startX + fromW + 2; let lineEnd = lineStart + 120;
-  doc.text(ps || ' ', lineStart, y0, { width: 120, continued:true });
-  doc.moveTo(lineStart, y0 + doc.currentLineHeight() - 2).lineTo(lineEnd, y0 + doc.currentLineHeight() - 2).stroke('#999');
-  const mid = '  To ';
-  doc.text(mid, { continued:true });
-  const toW = doc.widthOfString(mid);
-  lineStart = doc.x + toW; lineEnd = lineStart + 120;
-  doc.text(pe || ' ', lineStart, y0, { width: 120, continued:false });
-  doc.moveTo(lineStart, y0 + doc.currentLineHeight() - 2).lineTo(lineEnd, y0 + doc.currentLineHeight() - 2).stroke('#999');
-  doc.y = y0 + doc.currentLineHeight() + 6;
+  // --- BEGIN: Custom Numbering and Grouping for First Page ---
+  const leftX = doc.page.margins.left;
+  let y = doc.y;
+  // 1. Name of public officer
+  doc.font('Times-Roman').fontSize(16).text('1. Name of public officer', leftX, y);
+  y += 30;
+  const surname = base.surname || '';
+  const firstName = base.first_name || '';
+  const otherNames = base.other_names || '';
+  doc.fontSize(14).text(surname, leftX, y, { width: 150 });
+  doc.moveTo(leftX, y + 18).lineTo(leftX + 150, y + 18).stroke('#999');
+  doc.text(firstName, leftX + 180, y, { width: 140 });
+  doc.moveTo(leftX + 180, y + 18).lineTo(leftX + 320, y + 18).stroke('#999');
+  doc.text(otherNames, leftX + 340, y, { width: 140 });
+  doc.moveTo(leftX + 340, y + 18).lineTo(leftX + 480, y + 18).stroke('#999');
+  y += 32;
+  doc.fontSize(12).text('(Surname)', leftX, y);
+  doc.text('(First name)', leftX + 180, y);
+  doc.text('(Other names)', leftX + 340, y);
+  y += 38;
+  // 2. Birth information
+  doc.font('Times-Roman').fontSize(16).text('2. Birth information', leftX, y);
+  y += 30;
+  // a. Date of birth: DD/MM/YY (single field, one underline)
+  doc.fontSize(13).text('a. Date of birth:', leftX + 10, y, { continued: true });
+  const dobLabelEnd = leftX + 1 + doc.widthOfString('a. Date of birth:');
+  const dobValue = fmtDate(base.birthdate);
+  doc.text(dobValue, dobLabelEnd + 1, y, { width: 80 });
+  doc.moveTo(dobLabelEnd + 10, y + 18).lineTo(dobLabelEnd + 100, y + 18).stroke('#999');
+  y += 34;
+  // b. Place of birth
+  doc.fontSize(13).text('b. Place of birth:', leftX + 10, y);
+  doc.text(base.place_of_birth || '', leftX + 100, y, { width: 250 });
+  doc.moveTo(leftX + 100, y + 18).lineTo(leftX + 200, y + 18).stroke('#999');
+  y += 38;
+  // 3. Marital status (answer next to label)
+  doc.font('Times-Roman').fontSize(16).text('3. Marital status:', leftX, y, { continued: false });
+  doc.fontSize(13).text(base.marital_status || base.user_marital_status || '', leftX + 120, y, { width: 200 });
+  doc.moveTo(leftX + 120, y + 18).lineTo(leftX + 200, y + 18).stroke('#999');
+  y += 38;
+  // 4. Address
+  doc.font('Times-Roman').fontSize(16).text('4. Address', leftX, y);
+  y += 30;
+  // a. Postal address
+  doc.fontSize(13).text('a. Postal address:', leftX + 10, y);
+  doc.text(base.postal_address || '', leftX + 120, y, { width: 300 });
+  doc.moveTo(leftX + 120, y + 18).lineTo(leftX + 210, y + 18).stroke('#999');
+  y += 34;
+  // b. Physical address
+  doc.fontSize(13).text('b. Physical address:', leftX + 10, y);
+  doc.text(base.physical_address || '', leftX + 130, y, { width: 300 });
+  doc.moveTo(leftX + 130, y + 18).lineTo(leftX + 250, y + 18).stroke('#999');
+  y += 38;
+  // 5. Employment information
+  doc.font('Times-Roman').fontSize(16).text('5. Employment information', leftX, y);
+  y += 30;
+  // a. Employment No.
+  doc.fontSize(13).text('a. Employment No.:', leftX + 10, y);
+  doc.text(base.payroll_number || '', leftX + 150, y, { width: 200 });
+  doc.moveTo(leftX + 150, y + 18).lineTo(leftX + 250, y + 18).stroke('#999');
+  y += 34;
+  // b. Designation
+  doc.fontSize(13).text('b. Designation:', leftX + 10, y);
+  doc.text(base.designation || '', leftX + 100, y, { width: 200 });
+  doc.moveTo(leftX + 100, y + 18).lineTo(leftX + 200, y + 18).stroke('#999');
+  y += 34;
+  // c. Name of Department (full line)
+  doc.fontSize(13).text('c. Name of Department:', leftX + 1, y);
+  doc.text(base.department || '', leftX + 130, y, { width: 400 });
+  doc.moveTo(leftX + 130, y + 18).lineTo(leftX + 550, y + 18).stroke('#999');
+  y += 34;
+  // d. Nature of employment (full line)
+  doc.fontSize(13).text('d. Nature of employment (permanent, temporary, contract, etc.):', leftX + 10, y);
+  doc.text(base.nature_of_employment || '', leftX + 350, y, { width: 180 });
+  doc.moveTo(leftX + 350, y + 18).lineTo(leftX + 500, y + 18).stroke('#999');
+  y += 44;
+  doc.y = y;
+  // --- END: Custom Numbering and Grouping for First Page ---
+  // Page 2: Sections 6 and 7
+  addPageFooter(); doc.addPage(); pageCounter++;
+  doc.y = doc.page.margins.top;
+  let currentY = doc.y;
+  // 6. Names of spouse or spouses
+  doc.font('Times-Roman').fontSize(16).text('6. Names of spouse or spouses', leftX, currentY);
+  currentY += 30;
+  for (let i = 0; i < 5; i++) { // assume up to 5 spouses
+    const spouse = normalized.spousesArr[i];
+    const nameParts = spouse ? spouse.name.split(' ') : ['', '', ''];
+    const surname = nameParts[0] || '';
+    const firstName = nameParts[1] || '';
+    const otherNames = nameParts.slice(2).join(' ') || '';
+    doc.fontSize(14).text(surname, leftX, currentY, { width: 150 });
+    doc.moveTo(leftX, currentY + 18).lineTo(leftX + 150, currentY + 18).stroke('#999');
+    doc.text(firstName, leftX + 180, currentY, { width: 140 });
+    doc.moveTo(leftX + 180, currentY + 18).lineTo(leftX + 320, currentY + 18).stroke('#999');
+    doc.text(otherNames, leftX + 340, currentY, { width: 140 });
+    doc.moveTo(leftX + 340, currentY + 18).lineTo(leftX + 480, currentY + 18).stroke('#999');
+    currentY += 32;
+  }
+  doc.fontSize(12).text('(Surname)', leftX, currentY);
+  doc.text('(First name)', leftX + 180, currentY);
+  doc.text('(Other names)', leftX + 340, currentY);
+  currentY += 38;
+  // 7. Names of dependent children under the age of 18 years.
+  doc.font('Times-Roman').fontSize(16).text('7. Names of dependent children under the age of 18 years.', leftX, currentY);
+  currentY += 30;
+  for (let i = 0; i < 5; i++) { // assume up to 5 children
+    const child = normalized.childrenArr[i];
+    const nameParts = child ? child.name.split(' ') : ['', '', ''];
+    const surname = nameParts[0] || '';
+    const firstName = nameParts[1] || '';
+    const otherNames = nameParts.slice(2).join(' ') || '';
+    doc.fontSize(14).text(surname, leftX, currentY, { width: 150 });
+    doc.moveTo(leftX, currentY + 18).lineTo(leftX + 150, currentY + 18).stroke('#999');
+    doc.text(firstName, leftX + 180, currentY, { width: 140 });
+    doc.moveTo(leftX + 180, currentY + 18).lineTo(leftX + 320, currentY + 18).stroke('#999');
+    doc.text(otherNames, leftX + 340, currentY, { width: 140 });
+    doc.moveTo(leftX + 340, currentY + 18).lineTo(leftX + 480, currentY + 18).stroke('#999');
+    currentY += 32;
+  }
+  doc.fontSize(12).text('(Surname)', leftX, currentY);
+  doc.text('(First name)', leftX + 180, currentY);
+  doc.text('(Other names)', leftX + 340, currentY);
+  currentY += 38;
+  doc.y = currentY;
+  // Page 3+: Sections 8 for each member
+  addPageFooter(); doc.addPage(); pageCounter++; addPageFooter();
+  doc.y = doc.page.margins.top;
 
   // Integrate root financial data into the Financial Declaration list (single synthetic user entry)
   const userDisplayName = [base.surname, base.first_name, base.other_names].filter(Boolean).join(' ').trim() || 'User';
@@ -338,71 +426,63 @@ function buildPDF({ declarationId, base, normalized }) {
   }
   // PART B: Financial Declaration per member (matching form sections)
   normalized.finDeclExpanded.forEach(fd=>{
-    section(`Part B: Financial Declaration – ${fd.member_type.toUpperCase()} (${fd.member_name})`);
-    tableKV([
-      ['Declaration Date', fmtDate(fd.declaration_date)||''],
-      ['Period', `${fmtDate(fd.period_start_date||'')} to ${fmtDate(fd.period_end_date||'')}`]
-    ], 'Field');
+    section(`8. Financial statement for: ${fd.member_type.toUpperCase()} (${fd.member_name})`);
+    doc.font('Times-Roman').fontSize(10).text(`a. Statement date: ${fmtDate(fd.declaration_date)||''}`);
+    doc.moveDown(0.2);
+    doc.font('Times-Roman').fontSize(10).text(`b. Income, including emoluments, for period from ${fmtDate(fd.period_start_date||'')} to ${fmtDate(fd.period_end_date||'')}`);
+    doc.moveDown(0.2);
     doc.font('Times-Bold').fontSize(10).text('Income', { underline:false }).moveDown(0.15);
-    table((fd.incomes||[]).map(i=>[i.type,i.description,formatMoney(i.value)]), ['Type/Source','Description/Details','Value (KES)'], { zebra:true, fontSize:9 });
+    table((fd.incomes||[]).map(i=>[`${i.type}: ${i.description}`, formatMoney(i.value)]), ['Description','Approximate amount'], { zebra:true, fontSize:9 });
     doc.font('Times-Bold').fontSize(10).text('Assets').moveDown(0.15);
-    table((fd.assets||[]).map(a=>[a.type === 'Other' && a.asset_other_type ? a.asset_other_type : a.type, buildAssetDescription(a), formatMoney(a.value)]), ['Type','Description/Details','Value (KES)'], { zebra:true, fontSize:9 });
+    table((fd.assets||[]).map(a=>[buildAssetDescription(a), formatMoney(a.value)]), ['Description (include location of asset where applicable)', 'Approximate value'], { zebra:true, fontSize:9 });
     doc.font('Times-Bold').fontSize(10).text('Liabilities').moveDown(0.15);
-    table((fd.liabilities||[]).map(l=>[l.type === 'Other' && l.liability_other_type ? l.liability_other_type : l.type, buildLiabilityDescription(l), formatMoney(l.value)]), ['Type','Description/Details','Value (KES)'], { zebra:true, fontSize:9 });
+    table((fd.liabilities||[]).map(l=>[buildLiabilityDescription(l), formatMoney(l.value)]), ['Description','Approximate amount'], { zebra:true, fontSize:9 });
   });
 
-  // PART C: Spouse and Children (summary tables akin to the form annexures)
+  // PART C: Spouse and Children (summary tables similar to user financial data tables)
   if (normalized.spousesArr.length) {
-    normalized.spousesArr.forEach((s,i)=>{ 
+    normalized.spousesArr.forEach((s,i)=>{
       section(`Part C: Spouse ${i+1} – ${s.name||'Unnamed'}`);
       doc.font('Times-Bold').fontSize(10).text('Income').moveDown(0.1);
-      table(s.incomes.map(i=>[i.type,i.description,formatMoney(i.value)]), ['Type','Description','Value (KES)'], { zebra:true, fontSize:9 });
+      table(s.incomes.map(i=>[`${i.type}: ${i.description}`, formatMoney(i.value)]), ['Description','Approximate amount'], { zebra:true, fontSize:9 });
       doc.font('Times-Bold').fontSize(10).text('Assets').moveDown(0.1);
-      table(s.assets.map(a=>[a.type === 'Other' && a.asset_other_type ? a.asset_other_type : a.type, buildAssetDescription(a), formatMoney(a.value)]), ['Type','Description','Value (KES)'], { zebra:true, fontSize:9 });
+      table(s.assets.map(a=>[buildAssetDescription(a), formatMoney(a.value)]), ['Description (include location of asset where applicable)', 'Approximate value'], { zebra:true, fontSize:9 });
       doc.font('Times-Bold').fontSize(10).text('Liabilities').moveDown(0.1);
-      table(s.liabilities.map(l=>[l.type === 'Other' && l.liability_other_type ? l.liability_other_type : l.type, buildLiabilityDescription(l), formatMoney(l.value)]), ['Type','Description','Value (KES)'], { zebra:true, fontSize:9 }); 
+      table(s.liabilities.map(l=>[buildLiabilityDescription(l), formatMoney(l.value)]), ['Description','Approximate amount'], { zebra:true, fontSize:9 });
     });
   }
   if (normalized.childrenArr.length) {
-    normalized.childrenArr.forEach((c,i)=>{ 
+    normalized.childrenArr.forEach((c,i)=>{
       section(`Part D: Child ${i+1} – ${c.name||'Unnamed'}`);
       doc.font('Times-Bold').fontSize(10).text('Income').moveDown(0.1);
-      table(c.incomes.map(i=>[i.type,i.description,formatMoney(i.value)]), ['Type','Description','Value (KES)'], { zebra:true, fontSize:9 });
+      table(c.incomes.map(i=>[`${i.type}: ${i.description}`, formatMoney(i.value)]), ['Description','Approximate amount'], { zebra:true, fontSize:9 });
       doc.font('Times-Bold').fontSize(10).text('Assets').moveDown(0.1);
-      table(c.assets.map(a=>[a.type === 'Other' && a.asset_other_type ? a.asset_other_type : a.type, buildAssetDescription(a), formatMoney(a.value)]), ['Type','Description','Value (KES)'], { zebra:true, fontSize:9 });
+      table(c.assets.map(a=>[buildAssetDescription(a), formatMoney(a.value)]), ['Description (include location of asset where applicable)', 'Approximate value'], { zebra:true, fontSize:9 });
       doc.font('Times-Bold').fontSize(10).text('Liabilities').moveDown(0.1);
-      table(c.liabilities.map(l=>[l.type === 'Other' && l.liability_other_type ? l.liability_other_type : l.type, buildLiabilityDescription(l), formatMoney(l.value)]), ['Type','Description','Value (KES)'], { zebra:true, fontSize:9 }); 
+      table(c.liabilities.map(l=>[buildLiabilityDescription(l), formatMoney(l.value)]), ['Description','Approximate amount'], { zebra:true, fontSize:9 });
     });
   }
 
-  // Totals summary (optional footer like many official forms)
-  const sum=a=>a.reduce((t,x)=>t+(Number(x.value)||0),0); 
-  section('Totals Summary'); 
-  const allIncomes = normalized.finDeclExpanded.flatMap(f=>f.incomes||[]); 
-  const allAssets = normalized.finDeclExpanded.flatMap(f=>f.assets||[]); 
-  const allLiabilities = normalized.finDeclExpanded.flatMap(f=>f.liabilities||[]); 
-  tableKV([
-    ['Total Income (All Members)', formatMoney(sum(allIncomes))],
-    ['Total Assets (All Members)', formatMoney(sum(allAssets))],
-    ['Total Liabilities (All Members)', formatMoney(sum(allLiabilities))]
-  ], 'Metric');
+
 
   // Declaration & Signature lines similar to the form
   const declarationDate = fmtDate(base.declaration_date || normalized.finDeclExpanded.find(fd => (fd.member_type||'').toLowerCase()==='user')?.declaration_date || normalized.finDeclExpanded[0]?.declaration_date || '');
+  addPageFooter(); doc.addPage(); pageCounter++; addPageFooter();
+  doc.y = doc.page.margins.top;
   section('Declaration and Signature');
   const declarationText = 'I hereby declare that the information given herein is to the best of my knowledge true and complete.';
-  doc.font('Times-Roman').fontSize(10).text(declarationText);
+  doc.font('Times-Roman').fontSize(12).text(declarationText);
   doc.moveDown(0.6);
   const line = (label, val='')=>{
     ensureSpace(22);
     const sx = doc.x; const y = doc.y;
-    doc.font('Times-Roman').fontSize(10).text(label, { continued:true });
-    const lw = doc.widthOfString(label) + 6; const start = sx + lw; const end = doc.page.margins.left + pageWidth();
+    doc.font('Times-Roman').fontSize(12).text(label, { continued:true });
+    const lw = doc.widthOfString(label) + 6; const start = sx + lw; const end = doc.page.margins.left + pageWidth() / 2;
     doc.text(val || ' ', start, y, { width: end - start, continued:false });
     const uy = y + doc.currentLineHeight() - 2; doc.moveTo(start, uy).lineTo(end, uy).stroke('#999');
-    doc.y = y + doc.currentLineHeight() + 6;
+    doc.y = y + doc.currentLineHeight() + 15;
   };
-  line('Signature of Declarant: ', 'Signed');
+  line('Signature of Declarant:', 'Signed');
   line('Date: ', declarationDate || '');
   if (base.witness_name || base.witness_phone || base.witness_address) {
     doc.moveDown(0.2);
@@ -420,7 +500,7 @@ function buildPDF({ declarationId, base, normalized }) {
   line('Received/Reviewed by (Admin): ', base.approved_admin_name || '');
   line('Admin Action Date: ', base.approved_at ? fmtDate(base.approved_at) : '');
 
-  ensureSpace(40); doc.moveDown(0.5).font('Times-Italic').fontSize(8).fillColor('#555').text('Generated by Mombasa County DAILs Portal.', { align:'center', width: pageWidth() });
+  ensureSpace(1); doc.moveDown(0.5).font('Times-Italic').fontSize(8).fillColor('#555').text('Generated by Mombasa County DAILs Portal.', { align:'center', width: pageWidth() });
   addPageFooter();
   doc.end();
   return new Promise(resolve => doc.on('end', ()=> resolve(Buffer.concat(buffers))));

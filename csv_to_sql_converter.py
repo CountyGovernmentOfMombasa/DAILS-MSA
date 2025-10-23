@@ -245,9 +245,9 @@ def convert_csv_to_sql(csv_file_path, output_file_path):
 
 if __name__ == "__main__":
     # File paths
-    # Default to the 220925 CSV; adjust as needed.
-    csv_file = r"c:\Users\Admin\WDP\PSB Data 220925 (1).csv"
-    output_file = r"c:\Users\Admin\WDP\backend\database\users_insert_from_csv_220925.sql"
+    # Updated to use the 151025 CSV
+    csv_file = r"c:\Users\Admin\WDP\PSB Data 151025.csv"
+    output_file = r"c:\Users\Admin\WDP\backend\database\users_insert_from_csv_151025.sql"
 
     print("🔄 Converting CSV to SQL...")
     print(f"📁 Input file: {csv_file}")
