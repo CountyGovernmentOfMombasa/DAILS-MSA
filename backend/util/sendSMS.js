@@ -14,7 +14,7 @@ function buildMsisdn(to) {
  * @param {string} opts.body - Message body
  * @param {string} [opts.type] - 'otp' for OTP, anything else for bulk/general
  */
-async function sendSMS({ to, body, type, type }) {
+async function sendSMS({ to, body, type }) {
   const enabled = (process.env.SMS_ENABLED || "true").toLowerCase() === "true";
   if (!enabled) {
     console.log(`[SMS disabled] Would send to ${buildMsisdn(to)}: ${body}`);
