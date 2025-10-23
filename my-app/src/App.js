@@ -26,46 +26,17 @@ import GlobalLogoutButton from "./components/GlobalLogoutButton";
 import IdleSessionMonitor from "./components/IdleSessionMonitor";
 import ProfileErrorToast from "./components/ProfileErrorToast";
 
-const AdminRoleRouter = (props) => {
-  const adminUser =
-    props.adminUser || JSON.parse(localStorage.getItem("adminUser"));
-  // Normalize role to short form for routing (supports both raw *_admin & short form values)
-  const rawRole = adminUser?.role || "";
-  const normalized =
-    rawRole === "hr_admin"
-      ? "hr"
-      : rawRole === "it_admin"
-      ? "it"
-      : rawRole === "finance_admin"
-      ? "finance"
-      : rawRole === "super_admin"
-      ? "super"
-      : rawRole; // already short or unknown
-
-  switch (normalized) {
-    case "hr":
-      return <HRAdminDashboard {...props} />;
-    case "it":
-      return <ITAdminDashboard {...props} />;
-    case "finance":
-      return <FinanceAdminDashboard {...props} />;
-    default: // 'super' or any other fallback
-      return <AdminPage {...props} />;
-  }
-};
-
 function App() {
   return (
     <ErrorBoundary>
       <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <UserProvider>
-          <IdleSessionMonitor />
           <GlobalLogoutButton />
-          <ProfileErrorToast />
+          <IdleSessionMonitor />
+          <CustomTranslateButton />
           <div className="App">
             <Routes>
               <Route path="/" element={<LoginPage />} />
-              {/* Legacy /login path support for redirects coming from older code */}
               <Route path="/login" element={<LoginPage />} />
               <Route path="/landing" element={<LandingPage />} />
               <Route path="/admin-access" element={<AdminAccessChoice />} />

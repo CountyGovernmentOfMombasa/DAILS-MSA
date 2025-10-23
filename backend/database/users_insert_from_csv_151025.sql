@@ -1,5 +1,5 @@
 -- Generated SQL INSERT statements for users table
--- Generated on: 2025-10-15 16:03:40
+-- Generated on: 2025-10-23 09:38:16
 -- Default password for all users: '' (empty string)
 -- Email set to <payroll_number>@mombasa.go.ke; phone set to NULL
 -- Placeholder policy for incomplete rows: missing names -> 'UNKNOWN'; missing payroll -> 'MISSING_<rowno>'; duplicate payroll -> 'DUP_<orig>_<rowno>'; missing/invalid birthdate -> '1900-01-01'.

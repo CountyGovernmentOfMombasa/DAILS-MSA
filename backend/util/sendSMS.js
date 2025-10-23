@@ -7,7 +7,14 @@ function buildMsisdn(to) {
   return String(to);
 }
 
-async function sendSMS({ to, body, type }) {
+/**
+ * Send SMS via Tolclin
+ * @param {Object} opts
+ * @param {string|string[]} opts.to - Recipient(s)
+ * @param {string} opts.body - Message body
+ * @param {string} [opts.type] - 'otp' for OTP, anything else for bulk/general
+ */
+async function sendSMS({ to, body, type, type }) {
   const enabled = (process.env.SMS_ENABLED || "true").toLowerCase() === "true";
   if (!enabled) {
     console.log(`[SMS disabled] Would send to ${buildMsisdn(to)}: ${body}`);
@@ -17,8 +24,17 @@ async function sendSMS({ to, body, type }) {
   if (!to) throw new Error("SMS recipient (to) is required");
   if (!body) throw new Error("SMS body is required");
 
-  const url =
-    process.env.TOLCLIN_BASE_URL || "https://tolclin.com/tolclin/sms/BulkSms";
+  let url;
+  if (type === "otp") {
+    url =
+      process.env.TOLCLIN_CALLBACK_URL ||
+      "http://tolclin.com/tolclin/smscallback.php";
+  } else {
+    url =
+      process.env.TOLCLIN_BULKSMS_URL ||
+      "https://tolclin.com/tolclin/sms/BulkSms";
+  }
+
   const payload = {
     clientid: process.env.TOLCLIN_CLIENT_ID
       ? Number(process.env.TOLCLIN_CLIENT_ID)
