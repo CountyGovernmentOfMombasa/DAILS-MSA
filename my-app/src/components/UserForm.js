@@ -800,7 +800,7 @@ const UserFormInner = () => {
                       <Button
                         variant="outline-secondary"
                         onClick={() =>
-                          navigate("/", { state: { ...location.state } })
+                          navigate("/landing", { state: { ...location.state } })
                         }
                         className="px-4 py-3 me-2"
                         style={{ borderRadius: "12px" }}
