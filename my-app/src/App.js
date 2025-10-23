@@ -24,8 +24,29 @@ import "./App.css";
 import { UserProvider } from "./context/UserContext";
 import GlobalLogoutButton from "./components/GlobalLogoutButton";
 import IdleSessionMonitor from "./components/IdleSessionMonitor";
-import ProfileErrorToast from "./components/ProfileErrorToast";
+import CustomTranslateButton from "./components/CustomTranslateButton";
 
+// This component acts as a router for different admin roles.
+// It receives the adminUser object from AdminProtectedRoute and renders the appropriate dashboard.
+const AdminRoleRouter = ({ adminUser }) => {
+  // A non-super admin role might be, e.g., 'hr_admin', 'it_admin', etc.
+  // The `adminUser` object should contain a `role` property.
+  if (!adminUser) {
+    // Fallback or loading state if adminUser is not available yet
+    return <AdminPage />;
+  }
+
+  switch (adminUser.role) {
+    case "hr_admin":
+      return <HRAdminDashboard adminUser={adminUser} />;
+    case "it_admin":
+      return <ITAdminDashboard adminUser={adminUser} />;
+    case "finance_admin":
+      return <FinanceAdminDashboard adminUser={adminUser} />;
+    default: // Includes 'super_admin' and any other unhandled roles
+      return <AdminPage adminUser={adminUser} />;
+  }
+};
 function App() {
   return (
     <ErrorBoundary>
