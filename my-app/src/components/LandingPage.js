@@ -106,23 +106,6 @@ const LandingPage = () => {
     elevateAndGo,
   } = useAdminSession();
 
-  // If the profile is still loading, show a spinner to prevent rendering with stale or empty data.
-  // This resolves the issue where a manual refresh is needed after login.
-  if (loading) {
-    return (
-      <div
-        style={{
-          minHeight: "100vh",
-          background: "linear-gradient(135deg, #e3f2fd 0%, #e8f5e8 100%)",
-        }}
-        className="d-flex justify-content-center align-items-center"
-      >
-        <Spinner animation="border" role="status">
-          <span className="visually-hidden">Loading...</span>
-        </Spinner>
-      </div>
-    );
-  }
   useEffect(() => {
     const token = localStorage.getItem("token");
     // Only redirect if profile fetch is complete, no profile, and no token
