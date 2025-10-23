@@ -32,7 +32,7 @@ app.use(morgan("combined"));
 
 // Define allowed origins for CORS
 const allowedOrigins = [
-  "https://cgm-dials-22kfe.ondigitalocean.app", // Production frontend
+  "https://dials.mcpsb.go.ke", // Production frontend
   "http://localhost:3000", // Local development
 ];
 if (process.env.FRONTEND_URL) {
