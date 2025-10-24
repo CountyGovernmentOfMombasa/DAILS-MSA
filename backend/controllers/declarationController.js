@@ -959,15 +959,13 @@ exports.downloadDeclarationPDF = async (req, res) => {
 exports.discardDeclaration = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { userKey } = req.body;
+    const { userKey } = req.params;
 
     if (!userKey) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "A userKey for the draft is required to discard it.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "A userKey for the draft is required to discard it.",
+      });
     }
 
     const Progress = require("../models/progressModel");
@@ -979,12 +977,10 @@ exports.discardDeclaration = async (req, res) => {
     });
   } catch (err) {
     console.error("Error discarding declaration draft:", err);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Server error while discarding draft.",
-      });
+    res.status(500).json({
+      success: false,
+      message: "Server error while discarding draft.",
+    });
   }
 };
 
