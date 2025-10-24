@@ -24,16 +24,8 @@ async function sendSMS({ to, body, type }) {
   if (!to) throw new Error("SMS recipient (to) is required");
   if (!body) throw new Error("SMS body is required");
 
-  let url;
-  if (type === "otp") {
-    url =
-      process.env.TOLCLIN_CALLBACK_URL ||
-      "http://tolclin.com/tolclin/smscallback.php";
-  } else {
-    url =
-      process.env.TOLCLIN_BULKSMS_URL ||
-      "https://tolclin.com/tolclin/sms/BulkSms";
-  }
+  const url =
+    process.env.TOLCLIN_BASE_URL || "https://tolclin.com/tolclin/sms/BulkSms";
 
   const payload = {
     clientid: process.env.TOLCLIN_CLIENT_ID
