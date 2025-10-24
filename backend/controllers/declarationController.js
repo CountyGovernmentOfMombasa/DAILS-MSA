@@ -955,6 +955,39 @@ exports.downloadDeclarationPDF = async (req, res) => {
   }
 };
 
+// --- Discard Declaration Draft ---
+exports.discardDeclaration = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { userKey } = req.body;
+
+    if (!userKey) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "A userKey for the draft is required to discard it.",
+        });
+    }
+
+    const Progress = require("../models/progressModel");
+    await Progress.remove(userId, userKey);
+
+    return res.json({
+      success: true,
+      message: "Declaration draft discarded successfully.",
+    });
+  } catch (err) {
+    console.error("Error discarding declaration draft:", err);
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Server error while discarding draft.",
+      });
+  }
+};
+
 const Declaration = require("../models/declarationModel");
 
 // Get all declarations for admin (with debug log)
