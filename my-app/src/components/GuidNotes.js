@@ -5,20 +5,20 @@ import { useNavigate, useLocation } from 'react-router-dom';
 const guidelines = [
   "A public officer should read these guidelines carefully and follow the instructions in the form before completing it.",
   "When completing the form, a public officer shall write legibly, type or print the required information.",
-  "1. Where the responsible Commission has a web application for filing the declaration, a public officer may fill and submit the declaration online. In such a case, a physical signature or delivery acknowledgment slip will not be necessary.",
-  "2. The declaration is for the income, assets and liabilities of a public official, his spouse or spouses and his dependent children under the age of 18 years.",
-  "3. All public officers are required to complete and submit their declarations to their responsible Commission, unless their responsible Commission has delegated its functions to another body.",
-  "4. The obligation to make declarations applies to all state and public officers including those on leave, under disciplinary action, secondment and overseas assignments, unless the Attorney General has granted a dispensation exempting an officer or a certain category of public official from filing their declarations, for reasons to be published in the Gazette.",
-  "5. The responsibility of ensuring that a declaration has been received by the appropriate reporting authority or its agent lies on the public officer. Provided that where the officer sends the form under confidential cover directly to the responsible Commission, the officer should label the envelope with the words 'Declaration of Incomes, Assets and Liabilities'. The organization and job group of the officer should also be indicated on the envelope.",
-  "6. A public officer is required to complete an initial declaration within thirty days of appointment and the statement date of the declaration will be the date the officer became a public officer.",
-  "7. A public officer is required to make a biennial declaration on or before the 31st day of December every other year or as may be provided for under the Act. The statement date for the biennial declaration will be 1st of November of the year in which the declaration is required.",
-  "8. A public officer is required to make a final declaration within thirty days of ceasing to be a public officer. The statement date of the final declaration shall be the date the public official ceased to be a public official.",
-  "9. A person submitting a declaration or providing a clarification shall ensure that the declaration or clarification is correct to the best of their knowledge.",
-  "10. If space on the form is not adequate, additional information may be included on separate sheets, while clearly indicating the number and paragraph being continued.",
-  "11. For each form submitted, there will be an acknowledgment slip issued by the responsible Commission or its agent.",
-  "12. Where a declaration is submitted electronically in accordance with the regulations made under this Act or administrative procedures adopted by the responsible Commission or any other competent authority, the declaration shall be valid notwithstanding the absence of a signature or acknowledgement stamp or receipt or slip.",
-  "13. Income, assets and liabilities that a public officer may have outside Kenya, should be declared. Joint assets, properties, personal and business accounts within and outside Kenya should also be declared.",
-  "14. Where a public officer has contravened the provisions of the Code of Conduct and Ethics relating to the declaration of Income, Assets and Liabilities, appropriate disciplinary action will be taken by the responsible Commission, or other appropriate authority, in accordance with the applicable disciplinary procedures."
+  "Where the responsible Commission has a web application for filing the declaration, a public officer may fill and submit the declaration online. In such a case, a physical signature or delivery acknowledgment slip will not be necessary.",
+  "The declaration is for the income, assets and liabilities of a public official, his spouse or spouses and his dependent children under the age of 18 years.",
+  "All public officers are required to complete and submit their declarations to their responsible Commission, unless their responsible Commission has delegated its functions to another body.",
+  "The obligation to make declarations applies to all state and public officers including those on leave, under disciplinary action, secondment and overseas assignments, unless the Attorney General has granted a dispensation exempting an officer or a certain category of public official from filing their declarations, for reasons to be published in the Gazette.",
+  "The responsibility of ensuring that a declaration has been received by the appropriate reporting authority or its agent lies on the public officer. Provided that where the officer sends the form under confidential cover directly to the responsible Commission, the officer should label the envelope with the words 'Declaration of Incomes, Assets and Liabilities'. The organization and job group of the officer should also be indicated on the envelope.",
+  "A public officer is required to complete an initial declaration within thirty days of appointment and the statement date of the declaration will be the date the officer became a public officer.",
+  "A public officer is required to make a biennial declaration on or before the 31st day of December every other year or as may be provided for under the Act. The statement date for the biennial declaration will be 1st of November of the year in which the declaration is required.",
+  "A public officer is required to make a final declaration within thirty days of ceasing to be a public officer. The statement date of the final declaration shall be the date the public official ceased to be a public official.",
+  "A person submitting a declaration or providing a clarification shall ensure that the declaration or clarification is correct to the best of their knowledge.",
+  "If space on the form is not adequate, additional information may be included on separate sheets, while clearly indicating the number and paragraph being continued.",
+  "For each form submitted, there will be an acknowledgment slip issued by the responsible Commission or its agent.",
+  "Where a declaration is submitted electronically in accordance with the regulations made under this Act or administrative procedures adopted by the responsible Commission or any other competent authority, the declaration shall be valid notwithstanding the absence of a signature or acknowledgement stamp or receipt or slip.",
+  "Income, assets and liabilities that a public officer may have outside Kenya, should be declared. Joint assets, properties, personal and business accounts within and outside Kenya should also be declared.",
+  "Where a public officer has contravened the provisions of the Code of Conduct and Ethics relating to the declaration of Income, Assets and Liabilities, appropriate disciplinary action will be taken by the responsible Commission, or other appropriate authority, in accordance with the applicable disciplinary procedures."
 ];
 
 
@@ -27,10 +27,10 @@ const privacyNotice = [
   'Purpose of Collection:',
   'The Mombasa County Public Service Board collects personal data and sensitive personal data through the Online Declaration of Income, Assets and Liablities System for the purpose of ensuring compliance with the Conflict of Interest Act, 2025, promoting transparency, accountability, and integrity in public service.',
   'Categories of Data Collected:',
-  '1. Personal Identification Information (name, ID number, contact details)',
-  '2. Employment Information (designation, department)',
-  '3. Financial Information (income, assets, liabilities)',
-  '4. Sensitive Personal Data (family relationships, beneficial interests)',
+  'Personal Identification Information (name, ID number, contact details)',
+  'Employment Information (designation, department)',
+  'Financial Information (income, assets, liabilities)',
+  'Sensitive Personal Data (family relationships, beneficial interests)',
   'Legal Basis for Processing:',
   'The processing of personal data is based on the County Government’s legal obligation under the Data Protection Act, 2019 and the Conflict of Interest Act, 2025.',
   'Use of Data:',
@@ -118,10 +118,26 @@ function GuidNotes() {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 32 }}>
         {/* Privacy Notice */}
         <div style={{ flex: 1, minWidth: 400, background: '#f8f9fa', padding: 24, borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.07)' }}>
-          <h2 style={{ fontSize: 22, marginBottom: 16, color: '#0056b3' }}>Privacy Notice</h2>
-          {privacyNotice.map((line, idx) => (
-            <p key={idx} style={{ marginBottom: 10, fontSize: 15, whiteSpace: 'pre-line' }}>{line}</p>
-          ))}
+          <h2 style={{ fontSize: 22, marginBottom: 16, color: '#0056b3', fontWeight: 'bold' }}>Privacy Notice</h2>
+            {privacyNotice.map((line, idx) => {
+            const sectionHeaders = [
+              'Purpose of Collection:',
+              'Categories of Data Collected:',
+              'Legal Basis for Processing:',
+              'Use of Data:',
+              'Data Sharing:',
+              'Data Security:',
+              'Data Retention:',
+              'Your Rights:',
+              'Contact Information:'
+            ];
+            const isHeader = sectionHeaders.includes(line.trim());
+            return (
+              <p key={idx} style={{ marginBottom: 10, fontSize: 15, whiteSpace: 'pre-line' }}>
+                {isHeader ? <b>{line}</b> : line}
+              </p>
+            );
+          })}
         </div>
         {/* Guidelines */}
 
@@ -132,6 +148,25 @@ function GuidNotes() {
               <li key={idx} style={{ marginBottom: 12, fontSize: 16 }}>{note}</li>
             ))}
           </ol>
+          <div style={{ marginBottom: 24, textAlign: 'right' }}>
+            <a
+              href={require('../files/SAMPLE - DULY FILLED DIALs FORM.ab0407dc82467e704771.pdf')}
+              download
+              style={{
+                color: '#007bff',
+                fontWeight: 'bold',
+                textDecoration: 'underline',
+                fontSize: 16,
+                padding: '8px 16px',
+                borderRadius: 4,
+                background: '#f8f9fa',
+                border: '1px solid #e0e0e0',
+                display: 'inline-block'
+              }}
+            >
+              Download Sample DAILs Form (PDF)
+            </a>
+          </div>
         </div>
       </div>
       {/* Consent Form, Checkbox and Continue button below both containers */}

@@ -886,7 +886,11 @@ exports.submitDeclaration = async (req, res) => {
                         const [u] = await pool.query('SELECT phone_number FROM users WHERE id = ?', [req.user.id]);
                         const phone = u[0]?.phone_number;
                         if (phone) {
-                            await sendSMS({ to: phone, body: 'Your declaration was submitted successfully.' });
+                            const declType = req.body.declaration_type || 'Biennial';
+                            await sendSMS({ 
+                                to: phone, 
+                                body: `Your ${declType} Declaration of Income, Assets and Liabilities (DIALs) has been successfully submitted. Thank you for your compliance.`
+                            });
                         }
                     } catch (smsErr) {
                         console.error('SMS submit notify error:', smsErr.message);

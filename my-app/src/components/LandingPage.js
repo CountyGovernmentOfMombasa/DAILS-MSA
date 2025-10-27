@@ -457,11 +457,13 @@ const LandingPage = () => {
               <>
                 <Form onSubmit={handleSave}>
                   <Row>
+                    <Alert variant="info" className="w-100"> Use your legal names as per National identification. </Alert>
                     <Col md={4}><Form.Group className="mb-3"><Form.Label htmlFor="profile-surname">Surname</Form.Label><Form.Control id="profile-surname" name="surname" value={form.surname || ''} onChange={handleChange} disabled={!editMode} /></Form.Group></Col>
                     <Col md={4}><Form.Group className="mb-3"><Form.Label htmlFor="profile-first-name">First Name</Form.Label><Form.Control id="profile-first-name" name="first_name" value={form.first_name || ''} onChange={handleChange} disabled={!editMode} /></Form.Group></Col>
                     <Col md={4}><Form.Group className="mb-3"><Form.Label htmlFor="profile-other-names">Other Names</Form.Label><Form.Control id="profile-other-names" name="other_names" value={form.other_names || ''} onChange={handleChange} disabled={!editMode} /></Form.Group></Col>
                   </Row>
                   <Row>
+                    <Alert variant="info" className="w-100"> Ensure your date and place of birth match your National ID. </Alert>
                     <Col md={4}>
                       <Form.Group className="mb-3">
                         <Form.Label htmlFor="profile-birthdate">Date of Birth</Form.Label>
@@ -497,10 +499,12 @@ const LandingPage = () => {
                     </Col>
                   </Row>
                   <Row>
+                    <Alert variant="info" className="w-100"> Provide your exact current residential locations. </Alert>
                     <Col md={6}><Form.Group className="mb-3"><Form.Label htmlFor="profile-postal-address">Postal Address</Form.Label><Form.Control id="profile-postal-address" name="postal_address" value={form.postal_address || ''} onChange={handleChange} disabled={!editMode} /></Form.Group></Col>
                     <Col md={6}><Form.Group className="mb-3"><Form.Label htmlFor="profile-physical-address">Physical Address</Form.Label><Form.Control id="profile-physical-address" name="physical_address" value={form.physical_address || ''} onChange={handleChange} disabled={!editMode} /></Form.Group></Col>
                   </Row>
                   <Row>
+                    <Alert variant="info" className="w-100"> Kindly change to an email that you currently actively use. </Alert>
                     <Col md={3}><Form.Group className="mb-3"><Form.Label htmlFor="profile-email">Email</Form.Label><Form.Control id="profile-email" name="email" value={form.email || ''} onChange={handleChange} disabled={!editMode} /></Form.Group></Col>
                     <Col md={3}><Form.Group className="mb-3"><Form.Label htmlFor="profile-phone-number">Phone Number</Form.Label><Form.Control id="profile-phone-number" name="phone_number" value={form.phone_number || ''} onChange={handleChange} disabled={!editMode} /></Form.Group></Col>
                     <Col md={3}><Form.Group className="mb-3"><Form.Label htmlFor="profile-national-id">National ID</Form.Label><Form.Control id="profile-national-id" name="national_id" value={form.national_id || ''} onChange={handleChange} disabled /></Form.Group></Col>
