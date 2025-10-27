@@ -504,7 +504,7 @@ const LandingPage = () => {
                     <Col md={6}><Form.Group className="mb-3"><Form.Label htmlFor="profile-physical-address">Physical Address</Form.Label><Form.Control id="profile-physical-address" name="physical_address" value={form.physical_address || ''} onChange={handleChange} disabled={!editMode} /></Form.Group></Col>
                   </Row>
                   <Row>
-                    <Alert variant="info" className="w-100"> Kindly change to an email that you currently actively use. </Alert>
+                    <Alert variant="info" className="w-100"> Kindly change the email to the you currently actively use. </Alert>
                     <Col md={3}><Form.Group className="mb-3"><Form.Label htmlFor="profile-email">Email</Form.Label><Form.Control id="profile-email" name="email" value={form.email || ''} onChange={handleChange} disabled={!editMode} /></Form.Group></Col>
                     <Col md={3}><Form.Group className="mb-3"><Form.Label htmlFor="profile-phone-number">Phone Number</Form.Label><Form.Control id="profile-phone-number" name="phone_number" value={form.phone_number || ''} onChange={handleChange} disabled={!editMode} /></Form.Group></Col>
                     <Col md={3}><Form.Group className="mb-3"><Form.Label htmlFor="profile-national-id">National ID</Form.Label><Form.Control id="profile-national-id" name="national_id" value={form.national_id || ''} onChange={handleChange} disabled /></Form.Group></Col>
