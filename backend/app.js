@@ -30,25 +30,36 @@ app.set("trust proxy", 1);
 app.use(helmet());
 app.use(morgan("combined"));
 
-// Define allowed origins for CORS
-const allowedOrigins = [
+// Define allowed origins for CORS. Normalize entries so trailing slashes or
+// slight variations (127.0.0.1 vs localhost) don't cause accidental rejections.
+const normalizeOrigin = (u) => (typeof u === "string" ? u.replace(/\/$/, "") : u);
+let allowedOrigins = [
   "https://dials.mcpsb.go.ke", // Production frontend
-  "http://localhost:3000", // Local development
+  "http://localhost:3000", // Local development (React)
 ];
 if (process.env.FRONTEND_URL) {
   allowedOrigins.push(process.env.FRONTEND_URL);
 }
 
+// Also accept common dev variants to avoid confusing CORS rejections when the
+// developer uses 127.0.0.1 or the backend's host:port appears as an origin.
+allowedOrigins.push("http://127.0.0.1:3000", "http://localhost:5000", "http://127.0.0.1:5000");
+
+const allowedOriginsSet = new Set(allowedOrigins.map(normalizeOrigin));
+
 // CORS configuration early so even 429 responses include headers
 app.use(
   cors({
     origin: (origin, callback) => {
+      // Normalize incoming origin so trailing slash doesn't cause mismatch
+      const originToCheck = origin ? normalizeOrigin(origin) : origin;
       // Allow requests with no origin (like mobile apps, curl) and from the allowed list.
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
+      if (!origin || allowedOriginsSet.has(originToCheck)) {
+        return callback(null, true);
       }
+      // Helpful debug log (we also log rejected origins in the global handler)
+      console.warn(`[CORS] Rejected origin (normalized): ${originToCheck} raw: ${origin}`);
+      return callback(new Error("Not allowed by CORS"));
     },
     allowedHeaders: [
       "Content-Type",
@@ -231,15 +242,39 @@ app.use("*", (req, res) => {
 });
 
 // Global error handler
+// Global error handler
 app.use((error, req, res, next) => {
-  console.error("Global error handler:", error);
-  res.status(500).json({
+  // Print stack when available for easier debugging
+  console.error("Global error handler:", error && error.stack ? error.stack : error);
+
+  // Special-case CORS rejection from the cors middleware so we return a clear
+  // 4xx response instead of always returning 500. This helps the frontend
+  // surface a meaningful error message.
+  if (error && error.message === "Not allowed by CORS") {
+    // Helpful debug log including the origin that was rejected
+    const rejectedOrigin = req && req.headers ? req.headers.origin : undefined;
+    console.warn(`[CORS] Rejected origin: ${rejectedOrigin}`);
+
+    // During local development include the origin header to aid debugging so
+    // the browser can see the JSON response. In production we do NOT add this
+    // header for rejected origins (preserve CORS protection).
+    if (process.env.NODE_ENV === "development" && rejectedOrigin) {
+      res.setHeader("Access-Control-Allow-Origin", rejectedOrigin);
+    }
+
+    return res.status(403).json({
+      success: false,
+      message: "Not allowed by CORS",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+
+  // Fall back to any explicit status set on the error, otherwise 500
+  const status = error && error.status ? error.status : 500;
+  res.status(status).json({
     success: false,
-    message: "Internal server error",
-    error:
-      process.env.NODE_ENV === "development"
-        ? error.message
-        : "Something went wrong",
+    message: status === 500 ? "Internal server error" : error.message || "Error",
+    error: process.env.NODE_ENV === "development" ? error.message : undefined,
   });
 });
 
