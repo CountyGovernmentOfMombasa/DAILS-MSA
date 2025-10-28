@@ -1,0 +1,53 @@
+name: Deploy to DigitalOcean
+
+on:
+  push:
+    branches:
+      - main # Or 'master', depending on your default branch
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: Build React Frontend
+        run: |
+          npm --prefix my-app install
+          npm --prefix my-app run build
+
+      - name: Deploy to DigitalOcean Droplet
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: ${{ secrets.DO_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # Navigate to the project directory
+            cd /root/DAILS-MSA  # Adjust this path to where you cloned your repo
+
+            # Stop all running containers to avoid conflicts
+            docker-compose down
+
+            # Pull the latest changes from the main branch
+            git pull origin main
+
+            # Securely write the .env file from GitHub secrets
+            echo "${{ secrets.DOT_ENV }}" > .env
+
+            # Rebuild and restart all services in detached mode
+            # --build: Rebuilds images if Dockerfile or source code has changed
+            # --force-recreate: Ensures containers are recreated with new images/config
+            # -d: Runs in detached mode
+            docker-compose up --build --force-recreate -d
+
+            # Clean up dangling images to save disk space
+            docker image prune -f
