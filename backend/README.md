@@ -25,14 +25,14 @@ From 2025-10-08, newly created admin accounts can optionally be linked to an exi
 ### How Linking Works
 
 1. Frontend admin creation form exposes a toggle (linkExistingUser). When enabled the creator provides either:
-   - `userId` (primary key of `users` table), OR
-   - `nationalId` (unique national identifier in `users.national_id`).
+    - `userId` (primary key of `users` table), OR
+    - `nationalId` (unique national identifier in `users.national_id`).
 2. Backend validates the target user exists and that no other admin is already linked to that same user (`UNIQUE user_id` in `admin_users`).
 3. Missing admin profile fields (first_name, surname, email, department) are auto‑populated from the user record (department only for non `super_admin` roles).
 4. A placeholder random password is generated because linked admins authenticate via the underlying user account (future enhancement: token/SSO). For non‑linked admins a password is mandatory.
 5. Creation success triggers two audit trails:
-   - Existing `admin_creation_audit` (legacy) still captures the base creation event (when invoked through older IT admin route).
-   - New `admin_user_link_audit` captures linkage specifics (admin_id, user_id, linkage method (user_id or national_id), national_id & department snapshot, creator admin, IP, user agent).
+    - Existing `admin_creation_audit` (legacy) still captures the base creation event (when invoked through older IT admin route).
+    - New `admin_user_link_audit` captures linkage specifics (admin_id, user_id, linkage method (user_id or national_id), national_id & department snapshot, creator admin, IP, user agent).
 
 ### Database Changes
 
@@ -46,10 +46,10 @@ Request (linked via national ID example):
 
 ```json
 {
-  "username": "jane.admin",
-  "role": "hr_admin",
-  "linkExistingUser": true,
-  "nationalId": "12345678"
+   "username": "jane.admin",
+   "role": "hr_admin",
+   "linkExistingUser": true,
+   "nationalId": "12345678"
 }
 ```
 
@@ -57,10 +57,10 @@ Request (linked via userId example):
 
 ```json
 {
-  "username": "john.admin",
-  "role": "finance_admin",
-  "linkExistingUser": true,
-  "userId": 42
+   "username": "john.admin",
+   "role": "finance_admin",
+   "linkExistingUser": true,
+   "userId": 42
 }
 ```
 
@@ -68,12 +68,12 @@ Request (non‑linked legacy style):
 
 ```json
 {
-  "username": "ext.contractor",
-  "role": "it_admin",
-  "password": "Str0ng!Pass",
-  "first_name": "Ext",
-  "surname": "Contractor",
-  "department": "IT"
+   "username": "ext.contractor",
+   "role": "it_admin",
+   "password": "Str0ng!Pass",
+   "first_name": "Ext",
+   "surname": "Contractor",
+   "department": "IT"
 }
 ```
 
@@ -81,16 +81,16 @@ Response snippet (linked):
 
 ```json
 {
-  "success": true,
-  "data": {
-    "id": 7,
-    "username": "jane.admin",
-    "role": "hr_admin",
-    "user_id": 15,
-    "linked_national_id": "12345678",
-    "linked_user_email": "jane.doe@org.test",
-    "link_method": "national_id"
-  }
+   "success": true,
+   "data": {
+      "id": 7,
+      "username": "jane.admin",
+      "role": "hr_admin",
+      "user_id": 15,
+      "linked_national_id": "12345678",
+      "linked_user_email": "jane.doe@org.test",
+      "link_method": "national_id"
+   }
 }
 ```
 
@@ -127,12 +127,10 @@ npm install
 ```
 
 1. Set up environment variables:
-
    - Copy `.env.example` to `.env`
    - Update the values in `.env` with your configuration
 
 2. Set up the database:
-
    - Create a MySQL database
    - Run the schema from `database/schema.sql`
 
@@ -148,30 +146,30 @@ npm start
 
 ## Environment Variables
 
-| Variable                 | Description                                                                                                  | Default                                   |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------- |
-| DB_HOST                  | Database host                                                                                                | localhost                                 |
-| DB_USER                  | Database username                                                                                            | root                                      |
-| DB_PASSWORD              | Database password                                                                                            |                                           |
-| DB_NAME                  | Database name                                                                                                | employee_declarations                     |
-| JWT_SECRET               | JWT secret key                                                                                               |                                           |
-| JWT_EXPIRES_IN           | JWT expiration time                                                                                          | 7d                                        |
-| PORT                     | Server port                                                                                                  | 5000                                      |
-| NODE_ENV                 | Environment                                                                                                  | development                               |
-| FRONTEND_URL             | **Required for production.** The public URL of your deployed frontend (e.g., `https://dials.mombasa.go.ke`). | `http://localhost:3000`                   |
-| SMS_ENABLED              | Enable/disable SMS sending                                                                                   | true                                      |
-| TOLCLIN_BASE_URL         | Tolclin BulkSms URL                                                                                          | <https://tolclin.com/tolclin/sms/BulkSms> |
-| TOLCLIN_CLIENT_ID        | Tolclin client id (integer)                                                                                  | 254                                       |
-| TOLCLIN_SENDER_ID        | SMS Sender ID                                                                                                | COUNTY-MSA                                |
-| TOLCLIN_CALLBACK_URL     | SMS callback URL                                                                                             |                                           |
-| PDF_PERMIT_PRINTING      | Printing permission: accepts values none, low, high                                                          | high                                      |
-| PDF_ALLOW_MODIFY         | Allow document modification (true/false)                                                                     | false                                     |
-| PDF_ALLOW_COPY           | Allow copying text/images (true/false)                                                                       | false                                     |
-| PDF_ALLOW_ANNOTATE       | Allow adding/removing annotations (true/false)                                                               | false                                     |
-| PDF_ALLOW_FILL_FORMS     | Allow form filling (true/false)                                                                              | false                                     |
-| PDF_ALLOW_CONTENT_ACCESS | Enable accessibility extraction (true/false)                                                                 | false                                     |
-| PDF_ALLOW_DOC_ASSEMBLY   | Allow document assembly (true/false)                                                                         | false                                     |
-| PDF_OWNER_PASSWORD       | Owner password override (optional)                                                                           | (defaults to National ID)                 |
+| Variable | Description | Default |
+|----------|-------------|---------|
+| DB_HOST | Database host | localhost |
+| DB_USER | Database username | root |
+| DB_PASSWORD | Database password | |
+| DB_NAME | Database name | employee_declarations |
+| JWT_SECRET | JWT secret key | |
+| JWT_EXPIRES_IN | JWT expiration time | 7d |
+| PORT | Server port | 5000 |
+| NODE_ENV | Environment | development |
+| FRONTEND_URL | Frontend URL for CORS | <http://localhost:3000> |
+| SMS_ENABLED | Enable/disable SMS sending | true |
+| TOLCLIN_BASE_URL | Tolclin BulkSms URL | <https://tolclin.com/tolclin/sms/BulkSms> |
+| TOLCLIN_CLIENT_ID | Tolclin client id (integer) | 254 |
+| TOLCLIN_SENDER_ID | SMS Sender ID | COUNTY-MSA |
+| TOLCLIN_CALLBACK_URL | SMS callback URL | |
+| PDF_PERMIT_PRINTING | Printing permission: accepts values none, low, high | high |
+| PDF_ALLOW_MODIFY | Allow document modification (true/false) | false |
+| PDF_ALLOW_COPY | Allow copying text/images (true/false) | false |
+| PDF_ALLOW_ANNOTATE | Allow adding/removing annotations (true/false) | false |
+| PDF_ALLOW_FILL_FORMS | Allow form filling (true/false) | false |
+| PDF_ALLOW_CONTENT_ACCESS | Enable accessibility extraction (true/false) | false |
+| PDF_ALLOW_DOC_ASSEMBLY | Allow document assembly (true/false) | false |
+| PDF_OWNER_PASSWORD | Owner password override (optional) | (defaults to National ID) |
 
 ## API Endpoints
 
@@ -204,15 +202,11 @@ Standard error schema example:
 
 ```json
 {
-  "message": "Validation failed",
-  "code": "VALIDATION_FAILED",
-  "details": [
-    {
-      "field": "page",
-      "message": "page must be between 1 and 500",
-      "code": "VALIDATION_PAGE"
-    }
-  ]
+   "message": "Validation failed",
+   "code": "VALIDATION_FAILED",
+   "details": [
+      { "field": "page", "message": "page must be between 1 and 500", "code": "VALIDATION_PAGE" }
+   ]
 }
 ```
 

@@ -38,9 +38,9 @@ module.exports = async function biennialEditWindow(req, res, next) {
     const userId = req.user?.id;
     if (!id || !userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
 
-    // Fetch declaration type
+    // Fetch declaration type and date
     const [rows] = await pool.query(
-      'SELECT declaration_type FROM declarations WHERE id = ? AND user_id = ? LIMIT 1',
+      'SELECT declaration_type, declaration_date, period_start_date, period_end_date FROM declarations WHERE id = ? AND user_id = ? LIMIT 1',
       [id, userId]
     );
     if (!rows.length) {
@@ -52,7 +52,50 @@ module.exports = async function biennialEditWindow(req, res, next) {
       return next();
     }
 
-    // No window restrictions: allow edit at any time
+    const now = new Date();
+    // Check for per-declaration/user override first
+    const override = await findActiveOverride({ type: 'biennial_edit', declaration_id: Number(id), user_id: Number(userId), now });
+    if (override && override.allow) {
+      return next();
+    }
+
+    // Prefer explicit period window on the record if present and valid
+    const pStart = parseIsoOrDmy(row.period_start_date);
+    const pEnd = parseIsoOrDmy(row.period_end_date);
+    if (pStart && pEnd && pEnd >= pStart) {
+      if (!(now >= pStart && now <= pEnd)) {
+        return res.status(403).json({ success: false, message: 'Editing Biennial declarations is only allowed within the configured declaration period.' });
+      }
+      return next();
+    }
+
+    // Then check global/year-specific admin-configured windows
+    const yearGuessDate = parseIsoOrDmy(row.declaration_date) || now; // fallback to now for year
+    const windowRow = await getBiennialWindowForYear(yearGuessDate.getFullYear());
+    if (windowRow) {
+      const wStart = parseIsoOrDmy(windowRow.start_date);
+      const wEnd = parseIsoOrDmy(windowRow.end_date);
+      if (wStart && wEnd && wEnd >= wStart) {
+        if (!(now >= wStart && now <= wEnd)) {
+          return res.status(403).json({ success: false, message: 'Editing Biennial declarations is only allowed within the active biennial window.' });
+        }
+        return next();
+      }
+    }
+
+    // Fallback: Legacy policy (Nov 1 – Dec 31 of declaration year, odd years >= 2025)
+    let decDate = parseIsoOrDmy(row.declaration_date) || parseIsoOrDmy(row.period_end_date) || parseIsoOrDmy(row.period_start_date);
+    if (!decDate) {
+      return res.status(400).json({ success: false, message: 'Cannot determine biennial declaration year for edit window check.' });
+    }
+    const declarationYear = decDate.getFullYear();
+    if (!isWithinBiennialWindow(now, declarationYear)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Editing Biennial declarations is only allowed between Nov 1 and Dec 31 of the declaration year (odd years starting 2025).'
+      });
+    }
+
     return next();
   } catch (err) {
     console.error('biennialEditWindow error:', err.message);
