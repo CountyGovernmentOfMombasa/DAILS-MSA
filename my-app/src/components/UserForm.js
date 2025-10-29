@@ -507,7 +507,7 @@ const UserFormInner = () => {
                               <option value="">Select employment type</option>
                               <option value="Permanent">Permanent</option>
                               <option value="Contract">Contract</option>
-                              <option value="Casual">Casual</option>
+                              <option value="Temporary">Temporary</option>
                             </Form.Select>
                           </Form.Group>
                         </Col>

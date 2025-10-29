@@ -727,7 +727,7 @@ CREATE TABLE `users` (
   `designation` varchar(100) DEFAULT NULL,
   `department` varchar(150) DEFAULT NULL,
   `sub_department` varchar(255) NOT NULL,
-  `nature_of_employment` enum('Permanent','Contract','Casual') DEFAULT NULL,
+  `nature_of_employment` enum('Permanent','Contract','Temporary') DEFAULT NULL,
   `phone_last_changed_at` datetime DEFAULT NULL,
   `phone_change_count` int(11) DEFAULT NULL
 ) ;

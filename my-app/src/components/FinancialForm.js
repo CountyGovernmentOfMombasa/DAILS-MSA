@@ -575,7 +575,7 @@ const isSectionFilledArray = React.useCallback((rows, section) => {
 // ---- Asset description placeholder helper ----
 const assetDescriptionPlaceholder = (type) => {
   switch (type) {
-    case 'Stock Shares':
+    case 'Corporate Shares':
       return 'e.g. Company';
     case 'Sacco Shares':
       return 'e.g. Sacco name';
@@ -603,8 +603,8 @@ const incomeDescriptionPlaceholder = (type) => {
   switch (type) {
     case 'Salary':
       return 'e.g. Gross annual/biennial salary';
-    case 'Rent':
-      return 'e.g. Gross annual/biennial rent';
+    case 'Rental Income':
+      return 'e.g. Gross annual/biennial rental income';
     case 'Sale of Crops':
       return 'e.g. Crop type and harvest period';
     case 'Sale of Livestock and their Products':
@@ -639,26 +639,25 @@ const incomeDescriptionPlaceholder = (type) => {
   const renderTableSection = (title, section, currency = 'Ksh', additionalNote = '') => {
     const currentData = filteredFinancialData[activeTab]?.data || {};
     // Asset type options
-    const assetTypeOptions = [
-      'Ancestral Land',
-      'Acquired Land',
-      'Building',
-      'Houses',
-      'Vehicles',
-      'Transportation Vehicles',
-      'Stock Shares',
-      'Sacco Shares',
-      'Household Goods',
-      'Personal Items',
-      'Jewelry',
-      'Cash At Hand',
-      'Cash At Bank',
-      'Financial Obligations Owed',
-      'Other',
-    ];
+      const assetTypeOptions = [
+        'Land',
+        'Building',
+        'Houses',
+        'Vehicles',
+        'Transportation Vehicles',
+        'Corporate Shares',
+        'Sacco Shares',
+        'Household Goods',
+        'Personal Items',
+        'Jewelry',
+        'Cash At Hand',
+        'Cash At Bank',
+        'Financial Obligations Owed',
+        'Other',
+      ];
     const incomeTypeOptions = [
       'Salary',
-      'Rent',
+      'Rental Income',
       'Sale of Crops',
       'Sale of Livestock and their Products',
       'Interest on Bank Deposits',
@@ -823,10 +822,10 @@ const incomeDescriptionPlaceholder = (type) => {
                   );
                 }
                   if (section === 'assets') {
-                    const type = item.type || '';
-                    const isLandType = type === 'Ancestral Land' || type === 'Acquired Land';
-                    const isBuildingType = type === 'Building' || type === 'Houses';
-                    const isVehicleType = type === 'Vehicles' || type === 'Transportation Vehicles';
+                const type = item.type || '';
+                const isLandType = type === 'Land';
+                const isBuildingType = type === 'Building' || type === 'Houses';
+                const isVehicleType = type === 'Vehicles' || type === 'Transportation Vehicles';
                   return (
                     <tr key={index}>
                       <td>

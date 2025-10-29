@@ -790,7 +790,7 @@ const ReviewPageInner = () => {
                         />
                       </Form.Group>
                       <Form.Group className="mb-3">
-                        <Form.Label className="fw-semibold">Witness Address</Form.Label>
+                        <Form.Label className="fw-semibold">Witness Physical Address</Form.Label>
                         <Form.Control
                           type="text"
                           value={witnessAddress}
@@ -798,7 +798,7 @@ const ReviewPageInner = () => {
                           required
                           className="py-3"
                           style={{ borderRadius: '12px' }}
-                          placeholder="Enter witness address"
+                          placeholder="Enter witness physical address"
                         />
                       </Form.Group>
                     </Card.Body>
