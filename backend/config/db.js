@@ -10,7 +10,11 @@ const pool = mysql.createPool({
   connectTimeout: 10000,
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 0,
+  // ✅ ADD SSL CONFIGURATION
+  ssl: {
+    rejectUnauthorized: true
+  }
 });
 
 // Connection tester with simple retry (handles XAMPP/MySQL cold starts)
