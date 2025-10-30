@@ -41,7 +41,7 @@ def format_date(date_str):
         return ds
 
     # Try day-first formats
-    for fmt in ('%d/%m/%Y', '%-d/%-m/%Y', '%d/%m/%y'):
+    for fmt in ('%d/%m/%Y', '%-d/%-m/%Y', '%d/%m/%y', '%d-%b-%Y', '%d-%b-%y'):
         try:
             date_obj = datetime.strptime(ds, fmt)
             return date_obj.strftime('%Y-%m-%d')
@@ -112,7 +112,18 @@ def convert_csv_to_sql(csv_file_path, output_file_path):
         with open(csv_file_path, 'r', encoding='utf-8') as csvfile:
             reader = csv.DictReader(csvfile)
 
-            # Normalize header keys for easier access
+            # Print header mapping for debug
+            print("DEBUG: CSV Header Fields:", reader.fieldnames)
+
+            # Remove BOM from first header if present
+            if reader.fieldnames and reader.fieldnames[0].startswith('\ufeff'):
+                reader.fieldnames[0] = reader.fieldnames[0].replace('\ufeff', '')
+
+            # Print first row for debug
+            first_row = next(reader, None)
+            print("DEBUG: First Row:", first_row)
+
+            # Continue with normal processing
             def get_val(row, *keys):
                 for k in keys:
                     if k in row:
@@ -127,9 +138,14 @@ def convert_csv_to_sql(csv_file_path, output_file_path):
 
             seen_payroll = set()
 
-            for row_num, row in enumerate(reader, 1):
+            # If no data, exit early
+            if not first_row:
+                print("DEBUG: No data rows found in CSV.")
+                return
+
+            # Process first row and the rest
+            for row_num, row in enumerate([first_row] + list(reader), 1):
                 try:
-                    # Extract using known headers
                     payroll_number = get_val(row, 'Payroll Number', 'payroll_number').strip()
                     surname = get_val(row, 'Surname', 'surname', 'Last Name', 'last_name').strip()
                     first_name = get_val(row, 'First Name', 'first_name').strip()
@@ -137,7 +153,6 @@ def convert_csv_to_sql(csv_file_path, output_file_path):
                     birthdate = format_date(get_val(row, 'Birth Date', 'birthdate'))
                     national_id = get_val(row, 'ID Number', 'National ID', 'national_id').strip()
 
-                    # Skip if essential data is missing
                     if not payroll_number or not first_name or not surname:
                         print(f"Warning: Skipping row {row_num} - missing essential name or payroll number")
                         continue
@@ -146,28 +161,25 @@ def convert_csv_to_sql(csv_file_path, output_file_path):
                         print(f"Warning: Skipping row {row_num} - invalid/missing birth date for {first_name} {surname}")
                         continue
 
-                    # De-duplicate by payroll number
                     if payroll_number in seen_payroll:
                         print(f"Warning: Skipping duplicate payroll_number on row {row_num}: {payroll_number}")
                         continue
                     seen_payroll.add(payroll_number)
 
-                    # Generate a guaranteed-unique, valid placeholder email from payroll number
                     email = f"{payroll_number.lower()}@mombasa.go.ke"
                     phone = None
 
-                    # Create SQL values
                     values = []
-                    values.append(f"'{sql_escape(payroll_number)}'")  # payroll_number
-                    values.append(f"'{sql_escape(surname)}'")         # surname
-                    values.append(f"'{sql_escape(first_name)}'")      # first_name
-                    values.append(f"'{sql_escape(other_names)}'" if other_names else "NULL")  # other_names
-                    values.append(f"'{sql_escape(email)}'")             # email
-                    values.append("NULL")                               # phone_number
-                    values.append(f"'{birthdate}'")                     # birthdate
-                    values.append(f"'{default_password_hash}'")         # password (empty)
-                    values.append("FALSE")                              # password_changed
-                    values.append(f"'{sql_escape(national_id)}'" if national_id else "NULL")  # national_id
+                    values.append(f"'{sql_escape(payroll_number)}'")
+                    values.append(f"'{sql_escape(surname)}'")
+                    values.append(f"'{sql_escape(first_name)}'")
+                    values.append(f"'{sql_escape(other_names)}'" if other_names else "NULL")
+                    values.append(f"'{sql_escape(email)}'")
+                    values.append("NULL")
+                    values.append(f"'{birthdate}'")
+                    values.append(f"'{default_password_hash}'")
+                    values.append("FALSE")
+                    values.append(f"'{sql_escape(national_id)}'" if national_id else "NULL")
 
                     insert_statement = f"({', '.join(values)})"
                     insert_statements.append(insert_statement)
@@ -209,9 +221,8 @@ def convert_csv_to_sql(csv_file_path, output_file_path):
 
 if __name__ == "__main__":
     # File paths
-    # Default to the 220925 CSV; adjust as needed.
-    csv_file = r"c:\Users\Admin\WDP\PSB Data 220925 (1).csv"
-    output_file = r"c:\Users\Admin\WDP\backend\database\users_insert_from_csv_220925.sql"
+    csv_file = r"c:\Users\Admin\WDP\Users - 30102025.csv"
+    output_file = r"c:\Users\Admin\WDP\backend\database\users_insert_from_csv_30102025.sql"
 
     print("🔄 Converting CSV to SQL...")
     print(f"📁 Input file: {csv_file}")
