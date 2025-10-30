@@ -18,7 +18,7 @@ import {
 } from "react-bootstrap";
 import useAdminSession from "../hooks/useAdminSession";
 import "./LandingPage.css"; // Assuming this file exists and is correct
-import { getDeclarations, getProgress, deleteServerProgress } from "../api";
+import { getDeclarations, getProgress, deleteProgress } from "../api";
 // Department logic now mirrors UserForm: user selects sub_department, department auto-derived (read-only)
 import {
   SUB_DEPARTMENTS,
@@ -1054,11 +1054,10 @@ const LandingPage = () => {
                       Resume
                     </Button>
                     <Button
-                      size="sm"
-                      variant="outline-danger"
-                      onClick={() => setShowDiscardModal(true)}
-                    >
-                      Discard
+                       size="sm" variant="outline-danger" onClick={async () => { setShowDiscardModal(true);
+                       if (typeof deleteProgress === "function") {
+                       try { await deleteProgress(); } catch (e) {}}}}>
+                       Discard
                     </Button>
                     <Button
                       size="sm"
