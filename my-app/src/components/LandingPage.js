@@ -1054,10 +1054,18 @@ const LandingPage = () => {
                       Resume
                     </Button>
                     <Button
-                       size="sm" variant="outline-danger" onClick={async () => { setShowDiscardModal(true);
-                       if (typeof deleteProgress === "function") {
-                       try { await deleteProgress(); } catch (e) {}}}}>
-                       Discard
+                      size="sm"
+                      variant="outline-danger"
+                      onClick={async () => {
+                        setShowDiscardModal(true);
+                        if (typeof deleteProgress === "function") {
+                          try {
+                            await deleteProgress();
+                          } catch (e) {}
+                        }
+                      }}
+                    >
+                      Discard
                     </Button>
                     <Button
                       size="sm"
@@ -1171,7 +1179,7 @@ const LandingPage = () => {
 
           <Col lg={3} md={6} className="mb-4">
             <a
-              href="https://survey.mcpsb.go.ke/"
+              href="https://mcpsbsurvey.mombasa.go.ke/"
               target="_blank"
               rel="noopener noreferrer"
               className="text-decoration-none"
