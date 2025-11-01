@@ -20,6 +20,8 @@ import ITAdminDashboard from './components/ITAdminDashboard';
 // FinanceAdminDashboard removed; finance role deprecated
 import ErrorBoundary from './components/ErrorBoundary';
 import GuidNotes from './components/GuidNotes';
+import PrivacyNotice from './components/PrivacyNotice';
+import ConsentForm from './components/ConsentForm';
 import './App.css';
 import { UserProvider } from './context/UserContext';
 import GlobalLogoutButton from './components/GlobalLogoutButton';
@@ -52,6 +54,8 @@ function App() {
               <Route path="/confirmation" element={<ConfirmationPage />} />
               <Route path="/change-password" element={<ChangePasswordPage />} />
               <Route path="/guidnotes" element={<GuidNotes />} />
+              <Route path="/privacy-notice" element={<PrivacyNotice />} />
+              <Route path="/consent" element={<ConsentForm />} />
               <Route 
                 path="/admin" 
                 element={
