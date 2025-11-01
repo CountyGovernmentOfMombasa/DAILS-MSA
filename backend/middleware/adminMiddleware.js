@@ -29,13 +29,14 @@ const verifyAdminToken = async (req, res, next) => {
 
     // Attach freshest department & role in case they changed after token issuance
     const rawRole = admin.role; // e.g., hr_admin
-  const normalizedRole = rawRole === 'hr_admin' ? 'hr' : rawRole === 'it_admin' ? 'it' : rawRole === 'super_admin' ? 'super' : rawRole;
+    // Finance admin removed; normalize only known roles
+    const normalizedRole = rawRole === 'hr_admin' ? 'hr' : rawRole === 'it_admin' ? 'it' : rawRole === 'super_admin' ? 'super' : rawRole;
     req.admin = {
       ...decoded,
       role: rawRole, // keep raw for compatibility, some code may rely on *_admin form
       normalizedRole,
-  department: admin.department || null,
-  sub_department: admin.sub_department || null
+      department: admin.department || null,
+      sub_department: admin.sub_department || null
     };
     next();
   } catch (error) {

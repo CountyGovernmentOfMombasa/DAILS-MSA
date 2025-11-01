@@ -1,7 +1,10 @@
-// Deprecated: Finance Admin routes have been removed.
-// This file remains as a stub to avoid import errors during transition.
-// It is not mounted anywhere in app.js.
+// Deprecated: Finance Admin module has been removed.
+// This placeholder remains to avoid import errors in older builds.
 const express = require('express');
 const router = express.Router();
+
+router.all('*', (_req, res) => {
+    res.status(410).json({ success: false, message: 'Finance admin role and endpoints have been removed.' });
+});
 
 module.exports = router;

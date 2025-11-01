@@ -58,7 +58,6 @@ export default function ConsentForm() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h2 style={{ fontSize: 24, margin: 0 }}>Consent Form</h2>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <Link to="/guidnotes" style={{ color: '#0056b3', textDecoration: 'underline', fontWeight: 600 }}>Back to Guidelines</Link>
           <Link to="/privacy-notice" style={{ color: '#0056b3', textDecoration: 'underline', fontWeight: 600 }}>View Privacy Notice</Link>
         </div>
       </div>

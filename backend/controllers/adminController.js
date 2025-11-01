@@ -269,8 +269,9 @@ function mapToCanonical(raw) {
 exports.getDepartmentDeclarationStats = async (req, res) => {
   try {
     // Scope declarations by admin department for HR admins only
-    let departmentFilter = '';
-    let params = [];
+  let departmentFilter = '';
+  let params = [];
+  // Scope only HR admins to their department; IT and Super can view all
     if (req.admin && req.admin.department && (req.admin.normalizedRole === 'hr' || req.admin.role === 'hr_admin')) {
       departmentFilter = 'AND u.department = ?';
       params.push(req.admin.department);
@@ -332,8 +333,9 @@ exports.getDepartmentDeclarationStats = async (req, res) => {
 
 exports.getAllDeclarations = async (req, res) => {
   try {
-    let departmentFilter = '';
-    let params = [];
+  let departmentFilter = '';
+  let params = [];
+  // Scope only HR admins
     if (req.admin && req.admin.department && (req.admin.normalizedRole === 'hr' || req.admin.role === 'hr_admin')) {
       departmentFilter = 'AND u.department = ?';
       params.push(req.admin.department);
@@ -416,17 +418,11 @@ exports.adminLogin = async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-
-    // Map DB roles to frontend roles
-    if (admin.role === 'hr_admin') {
-      admin.role = 'hr';
-    } else if (admin.role === 'it_admin') {
-      admin.role = 'it';
-    } else if (admin.role === 'super_admin') {
-      admin.role = 'super';
-    } else {
-      admin.role = 'super';
-    }
+    // Map DB roles to frontend roles (finance removed)
+    if (admin.role === 'hr_admin') admin.role = 'hr';
+    else if (admin.role === 'it_admin') admin.role = 'it';
+    else if (admin.role === 'super_admin') admin.role = 'super';
+    else admin.role = 'super';
 
     // Enforce that non-super admins must have a department assigned
     if (admin.role !== 'super' && !admin.department) {
@@ -466,8 +462,8 @@ exports.verifyAdmin = async (req, res) => {
       message: 'Admin verified',
       admin: {
         ...admin.toJSON(),
-        // Provide mapped role consistent with login response
-        role: admin.role === 'hr_admin' ? 'hr' : admin.role === 'it_admin' ? 'it' : 'super'
+  // Provide mapped role consistent with login response
+  role: admin.role === 'hr_admin' ? 'hr' : admin.role === 'it_admin' ? 'it' : 'super'
       }
     });
   } catch (error) {
@@ -493,7 +489,7 @@ exports.getAllUsers = async (req, res) => {
       conditions.push("(email IS NULL OR email = '')");
     }
 
-    // Department scoping: HR admins only see their department
+  // Department scoping: HR admins only see their department
     if (req.admin && req.admin.department && (req.admin.normalizedRole === 'hr' || req.admin.role === 'hr_admin')) {
       conditions.push('department = ?');
       params.push(req.admin.department);
@@ -879,7 +875,7 @@ exports.updateAdmin = async (req, res) => {
     const { adminId } = req.params;
   const { email, role, first_name, last_name, is_active } = req.body;
     // Validate role
-  const allowedRoles = ['super_admin', 'hr_admin'];
+    const allowedRoles = ['super_admin', 'hr_admin', 'it_admin'];
     const safeRole = role && allowedRoles.includes(role) ? role : undefined;
     // Validate required fields
     if (!first_name || !last_name) {
@@ -974,7 +970,7 @@ exports.changeAdminPassword = async (req, res) => {
     }
 
     // Prevent reuse of the same password
-    const reuse = await bcrypt.compare(newPassword, admin.password);
+  const reuse = await bcrypt.compare(newPassword, admin.password);
     if (reuse) {
       return res.status(400).json({ message: 'You cannot reuse your previous password.' });
     }
@@ -1414,194 +1410,112 @@ exports.deleteUser = async (req, res) => {
 };
 
 // Department user declaration status for IT / HR admins
-// GET /api/admin/department/users-status[?search=][&department=] (department param only honored for super admins, others locked to their own)
+// GET /api/admin/department/users-status[?search=][&department=]
 exports.getDepartmentUserDeclarationStatus = async (req, res) => {
   try {
-  // Accept roles: hr_admin, it_admin (raw) or normalized hr, it. Super and IT can pass department; HR locked to own.
-  const role = (req.admin && (req.admin.role || req.admin.normalizedRole)) || '';
-  const allowed = ['hr','hr_admin','it','it_admin','super','super_admin'];
+    // Accept roles: hr_admin or it_admin (raw) or normalized hr, it. Super admin allowed.
+    const role = (req.admin && (req.admin.role || req.admin.normalizedRole)) || '';
+    const allowed = ['hr','hr_admin','it','it_admin','super','super_admin'];
     if (!allowed.includes(role)) {
       return res.status(403).json({ success: false, message: 'Forbidden: role not allowed.' });
     }
+
+    // Department scoping: HR forced to their own department; IT/Super can query any (must provide department)
     let department = req.query.department || null;
-    const isSuper = ['super','super_admin'].includes(role);
-    const isIt = ['it','it_admin'].includes(role);
-    if (!isSuper && !isIt) {
-      // HR: force to own department
+    const isHR = ['hr','hr_admin'].includes(role);
+    if (isHR) {
       department = req.admin.department || null;
     }
     if (!department) {
       return res.status(400).json({ success: false, message: 'Department is required.' });
     }
-    // Parameter parsing
-    const search = (req.query.search || '').trim().toLowerCase();
+
+    // Filters
+    const search = (req.query.search || '').trim();
     const statusFilter = (req.query.status || '').toLowerCase(); // approved|rejected|pending|none
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(parseInt(req.query.limit) || 50, 500);
     const offset = (page - 1) * limit;
     const sortBy = (req.query.sortBy || 'first_name').toLowerCase();
     const sortDir = (String(req.query.sortDir || 'asc').toLowerCase() === 'desc') ? 'DESC' : 'ASC';
-
-  // Introspect users table columns to safely build surname & national id expressions
-    const [userCols] = await pool.query('SHOW COLUMNS FROM users');
-    const colNames = userCols.map(c => c.Field.toLowerCase());
-    const hasSurname = colNames.includes('surname');
-    const hasLastName = colNames.includes('last_name');
-  const hasNat = colNames.includes('national_id');
-  const hasIdNumber = colNames.includes('id_number');
-  const hasIdNo = colNames.includes('id_no');
-    let surnameExprRaw;
-    if (hasSurname && hasLastName) {
-      surnameExprRaw = 'COALESCE(u.surname,u.last_name)';
-    } else if (hasSurname) {
-      surnameExprRaw = 'u.surname';
-    } else if (hasLastName) {
-      surnameExprRaw = 'u.last_name';
-    } else {
-      surnameExprRaw = "''"; // neither exists; provide empty string
-    }
-    const surnameExprSelect = `${surnameExprRaw} AS surname`;
-    const surnameExprOrder = surnameExprRaw; // for ORDER BY
-    const surnameExprSearch = `LOWER(${surnameExprRaw})`;
-
-  // National ID expression (fallback through possible legacy column names)
-  const natCols = [];
-  if (hasNat) natCols.push('u.national_id');
-  if (hasIdNumber) natCols.push('u.id_number');
-  if (hasIdNo) natCols.push('u.id_no');
-  let natExprRaw;
-  if (natCols.length === 0) natExprRaw = "''"; else if (natCols.length === 1) natExprRaw = natCols[0]; else natExprRaw = `COALESCE(${natCols.join(',')})`;
-  const natExprSelect = `${natExprRaw} AS national_id`;
-  const natExprSearch = `LOWER(${natExprRaw})`;
-
-    const sortableMap = {
-      'first_name': 'u.first_name',
-      'surname': surnameExprOrder,
-      'payroll_number': 'u.payroll_number',
-      'email': 'u.email',
-      'latest_declaration_status': 'dLatest.status',
-      'latest_declaration_date': 'dLatest.declaration_date',
-      'latest_submitted_at': 'dLatest.submitted_at',
-      'national_id': natCols[0] || natExprRaw // allow sorting by the first available nat id column
-    };
-    const orderExpr = sortableMap[sortBy] || 'u.first_name';
+    const sortable = new Set(['first_name','surname','payroll_number','email','latest_submitted_at']);
+    const orderExpr = sortable.has(sortBy) ? sortBy : 'first_name';
 
     const params = [department];
-    let whereExtra = '';
+    const where = ['u.department = ?'];
     if (search) {
-      const term = '%' + search + '%';
-      whereExtra += ` AND (LOWER(u.first_name) LIKE ? OR LOWER(u.other_names) LIKE ? OR ${surnameExprSearch} LIKE ? OR LOWER(u.email) LIKE ? OR u.payroll_number LIKE ? OR ${natExprSearch} LIKE ?)`;
-      params.push(term, term, term, term, '%' + (req.query.search || '').trim() + '%', '%' + (req.query.search || '').trim() + '%');
-    }
-    if (statusFilter) {
-      if (statusFilter === 'none') {
-        whereExtra += ' AND dLatest.id IS NULL';
-      } else if (statusFilter === 'pending') {
-        whereExtra += " AND dLatest.id IS NOT NULL AND (dLatest.status NOT IN ('approved','rejected') OR dLatest.status IS NULL)";
-      } else if (['approved','rejected'].includes(statusFilter)) {
-        whereExtra += ' AND dLatest.status = ?';
-        params.push(statusFilter);
-      }
+      const term = '%' + search.toLowerCase() + '%';
+      where.push(`(LOWER(u.first_name) LIKE ? OR LOWER(u.other_names) LIKE ? OR LOWER(u.surname) LIKE ? OR LOWER(u.email) LIKE ? OR u.payroll_number LIKE ? OR u.national_id LIKE ?)`);
+      params.push(term, term, term, term, '%' + search + '%', '%' + search + '%');
     }
 
-    // Base select shared fragments
-    const baseSelect = `
-      FROM users u
-      LEFT JOIN (
-        SELECT d.* FROM declarations d
+    // Latest declaration per user
+    const statusJoin = `LEFT JOIN (
+        SELECT d1.*
+        FROM declarations d1
         JOIN (
           SELECT user_id, MAX(id) AS max_id
           FROM declarations
           GROUP BY user_id
-        ) t ON t.max_id = d.id
-      ) dLatest ON dLatest.user_id = u.id
-      WHERE u.department = ? ${whereExtra}
-    `;
+        ) m ON d1.user_id = m.user_id AND d1.id = m.max_id
+      ) dLatest ON dLatest.user_id = u.id`;
 
-    // Count total
-    const [countRows] = await pool.query(`SELECT COUNT(*) AS total ${baseSelect}`, params);
-    const totalUsers = countRows[0]?.total || 0;
-
-    // Aggregated summary across all filtered users
-    let summary = {
-      totalUsers: totalUsers,
-      withDeclaration: 0,
-      withoutDeclaration: 0,
-      approved: 0,
-      pending: 0,
-      rejected: 0,
-      byType: { first: 0, biennial: 0, final: 0, none: 0 }
-    };
-    if (totalUsers > 0) {
-      const aggSql = `SELECT 
-          COUNT(*) AS totalUsers,
-          SUM(CASE WHEN dLatest.id IS NOT NULL THEN 1 ELSE 0 END) AS withDeclaration,
-          SUM(CASE WHEN dLatest.id IS NULL THEN 1 ELSE 0 END) AS withoutDeclaration,
-          SUM(CASE WHEN dLatest.status = 'approved' THEN 1 ELSE 0 END) AS approved,
-          SUM(CASE WHEN dLatest.status = 'rejected' THEN 1 ELSE 0 END) AS rejected,
-          SUM(CASE WHEN dLatest.id IS NOT NULL AND dLatest.status NOT IN ('approved','rejected') THEN 1 ELSE 0 END) AS pending,
-          SUM(CASE WHEN dLatest.declaration_type LIKE 'first%' THEN 1 ELSE 0 END) AS firstType,
-          SUM(CASE WHEN dLatest.declaration_type LIKE 'bien%' THEN 1 ELSE 0 END) AS biennialType,
-          SUM(CASE WHEN dLatest.declaration_type LIKE 'final%' THEN 1 ELSE 0 END) AS finalType,
-          SUM(CASE WHEN dLatest.id IS NULL THEN 1 ELSE 0 END) AS noneType
-        ${baseSelect}`;
-      try {
-        const [aggRows] = await pool.query(aggSql, params);
-        if (aggRows.length) {
-          const a = aggRows[0];
-          summary = {
-            totalUsers: a.totalUsers || 0,
-            withDeclaration: a.withDeclaration || 0,
-            withoutDeclaration: a.withoutDeclaration || 0,
-            approved: a.approved || 0,
-            pending: a.pending || 0,
-            rejected: a.rejected || 0,
-            byType: {
-              first: a.firstType || 0,
-              biennial: a.biennialType || 0,
-              final: a.finalType || 0,
-              none: a.noneType || 0
-            }
-          };
-        }
-      } catch (err) {
-        console.warn('Aggregation failed (department users status):', err.message);
+    if (['approved','rejected','pending','none'].includes(statusFilter)) {
+      if (statusFilter === 'none') {
+        where.push('dLatest.id IS NULL');
+      } else if (statusFilter === 'pending') {
+        where.push("(dLatest.id IS NOT NULL AND dLatest.status NOT IN ('approved','rejected'))");
+      } else {
+        where.push('dLatest.status = ?');
+        params.push(statusFilter);
       }
     }
 
-    // Paged rows
-    let rows = [];
-  const pageSql = `SELECT 
-        u.id,
-        u.payroll_number,
-    ${natExprSelect},
-        u.first_name,
-        u.other_names,
-        ${surnameExprSelect},
-        u.email,
-        u.department,
-        dLatest.id AS latest_declaration_id,
-        dLatest.declaration_type AS latest_declaration_type,
-        dLatest.status AS latest_declaration_status,
-        dLatest.declaration_date AS latest_declaration_date,
-        dLatest.submitted_at AS latest_submitted_at
-      ${baseSelect}
-      ORDER BY ${orderExpr} ${sortDir}, u.id ASC
-      LIMIT ? OFFSET ?`;
-    const [pageRows] = await pool.query(pageSql, [...params, limit, offset]);
-    rows = pageRows;
+    const whereSql = where.length ? ('WHERE ' + where.join(' AND ')) : '';
 
-    return res.json({
-      success: true,
-      page,
-      limit,
-      total: totalUsers,
-      totalPages: Math.ceil(totalUsers / limit),
-      data: {
-        users: rows,
-        summary
-      }
-    });
+    // Count total
+    const [countRows] = await pool.query(
+      `SELECT COUNT(*) AS total
+       FROM users u
+       ${statusJoin}
+       ${whereSql}`,
+      params
+    );
+    const total = countRows[0]?.total || 0;
+
+    // Page data
+    const [rows] = await pool.query(
+      `SELECT u.id, u.payroll_number, u.first_name, u.other_names, u.surname, u.email, u.department, u.national_id,
+              dLatest.id AS latest_declaration_id, dLatest.declaration_type AS latest_declaration_type,
+              dLatest.status AS latest_declaration_status,
+              dLatest.declaration_date AS latest_declaration_date, dLatest.submitted_at AS latest_submitted_at
+       FROM users u
+       ${statusJoin}
+       ${whereSql}
+       ORDER BY ${orderExpr} ${sortDir}, u.id ASC
+       LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+
+    // Summary by status (over full filtered set)
+    let summary = { totalUsers: total, approved: 0, rejected: 0, pending: 0, none: 0 };
+    if (total > 0) {
+      const [agg] = await pool.query(
+        `SELECT
+            SUM(CASE WHEN dLatest.status = 'approved' THEN 1 ELSE 0 END) AS approved,
+            SUM(CASE WHEN dLatest.status = 'rejected' THEN 1 ELSE 0 END) AS rejected,
+            SUM(CASE WHEN dLatest.id IS NOT NULL AND dLatest.status NOT IN ('approved','rejected') THEN 1 ELSE 0 END) AS pending,
+            SUM(CASE WHEN dLatest.id IS NULL THEN 1 ELSE 0 END) AS none
+         FROM users u
+         ${statusJoin}
+         ${whereSql}`,
+        params
+      );
+      const a = agg?.[0] || {};
+      summary = { totalUsers: total, approved: a.approved || 0, rejected: a.rejected || 0, pending: a.pending || 0, none: a.none || 0 };
+    }
+
+    return res.json({ success: true, page, limit, total, data: rows, summary });
   } catch (error) {
     console.error('getDepartmentUserDeclarationStatus error:', error);
     return res.status(500).json({ success: false, message: 'Server error fetching department user statuses' });
@@ -1891,9 +1805,9 @@ exports.elevateFromUser = async (req, res) => {
     }
     // Map role to short form consistent with existing adminLogin behavior
     let shortRole = admin.role;
-  if (shortRole === 'hr_admin') shortRole = 'hr';
-  else if (shortRole === 'it_admin') shortRole = 'it';
-  else if (shortRole === 'super_admin') shortRole = 'super';
+    if (shortRole === 'hr_admin') shortRole = 'hr';
+    else if (shortRole === 'it_admin') shortRole = 'it';
+    else if (shortRole === 'super_admin') shortRole = 'super';
 
     const accessTtl = process.env.ADMIN_ACCESS_TOKEN_EXPIRES_IN || '30m';
     const crypto = require('crypto');
@@ -1917,7 +1831,7 @@ exports.elevateFromUser = async (req, res) => {
 exports.exportDeclarationsCsv = async (req, res) => {
   try {
     // Optional filters: department, fromDate, toDate
-    const { department, from, to } = req.query;
+  const { department, from, to } = req.query;
     const conditions = [];
     const params = [];
     if (department) { conditions.push('u.department = ?'); params.push(department); }
@@ -1925,7 +1839,7 @@ exports.exportDeclarationsCsv = async (req, res) => {
     if (to) { conditions.push('d.declaration_date <= ?'); params.push(to); }
     const whereClause = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
-    // Respect admin department scoping (HR admins limited to their department)
+  // Respect admin department scoping (HR-only limited to their department)
     if (req.admin && (req.admin.normalizedRole === 'hr' || req.admin.role === 'hr_admin')) {
       // If they supplied a different department filter, override to enforce their own
       if (!req.admin.department) {
@@ -2018,6 +1932,7 @@ exports.lookupUserByNationalId = async (req, res) => {
     // Department scoping: HR admins only allowed to see users in their department
     const params = [nationalId.trim()];
     let where = 'WHERE national_id = ?';
+  // HR-only scoping
     if (req.admin && req.admin.department && (req.admin.normalizedRole === 'hr' || req.admin.role === 'hr_admin')) {
       where += ' AND department = ?';
       params.push(req.admin.department);
@@ -2049,7 +1964,7 @@ exports.sendBulkSMS = async (req, res) => {
       maxChunkSize = 150
     } = req.body || {};
 
-  // Role check: allow super, it_admin, hr_admin. Department scoping applies only to HR.
+  // Role check: allow super, it_admin, hr_admin (finance removed). Department scoping applies only to HR.
   const role = (req.admin && (req.admin.normalizedRole || req.admin.role)) || '';
   const allowed = new Set(['super','super_admin','it','it_admin','hr','hr_admin']);
     if (!allowed.has(role)) {
@@ -2065,8 +1980,8 @@ exports.sendBulkSMS = async (req, res) => {
     const params = [];
     const where = [];
     where.push('u.phone_number IS NOT NULL AND TRIM(u.phone_number) <> ""');
-    // Department scoping for HR admins only
-    if (req.admin && req.admin.department && (req.admin.normalizedRole === 'hr' || req.admin.role === 'hr_admin')) {
+  // Department scoping for HR only
+  if (req.admin && req.admin.department && ['hr','hr_admin'].includes(role)) {
       where.push('u.department = ?');
       params.push(req.admin.department);
     }

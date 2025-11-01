@@ -11,7 +11,6 @@ const declarationRoutes = require("./routes/declarationRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const hrAdminRoutes = require("./routes/hrAdminRoutes");
 const itAdminRoutes = require("./routes/itAdminRoutes");
-const financeAdminRoutes = require("./routes/financeAdminRoutes");
 
 const draftRoutes = require("./routes/draftRoutes");
 const userRoutes = require("./routes/userRoutes");
@@ -153,7 +152,6 @@ app.use("/api/declarations", declarationRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/hr-admin", hrAdminRoutes);
 app.use("/api/it-admin", itAdminRoutes);
-app.use("/api/finance-admin", financeAdminRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/drafts", draftRoutes);
 // Consent submission was originally mounted only under /api/admin/consent/consent

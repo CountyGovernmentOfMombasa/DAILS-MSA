@@ -44,8 +44,6 @@ function GuidNotes() {
           <h1 style={{ fontSize: 28, marginBottom: 16 }}>Guidelines on the Completion of the Declaration of Income, Assets and Liabilities</h1>
           <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
             <Link to="/privacy-notice" style={{ color: '#0056b3', textDecoration: 'underline', fontWeight: 600 }}>View Privacy Notice</Link>
-            <span style={{ color: '#999' }}>|</span>
-            <Link to="/consent" style={{ color: '#0056b3', textDecoration: 'underline', fontWeight: 600 }}>Open Consent Form</Link>
           </div>
           <ol style={{ paddingLeft: 20 }}>
             {guidelines.map((note, idx) => (

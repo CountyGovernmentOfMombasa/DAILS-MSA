@@ -14,12 +14,14 @@ function maskPhone(phone) {
 
 exports.getITAdminDeclarations = async (req, res) => {
   try {
+    const role = (req.admin && (req.admin.normalizedRole || req.admin.role)) || '';
+    // Only IT and Super admins can use IT module endpoints
+    if (!['it','it_admin','super','super_admin'].includes(role)) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
     let departmentFilter = '';
     let params = [];
-    if (req.admin && req.admin.department) {
-      departmentFilter = 'AND u.department = ?';
-      params.push(req.admin.department);
-    }
+    // IT and Super can view all departments; no filter. Any other roles would be blocked above.
     const [declarations] = await pool.query(`
       SELECT 
         d.id, d.user_id, d.declaration_date, d.status, d.declaration_type, d.correction_message,
@@ -87,7 +89,7 @@ exports.createAdminUser = async (req, res) => {
     let role = rawRole;
     if (roleMap[role]) role = roleMap[role];
 
-     const allowedRoles = ['super_admin', 'hr_admin', 'it_admin'];
+    const allowedRoles = ['super_admin', 'hr_admin', 'it_admin'];
 
     if (!username || !password || !role || !first_name || !surname) {
       return res.status(400).json({ message: 'Username, password, role, first_name and surname are required.' });
