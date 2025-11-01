@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL;
+// Default to relative '/api' if no explicit base URL is provided.
+// This ensures local dev (CRA proxy) and production reverse-proxy both work.
+const API_URL = process.env.REACT_APP_API_URL || '/api';
 
 // Global Axios interceptor for uniform 401 / 404 handling
 let interceptorInstalled = false;
