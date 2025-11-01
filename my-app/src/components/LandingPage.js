@@ -18,7 +18,7 @@ import {
 } from "react-bootstrap";
 import useAdminSession from "../hooks/useAdminSession";
 import "./LandingPage.css"; // Assuming this file exists and is correct
-import { getDeclarations, getProgress, deleteProgress } from "../api";
+import { getDeclarations, getProgress, deleteProgress, getAllDeclarations } from "../api";
 // Department logic now mirrors UserForm: user selects sub_department, department auto-derived (read-only)
 import {
   SUB_DEPARTMENTS,
@@ -59,6 +59,7 @@ const LandingPage = () => {
   const [declModalLoading, setDeclModalLoading] = useState(false);
   const [declModalError, setDeclModalError] = useState("");
   const [selectedDecl, setSelectedDecl] = useState(null);
+  const [adminFallbackUsed, setAdminFallbackUsed] = useState(false);
   const navigate = useNavigate();
   const {
     hasAdminAccess,
@@ -125,11 +126,35 @@ const LandingPage = () => {
       }
       setDeclarationsLoading(true);
       setDeclarationsError("");
+      setAdminFallbackUsed(false);
       try {
         const token = localStorage.getItem("token");
         if (!token) throw new Error("No token");
         const res = await getDeclarations(`Bearer ${token}`);
-        const list = (res.data && res.data.declarations) || [];
+        let list = (res.data && res.data.declarations) || [];
+        // If nothing returned, and we have admin access with an active admin token, try admin index as fallback (match by National ID)
+        try {
+          if (
+            Array.isArray(list) &&
+            list.length === 0 &&
+            hasAdminAccess &&
+            adminToken &&
+            profile &&
+            profile.national_id
+          ) {
+            const adminRes = await getAllDeclarations(adminToken);
+            const all = (adminRes && adminRes.data) || [];
+            const matched = all.filter(
+              (d) => String(d.national_id) === String(profile.national_id)
+            );
+            if (matched.length > 0) {
+              list = matched;
+              setAdminFallbackUsed(true);
+            }
+          }
+        } catch (_) {
+          // ignore admin fallback failures silently
+        }
         if (!cancelled) {
           setDeclarations(list);
           window.__declListCached = list;
@@ -150,7 +175,7 @@ const LandingPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [declPageSize, declPage]);
+  }, [declPageSize, declPage, hasAdminAccess, adminToken, profile]);
 
   const handleRetryDeclarations = () => {
     if (typeof window.__retryFetchDeclarations === "function") {
@@ -475,27 +500,18 @@ const LandingPage = () => {
           </thead>
           <tbody>
             {pageSlice.map((decl, localIdx) => {
-              const firstFinDecl =
-                Array.isArray(decl.financial_unified) &&
-                decl.financial_unified.length > 0
-                  ? decl.financial_unified[0]
-                  : null;
               return (
                 <tr key={decl.id}>
                   <td>{startIdx + localIdx + 1}</td>
                   <td>{decl.declaration_type || "N/A"}</td>
                   <td>
-                    {firstFinDecl &&
-                    firstFinDecl.period_start_date &&
-                    firstFinDecl.period_end_date
-                      ? `${firstFinDecl.period_start_date} to ${firstFinDecl.period_end_date}`
+                    {decl.period_start_date && decl.period_end_date
+                      ? `${decl.period_start_date} to ${decl.period_end_date}`
                       : "N/A"}
                   </td>
                   <td>
-                    {firstFinDecl && firstFinDecl.declaration_date
-                      ? new Date(
-                          firstFinDecl.declaration_date
-                        ).toLocaleDateString()
+                    {decl.declaration_date
+                      ? new Date(decl.declaration_date).toLocaleDateString()
                       : "N/A"}
                   </td>
                   <td>
@@ -1006,6 +1022,11 @@ const LandingPage = () => {
                     </Button>
                   </Alert>
                 )}
+                {adminFallbackUsed && (
+                  <Alert variant="info" className="py-2">
+                    Showing declarations matched by your National ID via admin index.
+                  </Alert>
+                )}
                 {declarations.length === 0 ? (
                   <Alert variant="info">No previous declarations found.</Alert>
                 ) : (
@@ -1060,7 +1081,11 @@ const LandingPage = () => {
                         setShowDiscardModal(true);
                         if (typeof deleteProgress === "function") {
                           try {
-                            await deleteProgress();
+                            if (profile) {
+                              const key = deriveUserKey(profile);
+                              const token = localStorage.getItem("token");
+                              await deleteProgress(key, token);
+                            }
                           } catch (e) {}
                         }
                       }}
