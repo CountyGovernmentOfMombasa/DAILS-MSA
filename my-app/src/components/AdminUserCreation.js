@@ -26,6 +26,11 @@ const AdminUserCreation = ({ adminUser }) => {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm(prev => {
+      if (name === 'role') {
+        // Only HR admins use departments; clear dept fields when switching away
+        const clearing = value !== 'hr_admin' ? { department: '', sub_department: '' } : {};
+        return { ...prev, role: value, ...clearing };
+      }
       if (name === 'sub_department') {
         const parent = SUB_DEPARTMENT_PARENT[value] || '';
         return { ...prev, sub_department: value, department: parent };
@@ -90,7 +95,7 @@ const AdminUserCreation = ({ adminUser }) => {
             ...prev,
             first_name: autoFirst,
             surname: autoSurname,
-            department: prev.role === 'super_admin' ? '' : (data.user.department || prev.department),
+            department: prev.role === 'hr_admin' ? (data.user.department || prev.department) : '',
             username: nextUsername
           };
         });
@@ -117,7 +122,7 @@ const AdminUserCreation = ({ adminUser }) => {
           setError('Provide userId or nationalId for linking');
           return;
         }
-      } else if (form.role !== 'super_admin') {
+      } else if (form.role === 'hr_admin') {
         if (!form.sub_department) {
           setLoading(false);
           setError('Sub Department is required');
@@ -134,8 +139,8 @@ const AdminUserCreation = ({ adminUser }) => {
         role: form.role,
         first_name: form.first_name || undefined,
         surname: form.surname || undefined,
-        department: form.role === 'super_admin' ? undefined : form.department || undefined,
-        sub_department: form.role === 'super_admin' ? undefined : form.sub_department || undefined,
+        department: form.role === 'hr_admin' ? (form.department || undefined) : undefined,
+        sub_department: form.role === 'hr_admin' ? (form.sub_department || undefined) : undefined,
         linkExistingUser: form.linkExistingUser || undefined,
         userId: form.userId ? parseInt(form.userId,10) : undefined,
         nationalId: form.nationalId || undefined
@@ -202,11 +207,10 @@ const AdminUserCreation = ({ adminUser }) => {
           <select className="form-select" name="role" value={form.role} onChange={handleChange} required>
             <option value="hr_admin">HR Admin</option>
             <option value="it_admin">IT Admin</option>
-            <option value="finance_admin">Finance Admin</option>
             <option value="super_admin">Super Admin</option>
           </select>
         </div>
-        {form.role !== 'super_admin' && (
+        {form.role === 'hr_admin' && (
           <>
             <div className="mb-2">
               <label className="form-label">Sub Department *</label>

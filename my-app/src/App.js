@@ -17,7 +17,7 @@ import DeclarationView from './components/DeclarationView';
 import AdminPage from './components/AdminPage';
 import HRAdminDashboard from './components/HRAdminDashboard';
 import ITAdminDashboard from './components/ITAdminDashboard';
-import FinanceAdminDashboard from './components/FinanceAdminDashboard';
+// FinanceAdminDashboard removed; finance role deprecated
 import ErrorBoundary from './components/ErrorBoundary';
 import GuidNotes from './components/GuidNotes';
 import './App.css';
@@ -62,7 +62,6 @@ function App() {
                       const rawRole = adminUser && adminUser.role ? adminUser.role : '';
                       const normalized = rawRole === 'hr_admin' ? 'hr'
                         : rawRole === 'it_admin' ? 'it'
-                        : rawRole === 'finance_admin' ? 'finance'
                         : rawRole === 'super_admin' ? 'super'
                         : rawRole; // already short or unknown
                       if (normalized === 'hr') {
@@ -71,9 +70,7 @@ function App() {
                       if (normalized === 'it') {
                         return <ITAdminDashboard {...props} />;
                       }
-                      if (normalized === 'finance') {
-                        return <FinanceAdminDashboard {...props} />;
-                      }
+                      // finance role removed
                       // Default (super or fallback) => main AdminPage
                       return <AdminPage {...props} />;
                     }}

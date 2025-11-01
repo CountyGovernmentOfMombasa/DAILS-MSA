@@ -8,14 +8,15 @@ A Node.js/Express backend API for managing employee financial declarations.
 - Employee registration and login
 - Declaration management (CRUD operations)
 - Admin panel for viewing all declarations
-- Department-based data scoping: all non-super admins only see users & declarations within their assigned department
-- Super admin has unrestricted visibility across all departments
+- Department-based data scoping: HR admins only see users & declarations within their own department; Super and IT admins have unrestricted access across all departments
+- Super admin has unrestricted visibility across all departments (IT admins also have unrestricted access in their modules)
 - Input validation and security middleware
 - MySQL database integration
 
 ## Removed / Deprecated Features
 
-- The separate "departmental admin" login & dashboard flow has been removed. Department filtering is now applied automatically for every non-super admin role (HR, Finance, IT). Any existing references to deprecated departmental components should be cleaned up; placeholder files may remain temporarily for build stability until fully pruned.
+- The separate "departmental admin" login & dashboard flow has been removed. Department filtering now applies automatically for HR admins only. Super and IT admins are not department-restricted.
+- The Finance admin role has been removed entirely (schema enum, routes, controllers, and frontend references). Any legacy finance artifacts are deprecated and return HTTP 410 if invoked.
 - Admin password reset request queue (endpoints: `/api/admin/forgot-password-request`, `/api/admin/password-reset-requests`, `/api/admin/password-reset-requests/:id/resolve`) was removed on 2025-10-08. Rationale: simplified security model; direct privileged admins can perform a secure password change instead. The table `admin_password_reset_requests` is dropped via migration `20251008_drop_admin_password_reset_requests.sql`. If you still have build artifacts referencing these endpoints, rebuild the frontend.
 
 ## Admin Linking Workflow (New)
@@ -58,13 +59,13 @@ Request (linked via userId example):
 ```json
 {
   "username": "john.admin",
-  "role": "finance_admin",
+  "role": "it_admin",
   "linkExistingUser": true,
   "userId": 42
 }
 ```
 
-Request (non‑linked legacy style):
+Request (non‑linked, legacy style):
 
 ```json
 {
@@ -72,8 +73,7 @@ Request (non‑linked legacy style):
   "role": "it_admin",
   "password": "Str0ng!Pass",
   "first_name": "Ext",
-  "surname": "Contractor",
-  "department": "IT"
+  "surname": "Contractor"
 }
 ```
 

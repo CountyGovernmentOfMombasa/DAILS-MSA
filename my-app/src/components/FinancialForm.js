@@ -531,20 +531,6 @@ const computeLiabilityErrors = (rows) => {
   return errs;
 };
 
-// ---- Asset validation (Land size required) ----
-const computeAssetErrors = (rows) => {
-  const errs = {};
-  (rows || []).forEach((row, idx) => {
-    // Require size for any land-type asset (e.g., Land, Ancestral Land, Acquired Land)
-    if ((row.type || '').toLowerCase().includes('land')) {
-      if (!(row.size || '').toString().trim()) {
-        errs[idx] = 'Size is required for Land.';
-      }
-    }
-  });
-  return errs;
-};
-
 // ---- Section completeness helpers ----
 const hasValue = (v) => v !== undefined && v !== null && String(v).trim() !== '';
 const isNilRow = (r) => (r?.type === 'Nil' && r?.description === 'Nil');
@@ -617,7 +603,7 @@ const incomeDescriptionPlaceholder = (type) => {
       return 'e.g. Company name';
     case 'Dowry':
       return 'e.g. From whom and occasion';
-    case 'Transportation Income (Matatus, Taxis, Boda Boda etc.)':
+    case 'Income from Matatus/Taxis/Boda Boda':
       return 'e.g. Vehicle info';
     case 'Insurance Bonuses':
       return 'e.g. Policy and provider';
@@ -644,7 +630,7 @@ const incomeDescriptionPlaceholder = (type) => {
         'Building',
         'Houses',
         'Vehicles',
-        'Transportation Vehicles',
+        'Matatus/Taxis/Boda Boda',
         'Corporate Shares',
         'Sacco Shares',
         'Household Goods',
@@ -664,7 +650,7 @@ const incomeDescriptionPlaceholder = (type) => {
       'Dividends from Saccos',
       'Dividends from Stock',
       'Dowry',
-      'Transportation Income (Matatus, Taxis, Boda Boda etc.)',
+      'Income from Matatus/Taxis/Boda Boda',
       'Insurance Bonuses',
       'Cash Gifts',
       'Royalties',
@@ -692,7 +678,6 @@ const incomeDescriptionPlaceholder = (type) => {
     const liabilitiesDescriptionOptions = {};
 
   const liabilityErrors = section === 'liabilities' ? computeLiabilityErrors(currentData.liabilities || []) : {};
-  const assetErrors = section === 'assets' ? computeAssetErrors(currentData.assets || []) : {};
     const isNil = Array.isArray(currentData[section]) && currentData[section].length === 1 && currentData[section][0].type === 'Nil' && currentData[section][0].description === 'Nil';
 
     const toggleNilSection = () => {
@@ -741,7 +726,9 @@ const incomeDescriptionPlaceholder = (type) => {
               <tr>
                 <th style={{ width: '20%' }}>Type</th>
                 <th style={{ width: '40%' }}>Description</th>
-                <th style={{ width: '20%' }}>Approximate Value ({currency})</th>
+                <th style={{ width: '20%' }}>
+                  {section === 'liabilities' ? `Outstanding Amount (${currency})` : `Approximate Value (${currency})`}
+                </th>
                 <th style={{ width: '20%' }}>Action</th>
               </tr>
             </thead>
@@ -825,7 +812,7 @@ const incomeDescriptionPlaceholder = (type) => {
                 const type = item.type || '';
                 const isLandType = type === 'Land';
                 const isBuildingType = type === 'Building' || type === 'Houses';
-                const isVehicleType = type === 'Vehicles' || type === 'Transportation Vehicles';
+                const isVehicleType = type === 'Vehicles' || type === 'Matatus/Taxis/Boda Boda';
                   return (
                     <tr key={index}>
                       <td>
@@ -855,7 +842,7 @@ const incomeDescriptionPlaceholder = (type) => {
                         )}
                       </td>
                       <td>
-                          {/* Conditional fields as requested for Land, Building/Houses, Vehicles/Transportation Vehicles */}
+                          {/* Conditional fields as requested for Land, Building/Houses, Vehicles/Matatus/Taxis/Boda Boda */}
                           {isNil ? (
                           <Form.Control disabled value="Nil" style={{ borderRadius: '8px' }} />
                           ) : isVehicleType ? (
@@ -863,7 +850,7 @@ const incomeDescriptionPlaceholder = (type) => {
                             <Form.Control
                               className="mb-1"
                               type="text"
-                                placeholder="Make"
+                                placeholder=" Make e.g. Toyota, Nissan, Mazda"
                               value={item.make || ''}
                               onChange={e => handleTableChange('assets', index, 'make', e.target.value)}
                               style={{ borderRadius: '8px' }}
@@ -871,7 +858,7 @@ const incomeDescriptionPlaceholder = (type) => {
                             <Form.Control
                               className="mb-1"
                               type="text"
-                              placeholder="Model"
+                              placeholder="Model e.g. Corolla, Axio, Demio"
                               value={item.model || ''}
                               onChange={e => handleTableChange('assets', index, 'model', e.target.value)}
                               style={{ borderRadius: '8px' }}
@@ -879,7 +866,7 @@ const incomeDescriptionPlaceholder = (type) => {
                             <Form.Control
                               className="mb-1"
                               type="text"
-                                placeholder="Registration No."
+                                placeholder="e.g. KDA 123A"
                               value={item.licence_no || ''}
                               onChange={e => handleTableChange('assets', index, 'licence_no', e.target.value)}
                               style={{ borderRadius: '8px' }}
@@ -911,7 +898,6 @@ const incomeDescriptionPlaceholder = (type) => {
                                 value={item.size || ''}
                                 onChange={e => handleTableChange('assets', index, 'size', e.target.value)}
                                 style={{ borderRadius: '8px', flex: '1 1 auto' }}
-                                isInvalid={!!assetErrors[index]}
                               />
                               <Form.Select
                                 className="mb-1"
@@ -926,9 +912,6 @@ const incomeDescriptionPlaceholder = (type) => {
                                 <option value="sqft">Sq Ft</option>
                               </Form.Select>
                             </div>
-                            {assetErrors[index] && (
-                              <div className="invalid-feedback d-block small mt-0">{assetErrors[index]}</div>
-                            )}
                           </div>
                           ) : isBuildingType ? (
                           <div className="d-flex flex-column gap-2">

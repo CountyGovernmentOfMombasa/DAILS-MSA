@@ -319,7 +319,6 @@ const AdminPage = ({ adminUser }) => {
     switch (role) {
       case 'super_admin': return 'Super';
       case 'hr_admin': return 'HR';
-      case 'finance_admin': return 'Finance';
       case 'it_admin': return 'IT';
       default: return role;
     }

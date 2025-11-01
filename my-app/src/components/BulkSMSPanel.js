@@ -240,7 +240,6 @@ const BulkSMSPanel = ({ itAdmin = false }) => {
               <option value="super">Super</option>
               <option value="it_admin">IT Admin</option>
               <option value="hr_admin">HR Admin</option>
-              <option value="finance_admin">Finance Admin</option>
             </select>
           </div>
           <div className="col-md-2">

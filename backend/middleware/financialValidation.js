@@ -1,11 +1,53 @@
 // Enforce allowed types for income, assets, and liabilities across declarations, spouses, and children
 // Keeps server in sync with frontend options
 
+// Accept both legacy and UI-visible synonyms to prevent validation mismatches
 const allowedIncome = new Set([
-  'Salary','Rent','Crops','Livestock and their Products','Interest on Bank Deposits','Dividends from Saccos','Dividends from Stock','Dowry','Transportation Income','Insurance Bonuses','Cash Gifts','Royalties','Damages provided by court.','Content Creation','Other'
+  // Core types
+  'Salary',
+  'Interest on Bank Deposits',
+  'Dividends from Saccos',
+  'Dividends from Stock',
+  'Dowry',
+  'Insurance Bonuses',
+  'Cash Gifts',
+  'Royalties',
+  'Damages provided by court.',
+  'Content Creation',
+  'Other',
+  // Synonyms / UI labels
+  'Rent',
+  'Rental Income',
+  'Crops',
+  'Sale of Crops',
+  'Livestock and their Products',
+  'Sale of Livestock and their Products',
+  'Transportation Income',
+  'Income from Matatus/Taxis/Boda Boda'
 ]);
 const allowedAssets = new Set([
-  'Ancestral Land','Acquired Land','Building','Houses','Vehicles','Transportation Vehicles','Stock Shares','Sacco Shares','Household Goods','Personal Items','Jewelry','Cash At Hand','Cash At Bank','Financial Obligations Owed','Other'
+  // Core types
+  'Building',
+  'Houses',
+  'Vehicles',
+  'Sacco Shares',
+  'Household Goods',
+  'Personal Items',
+  'Jewelry',
+  'Cash At Hand',
+  'Cash At Bank',
+  'Financial Obligations Owed',
+  'Other',
+  // Land types and UI synonym
+  'Ancestral Land',
+  'Acquired Land',
+  'Land',
+  // Vehicle grouping synonym used in UI
+  'Transportation Vehicles',
+  'Matatus/Taxis/Boda Boda',
+  // Shares synonyms
+  'Stock Shares',
+  'Corporate Shares'
 ]);
 const allowedLiabilities = new Set([
   'Outstanding School Fees','Friendly Loans','Sacco Loan','Bank Loan','Vehicle Loan','Mortgage Loans','Student Loans','Imprest Due','Salary Advance','Outstanding Dowry','Loan From Chama','Mobile Loan','Other'

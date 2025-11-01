@@ -18,9 +18,10 @@ SET time_zone = "+00:00";
 /*!40101 SET NAMES utf8mb4 */;
 
 --
--- Database: `employee_declarations`
---
-
+-- NOTE: This dump is a historical snapshot and may reference the 'finance_admin' role.
+-- The current schema removes 'finance_admin' from admin_users.role.
+-- Please apply the latest migrations in database/migrations (e.g.,
+-- 20251101_alter_admin_users_role_drop_finance.sql) after loading this dump.
 -- --------------------------------------------------------
 
 --

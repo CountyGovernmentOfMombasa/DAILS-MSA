@@ -2,7 +2,7 @@ const pool = require('../config/db');
 
 // Ensure only super admin (role super_admin or normalized super) can manage
 function requireSuper(req, res) {
-  if (!req.admin || !['super','super_admin'].includes(req.admin.role) && req.admin.normalizedRole !== 'super') {
+  if (!req.admin || (!['super','super_admin'].includes(req.admin.role) && req.admin.normalizedRole !== 'super')) {
     res.status(403).json({ success:false, message:'Super admin access required'});
     return false;
   }
@@ -11,7 +11,7 @@ function requireSuper(req, res) {
 
 exports.list = async (req, res) => {
   try {
-    if (!requireSuper(req,res)) return;
+  if (!requireSuper(req,res)) return;
     const [deps] = await pool.query('SELECT id, name, created_at, updated_at FROM departments ORDER BY name');
     const [subs] = await pool.query('SELECT id, department_id, name FROM sub_departments ORDER BY name');
     const map = deps.map(d => ({ ...d, sub_departments: subs.filter(s => s.department_id === d.id) }));
@@ -23,7 +23,7 @@ exports.list = async (req, res) => {
 
 exports.createDepartment = async (req, res) => {
   try {
-    if (!requireSuper(req,res)) return;
+  if (!requireSuper(req,res)) return;
     const { name, sub_departments = [] } = req.body || {};
     if (!name || !name.trim()) return res.status(400).json({ success:false, message:'Name required'});
     const conn = await pool.getConnection();
@@ -50,7 +50,7 @@ exports.createDepartment = async (req, res) => {
 
 exports.renameDepartment = async (req, res) => {
   try {
-    if (!requireSuper(req,res)) return;
+  if (!requireSuper(req,res)) return;
     const { id } = req.params;
     const { name } = req.body || {};
     if (!name || !name.trim()) return res.status(400).json({ success:false, message:'Name required'});
@@ -69,7 +69,7 @@ exports.renameDepartment = async (req, res) => {
 
 exports.deleteDepartment = async (req,res) => {
   try {
-    if (!requireSuper(req,res)) return;
+  if (!requireSuper(req,res)) return;
     const { id } = req.params;
     const { reassign_to = null } = req.body || {};
     const [rows] = await pool.query('SELECT id,name FROM departments WHERE id=?',[id]);
@@ -97,7 +97,7 @@ exports.deleteDepartment = async (req,res) => {
 
 exports.addSubDepartment = async (req,res) => {
   try {
-    if (!requireSuper(req,res)) return;
+  if (!requireSuper(req,res)) return;
     const { id } = req.params; // department id
     const { name } = req.body || {};
     if (!name || !name.trim()) return res.status(400).json({ success:false, message:'Name required'});
@@ -111,7 +111,7 @@ exports.addSubDepartment = async (req,res) => {
 
 exports.renameSubDepartment = async (req,res) => {
   try {
-    if (!requireSuper(req,res)) return;
+  if (!requireSuper(req,res)) return;
     const { subId } = req.params;
     const { name } = req.body || {};
     if (!name || !name.trim()) return res.status(400).json({ success:false, message:'Name required'});

@@ -14,7 +14,6 @@ export function useAdminSession() {
 
   const computeRoleAbbrev = useCallback((raw) => {
     if (raw === 'hr_admin') return 'HR';
-    if (raw === 'finance_admin') return 'FIN';
     if (raw === 'it_admin') return 'IT';
     if (raw === 'super_admin') return 'SUPER';
     return '';

@@ -82,13 +82,12 @@ exports.createAdminUser = async (req, res) => {
     const roleMap = {
       hr: 'hr_admin',
       it: 'it_admin',
-      super: 'super_admin',
-      finance: 'finance_admin'
+      super: 'super_admin'
     };
     let role = rawRole;
     if (roleMap[role]) role = roleMap[role];
 
-    const allowedRoles = ['super_admin', 'hr_admin', 'finance_admin', 'it_admin'];
+     const allowedRoles = ['super_admin', 'hr_admin', 'it_admin'];
 
     if (!username || !password || !role || !first_name || !surname) {
       return res.status(400).json({ message: 'Username, password, role, first_name and surname are required.' });
@@ -106,15 +105,15 @@ exports.createAdminUser = async (req, res) => {
       return res.status(400).json({ message: 'Invalid role supplied.' });
     }
 
-    // Enforce department for non-super roles & validate department value
-    if (role !== 'super_admin') {
-      if (!department) {
-        return res.status(400).json({ message: 'Department is required for non-super admin roles.' });
-      }
-      if (!ALLOWED_DEPARTMENTS.includes(department)) {
-        return res.status(400).json({ message: 'Invalid department.' });
-      }
-    }
+     // Enforce department for non-super roles & validate department value when present
+     if (role !== 'super_admin') {
+       if (!department) {
+         return res.status(400).json({ message: 'Department is required for non-super admin roles.' });
+       }
+       if (!ALLOWED_DEPARTMENTS.includes(department)) {
+         return res.status(400).json({ message: 'Invalid department.' });
+       }
+     }
 
     // Check if username exists
     const [existing] = await pool.query('SELECT id FROM admin_users WHERE username = ?', [username]);
@@ -128,12 +127,12 @@ exports.createAdminUser = async (req, res) => {
     const insertAttempts = [
       {
         sql: 'INSERT INTO admin_users (username, password, role, department, sub_department, first_name, surname, other_names, email, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)',
-        params: [username, hashedPassword, role, role === 'super_admin' ? null : department, role === 'super_admin' ? null : sub_department, first_name, surname, other_names, email]
+         params: [username, hashedPassword, role, role === 'super_admin' ? null : department, role === 'super_admin' ? null : sub_department, first_name, surname, other_names, email]
       },
       {
         // legacy last_name
         sql: 'INSERT INTO admin_users (username, password, role, department, first_name, last_name, other_names, email, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, TRUE)',
-        params: [username, hashedPassword, role, role === 'super_admin' ? null : department, first_name, surname, other_names, email]
+         params: [username, hashedPassword, role, role === 'super_admin' ? null : department, first_name, surname, other_names, email]
       },
       {
         // extreme fallback no department, last_name only

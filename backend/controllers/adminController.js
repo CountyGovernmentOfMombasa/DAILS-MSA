@@ -268,10 +268,10 @@ function mapToCanonical(raw) {
 // Returns unique employee declaration counts by canonical department plus unknown bucket.
 exports.getDepartmentDeclarationStats = async (req, res) => {
   try {
-    // Scope declarations by admin department if not super
+    // Scope declarations by admin department for HR admins only
     let departmentFilter = '';
     let params = [];
-    if (req.admin && req.admin.department && !['super','super_admin'].includes(req.admin.role) && req.admin.normalizedRole !== 'super') {
+    if (req.admin && req.admin.department && (req.admin.normalizedRole === 'hr' || req.admin.role === 'hr_admin')) {
       departmentFilter = 'AND u.department = ?';
       params.push(req.admin.department);
     }
@@ -334,7 +334,7 @@ exports.getAllDeclarations = async (req, res) => {
   try {
     let departmentFilter = '';
     let params = [];
-    if (req.admin && req.admin.department && !['super','super_admin'].includes(req.admin.role) && req.admin.normalizedRole !== 'super') {
+    if (req.admin && req.admin.department && (req.admin.normalizedRole === 'hr' || req.admin.role === 'hr_admin')) {
       departmentFilter = 'AND u.department = ?';
       params.push(req.admin.department);
     }
@@ -422,15 +422,13 @@ exports.adminLogin = async (req, res) => {
       admin.role = 'hr';
     } else if (admin.role === 'it_admin') {
       admin.role = 'it';
-    } else if (admin.role === 'finance_admin') {
-      admin.role = 'finance';
     } else if (admin.role === 'super_admin') {
       admin.role = 'super';
     } else {
       admin.role = 'super';
     }
 
-    // Enforce that any non-super admin must have a department assigned
+    // Enforce that non-super admins must have a department assigned
     if (admin.role !== 'super' && !admin.department) {
       return res.status(403).json({ 
         message: 'Department assignment required. Contact a super admin.',
@@ -469,7 +467,7 @@ exports.verifyAdmin = async (req, res) => {
       admin: {
         ...admin.toJSON(),
         // Provide mapped role consistent with login response
-        role: admin.role === 'hr_admin' ? 'hr' : admin.role === 'it_admin' ? 'it' : admin.role === 'finance_admin' ? 'finance' : 'super'
+        role: admin.role === 'hr_admin' ? 'hr' : admin.role === 'it_admin' ? 'it' : 'super'
       }
     });
   } catch (error) {
@@ -495,8 +493,8 @@ exports.getAllUsers = async (req, res) => {
       conditions.push("(email IS NULL OR email = '')");
     }
 
-    // Department scoping: all non-super admins only see their department
-    if (req.admin && req.admin.department && !['super','super_admin'].includes(req.admin.role) && req.admin.normalizedRole !== 'super') {
+    // Department scoping: HR admins only see their department
+    if (req.admin && req.admin.department && (req.admin.normalizedRole === 'hr' || req.admin.role === 'hr_admin')) {
       conditions.push('department = ?');
       params.push(req.admin.department);
     }
@@ -758,7 +756,7 @@ exports.createAdmin = async (req, res) => {
     if (!username) {
       return res.status(400).json({ message: 'Username is required.' });
     }
-    const allowedRoles = ['super_admin', 'hr_admin', 'finance_admin', 'it_admin'];
+  const allowedRoles = ['super_admin', 'hr_admin', 'it_admin'];
     const safeRole = role && allowedRoles.includes(role) ? role : 'hr_admin';
 
     let finalFirst = first_name;
@@ -790,15 +788,15 @@ exports.createAdmin = async (req, res) => {
       if (!finalFirst) finalFirst = u.first_name || '';
       if (!finalSurname) finalSurname = u.surname || '';
       if (!finalEmail) finalEmail = u.email || null;
-      if (!finalDept && safeRole !== 'super_admin') finalDept = u.department || null;
+  if (!finalDept) finalDept = u.department || null;
     }
 
     if (!finalFirst || !finalSurname) {
       return res.status(400).json({ message: 'First name and surname are required (either provided or derived from linked user).' });
     }
 
-    if (safeRole !== 'super_admin' && !finalDept) {
-      return res.status(400).json({ message: 'Department is required for non-super admin roles.' });
+    if (!finalDept) {
+      return res.status(400).json({ message: 'Department is required for all admin roles.' });
     }
 
     // Derive a password if omitted (non-linked) so bcrypt hashing in model succeeds; linked admins reuse user authentication so password can be placeholder.
@@ -818,7 +816,7 @@ exports.createAdmin = async (req, res) => {
       password: finalPassword,
       email: finalEmail,
       role: safeRole,
-      department: safeRole === 'super_admin' ? null : finalDept,
+  department: finalDept,
       first_name: finalFirst,
       other_names,
       surname: finalSurname,
@@ -879,9 +877,9 @@ exports.createAdmin = async (req, res) => {
 exports.updateAdmin = async (req, res) => {
   try {
     const { adminId } = req.params;
-    const { email, role, first_name, last_name, is_active } = req.body;
+  const { email, role, first_name, last_name, is_active } = req.body;
     // Validate role
-    const allowedRoles = ['super_admin', 'hr_admin', 'finance_admin'];
+  const allowedRoles = ['super_admin', 'hr_admin'];
     const safeRole = role && allowedRoles.includes(role) ? role : undefined;
     // Validate required fields
     if (!first_name || !last_name) {
@@ -994,7 +992,7 @@ exports.changeAdminPassword = async (req, res) => {
     // Issue a fresh token so any stolen old token becomes less useful (best practice)
     let refreshedToken = null;
     try {
-      const mappedRole = admin.role === 'hr_admin' ? 'hr' : admin.role === 'it_admin' ? 'it' : admin.role === 'finance_admin' ? 'finance' : 'super';
+  const mappedRole = admin.role === 'hr_admin' ? 'hr' : admin.role === 'it_admin' ? 'it' : 'super';
       refreshedToken = jwt.sign({
         adminId: admin.id,
         username: admin.username,
@@ -1307,7 +1305,7 @@ exports.getDistinctDepartments = async (req, res) => {
   }
 };
 
-// Create a new user (admin only). Non-super admins are restricted to their department.
+// Create a new user (admin only). HR admins are restricted to their department.
 exports.createUser = async (req, res) => {
   try {
     const {
@@ -1326,8 +1324,8 @@ exports.createUser = async (req, res) => {
       return res.status(400).json({ message: 'payroll_number, first_name, surname, national_id and department are required' });
     }
 
-    // Department scoping for non-super admins
-    if (req.admin && req.admin.department && !['super','super_admin'].includes(req.admin.role) && req.admin.normalizedRole !== 'super') {
+    // Department scoping for HR admins only
+    if (req.admin && req.admin.department && (req.admin.normalizedRole === 'hr' || req.admin.role === 'hr_admin')) {
       if (department !== req.admin.department) {
         return res.status(403).json({ message: 'Cannot create user outside your department' });
       }
@@ -1384,7 +1382,7 @@ exports.createUser = async (req, res) => {
   }
 };
 
-// Delete a user (admin). Non-super admins can only delete within their department.
+  // Delete a user (admin). HR admins can only delete within their department.
 exports.deleteUser = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -1394,7 +1392,7 @@ exports.deleteUser = async (req, res) => {
     if (!rows.length) return res.status(404).json({ message: 'User not found' });
     const target = rows[0];
 
-    if (req.admin && req.admin.department && !['super','super_admin'].includes(req.admin.role) && req.admin.normalizedRole !== 'super') {
+    if (req.admin && req.admin.department && (req.admin.normalizedRole === 'hr' || req.admin.role === 'hr_admin')) {
       if (target.department !== req.admin.department) {
         return res.status(403).json({ message: 'Cannot delete user outside your department' });
       }
@@ -1415,20 +1413,21 @@ exports.deleteUser = async (req, res) => {
   }
 };
 
-// Department user declaration status for IT / HR / Finance admins
+// Department user declaration status for IT / HR admins
 // GET /api/admin/department/users-status[?search=][&department=] (department param only honored for super admins, others locked to their own)
 exports.getDepartmentUserDeclarationStatus = async (req, res) => {
   try {
-    // Accept roles: hr_admin, finance_admin, it_admin (raw) or normalized hr, finance, it. Super admin optional (can pass department)
-    const role = (req.admin && (req.admin.role || req.admin.normalizedRole)) || '';
-    const allowed = ['hr','hr_admin','finance','finance_admin','it','it_admin','super','super_admin'];
+  // Accept roles: hr_admin, it_admin (raw) or normalized hr, it. Super and IT can pass department; HR locked to own.
+  const role = (req.admin && (req.admin.role || req.admin.normalizedRole)) || '';
+  const allowed = ['hr','hr_admin','it','it_admin','super','super_admin'];
     if (!allowed.includes(role)) {
       return res.status(403).json({ success: false, message: 'Forbidden: role not allowed.' });
     }
     let department = req.query.department || null;
-    // Non-super must use their own department
     const isSuper = ['super','super_admin'].includes(role);
-    if (!isSuper) {
+    const isIt = ['it','it_admin'].includes(role);
+    if (!isSuper && !isIt) {
+      // HR: force to own department
       department = req.admin.department || null;
     }
     if (!department) {
@@ -1892,10 +1891,9 @@ exports.elevateFromUser = async (req, res) => {
     }
     // Map role to short form consistent with existing adminLogin behavior
     let shortRole = admin.role;
-    if (shortRole === 'hr_admin') shortRole = 'hr';
-    else if (shortRole === 'it_admin') shortRole = 'it';
-    else if (shortRole === 'finance_admin') shortRole = 'finance';
-    else if (shortRole === 'super_admin') shortRole = 'super';
+  if (shortRole === 'hr_admin') shortRole = 'hr';
+  else if (shortRole === 'it_admin') shortRole = 'it';
+  else if (shortRole === 'super_admin') shortRole = 'super';
 
     const accessTtl = process.env.ADMIN_ACCESS_TOKEN_EXPIRES_IN || '30m';
     const crypto = require('crypto');
@@ -1927,8 +1925,8 @@ exports.exportDeclarationsCsv = async (req, res) => {
     if (to) { conditions.push('d.declaration_date <= ?'); params.push(to); }
     const whereClause = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
-    // Respect admin department scoping (non-super limited to their department)
-    if (req.admin && !['super','super_admin'].includes(req.admin.role) && req.admin.normalizedRole !== 'super') {
+    // Respect admin department scoping (HR admins limited to their department)
+    if (req.admin && (req.admin.normalizedRole === 'hr' || req.admin.role === 'hr_admin')) {
       // If they supplied a different department filter, override to enforce their own
       if (!req.admin.department) {
         return res.status(403).json({ success:false, message:'Admin has no department assigned; cannot export.' });
@@ -2017,10 +2015,10 @@ exports.lookupUserByNationalId = async (req, res) => {
     if (!nationalId || String(nationalId).trim().length < 3) {
       return res.status(400).json({ success: false, message: 'nationalId query parameter required (min length 3)' });
     }
-    // Department scoping: non-super admins only allowed to see users in their department
+    // Department scoping: HR admins only allowed to see users in their department
     const params = [nationalId.trim()];
     let where = 'WHERE national_id = ?';
-    if (req.admin && req.admin.department && !['super','super_admin'].includes(req.admin.role) && req.admin.normalizedRole !== 'super') {
+    if (req.admin && req.admin.department && (req.admin.normalizedRole === 'hr' || req.admin.role === 'hr_admin')) {
       where += ' AND department = ?';
       params.push(req.admin.department);
     }
@@ -2051,9 +2049,9 @@ exports.sendBulkSMS = async (req, res) => {
       maxChunkSize = 150
     } = req.body || {};
 
-    // Role check: allow super, it_admin, hr_admin, finance_admin. Department scoping applies to non-super.
-    const role = (req.admin && (req.admin.normalizedRole || req.admin.role)) || '';
-    const allowed = new Set(['super','super_admin','it','it_admin','hr','hr_admin','finance','finance_admin']);
+  // Role check: allow super, it_admin, hr_admin. Department scoping applies only to HR.
+  const role = (req.admin && (req.admin.normalizedRole || req.admin.role)) || '';
+  const allowed = new Set(['super','super_admin','it','it_admin','hr','hr_admin']);
     if (!allowed.has(role)) {
       return res.status(403).json({ success: false, message: 'Insufficient role to send bulk SMS' });
     }
@@ -2067,8 +2065,8 @@ exports.sendBulkSMS = async (req, res) => {
     const params = [];
     const where = [];
     where.push('u.phone_number IS NOT NULL AND TRIM(u.phone_number) <> ""');
-    // Department scoping for non-super
-    if (req.admin && req.admin.department && !['super','super_admin'].includes(role)) {
+    // Department scoping for HR admins only
+    if (req.admin && req.admin.department && (req.admin.normalizedRole === 'hr' || req.admin.role === 'hr_admin')) {
       where.push('u.department = ?');
       params.push(req.admin.department);
     }

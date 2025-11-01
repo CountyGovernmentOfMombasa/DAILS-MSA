@@ -6,8 +6,8 @@ React frontend for the Employee / Wealth Declaration Platform.
 
 - User authentication & guided multi-step declaration workflow
 - Dynamic forms: personal info, spouse, children, financial items, review, submission
-- Admin dashboards by role (HR / Finance / IT / Super)
-- Department-based data scoping (all non‑super admins restricted to their assigned department)
+- Admin dashboards by role (HR / IT / Super)
+- Department-based data scoping (HR admins restricted to their assigned department; Super and IT have access to all departments)
 - Global error boundary & toast notifications
 - Protected admin routes with JWT token stored in localStorage
 - Unified financial data model: backend synthesizes a single `financial_unified` array (replaces legacy `financial_declarations`)
@@ -18,8 +18,7 @@ React frontend for the Employee / Wealth Declaration Platform.
 |-----------|-----------------|---------------------|------------|
 | super_admin | super | No | All departments |
 | hr_admin | hr | Yes | Own department only |
-| finance_admin | finance | Yes | Own department only |
-| it_admin | it | Yes | Own department only (plus IT-specific audit views) |
+| it_admin | it | No | All departments (plus IT-specific audit views) |
 
 The legacy "departmental admin" dedicated routes/components have been removed—scoping now applies automatically per role.
 

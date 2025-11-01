@@ -1,12 +1,7 @@
+// Deprecated: Finance Admin routes have been removed.
+// This file remains as a stub to avoid import errors during transition.
+// It is not mounted anywhere in app.js.
 const express = require('express');
 const router = express.Router();
-const financeAdminController = require('../controllers/financeAdminController');
-const { verifyAdminToken } = require('../middleware/adminMiddleware');
-const { listQuery } = require('../middleware/requestValidators');
-// Finance admin declarations list validation (page, limit, search)
-const validate = listQuery();
-
-// Get all declarations for Finance admin
-router.get('/declarations', verifyAdminToken, validate, financeAdminController.getFinanceAdminDeclarations);
 
 module.exports = router;
