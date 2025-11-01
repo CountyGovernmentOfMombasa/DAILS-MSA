@@ -54,7 +54,7 @@ function GuidNotes() {
           </ol>
           <div style={{ marginBottom: 24, textAlign: 'right' }}>
             <a
-              href={require('../files/SAMPLE - DULY FILLED DIALs FORM..pdf')}
+              href={require('../files/SAMPLE OF A FILLED DIALs FORM..pdf')}
               download
               style={{
                 color: '#007bff',
