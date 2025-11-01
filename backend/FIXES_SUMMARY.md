@@ -109,3 +109,16 @@
 ## Verification
 
 All files have been syntax-checked and are error-free. The application should now run without issues after installing dependencies and setting up the environment variables.
+
+## 2025-11-01: Role access and scoping changes
+
+- Removed Finance Admin role and module.
+- Unmounted `/api/finance-admin` routes in `app.js`.
+- Removed all references to `finance_admin` in role mappings and allowed roles.
+- HR admins are now always scoped to their own department for listings, user operations, exports, and reports.
+- HR module (`/api/hr-admin/declarations`) requires HR role and an assigned department.
+- IT and Super admins can view data across all departments in IT/admin modules.
+- Department scoping checks in `adminController` now only apply to HR admins.
+- Adjusted permissions in bulk SMS and department status endpoints to reflect the above.
+- Database: removed `finance_admin` from `admin_users.role` enum in `database/schema.sql` and added migration `20251101_alter_admin_users_role_drop_finance.sql` to update existing databases.
+- Seeding: replaced default `finance_admin` with `it_admin` in `databaseSetup.js`'s `ensureDefaultAdmins()`.

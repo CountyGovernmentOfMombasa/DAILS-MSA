@@ -88,7 +88,7 @@ class AdminUser {
     static async create(adminData) {
         try {
             let { username, password, email, role, department, sub_department, first_name, other_names, surname, created_by, is_active, user_id } = adminData;
-            const allowedRoles = ['super_admin', 'hr_admin', 'finance_admin', 'it_admin'];
+            const allowedRoles = ['super_admin', 'hr_admin', 'it_admin'];
             if (!role || !allowedRoles.includes(role)) role = 'hr_admin';
             if (typeof is_active === 'undefined') is_active = true;
             const hashedPassword = await bcrypt.hash(password, 10);

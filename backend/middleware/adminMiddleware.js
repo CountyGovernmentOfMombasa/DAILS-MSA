@@ -27,9 +27,10 @@ const verifyAdminToken = async (req, res, next) => {
       return res.status(401).json({ message: 'Admin account not found or inactive.' });
     }
 
-    // Attach freshest department & role in case they changed after token issuance
-    const rawRole = admin.role; // e.g., hr_admin
-    const normalizedRole = rawRole === 'hr_admin' ? 'hr' : rawRole === 'it_admin' ? 'it' : rawRole === 'finance_admin' ? 'finance' : rawRole === 'super_admin' ? 'super' : rawRole;
+  // Attach freshest department & role in case they changed after token issuance
+  const rawRole = admin.role; // e.g., hr_admin
+  // Finance admin removed; normalize only known roles
+  const normalizedRole = rawRole === 'hr_admin' ? 'hr' : rawRole === 'it_admin' ? 'it' : rawRole === 'super_admin' ? 'super' : rawRole;
     req.admin = {
       ...decoded,
       role: rawRole, // keep raw for compatibility, some code may rely on *_admin form

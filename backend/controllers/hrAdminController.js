@@ -3,12 +3,18 @@ const pool = require('../config/db');
 
 exports.getHRAdminDeclarations = async (req, res) => {
   try {
+    const role = (req.admin && (req.admin.normalizedRole || req.admin.role)) || '';
+    // HR module is for HR admins only
+    if (!['hr','hr_admin'].includes(role)) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+    if (!req.admin || !req.admin.department) {
+      return res.status(403).json({ success: false, message: 'No department assigned to admin; contact a super admin.' });
+    }
     let departmentFilter = '';
     let params = [];
-    if (req.admin && req.admin.department) {
-      departmentFilter = 'AND u.department = ?';
-      params.push(req.admin.department);
-    }
+    departmentFilter = 'AND u.department = ?';
+    params.push(req.admin.department);
     const [declarations] = await pool.query(`
       SELECT 
         d.id,

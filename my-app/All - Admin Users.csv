@@ -1,0 +1,88 @@
+User ID,Username,Role,First Name,Last Name,Department,sub_department
+2204,Cynthia,hr_admin,Cynthia,Dzilla,Executive,Office of the Governor
+2163,Kinana,hr_admin,Kinana,Juma,Executive,Office of the Governor
+2730,Florence,hr_admin,Florence,Mwilole,Executive,Office of the Governor
+1090,Joab,hr_admin,Joab,Unda,Executive,Office of the County Secretary 
+4148,Hussein,hr_admin,Hussein,S.,Executive,Office of the County Secretary 
+4760,James,hr_admin,James,Mwanza,Executive,Office of the County Attorney
+2012,Joseph,hr_admin,Joseph,Atunda,Executive,Office of the County Attorney
+3150,Leah,hr_admin,Leah,Akinyi,"Finance, Economic Planning & Digital Transformation ",Finance & Investment
+2162,Kaltuma,hr_admin,Kaltuma,Ahmed,"Finance, Economic Planning & Digital Transformation ",Finance & Investment
+2236,Omar,hr_admin,Omar,Mahmoud,"Finance, Economic Planning & Digital Transformation ",Finance & Investment
+3936,Fauzia,hr_admin,Fauzia,Mohamed,"Finance, Economic Planning & Digital Transformation ",Finance & Investment
+4766,Abdirazak,hr_admin,Abdirazak,Abdikadir,"Finance, Economic Planning & Digital Transformation ",Economic Planning & Digital Transformation
+4846,Halima,hr_admin,Halima,Hussein,"Finance, Economic Planning & Digital Transformation ",Economic Planning & Digital Transformation
+4759,Adhan,hr_admin,Adhan,Kuso,"Finance, Economic Planning & Digital Transformation ",Economic Planning & Digital Transformation
+4406,Everlyne,hr_admin,Everlyne,Owour,Cooperatives,Mombasa Water Supply & Sanitation Company Limited (MOWASSCO)
+6010,Laban,hr_admin,Laban,Ainga,Cooperatives,Mombasa Water Supply & Sanitation Company Limited (MOWASSCO)
+6246,Edwin,hr_admin,Edwin,Mwale,Cooperatives,Mombasa Water Supply & Sanitation Company Limited (MOWASSCO)
+4774,Angela,hr_admin,Angela,Oseko,Cooperatives,Mombasa Investment Corporation (MIC)
+1826,Athman,hr_admin,Athman,Matano,"Department of Public Service Administration, Youth, Gender and Sports",Public Service Administration
+2906,Maryam,hr_admin,Maryam,Abdillahi,"Department of Public Service Administration, Youth, Gender and Sports",Public Service Administration
+4980,Diana,hr_admin,Diana,Gabriel,"Department of Public Service Administration, Youth, Gender and Sports",Public Service Administration
+2201,Sophie,hr_admin,Sophie,Ismail,Department of Health,Public Health & Disease Prevention
+246,Lucy,hr_admin,Lucy,Nyambura,Department of Health,Public Health & Disease Prevention
+3164,Sumeiya,hr_admin,Sumeiya,Hussein,Department of Health,Public Health & Disease Prevention
+2263,Suleiman,hr_admin,Suleiman,Mohammed,Department of Health,Clinical Services
+58,Esha,hr_admin,Esha,Swaleh,Department of Health,Clinical Services
+4841,Ibrahim,hr_admin,Ibrahim,Farhad,Department of Health,Clinical Services
+492,Lilian,hr_admin,Lilian,Wachuka,Department of Health,Coast General Teaching And Referral Hospital (CGTRH)
+2628,Daniel,hr_admin,Daniel,Chai,Department of Health,Coast General Teaching And Referral Hospital (CGTRH)
+5071,Jessica,hr_admin,Jessica,Judith,Department of Health,Coast General Teaching And Referral Hospital (CGTRH)
+6428,Yahya,hr_admin,Yahya,Abeid,Department of Health,Coast General Teaching And Referral Hospital (CGTRH)
+6338,Mohamed,hr_admin,Mohamed,Shuaib,Department of Health,Coast General Teaching And Referral Hospital (CGTRH)
+474,Nancy,hr_admin,Nancy,Wairimu,Department of Health,Clinical Services
+685,Roselyne,hr_admin,Roselyne,Wangari,Department of Health,Clinical Services
+463,Cecilia,hr_admin,Cecilia,Kajumwa,Department of Health,Clinical Services
+3479,Ifdhel,hr_admin,Ifdhel,Badi,Department of Health,Clinical Services
+684,Phelisters,hr_admin,Phelisters,Ngare,Department of Health,Clinical Services
+5724,Saadia,hr_admin,Saadia,Abdi,Department of Health,Clinical Services
+5739,Ali,hr_admin,Ali,Abdusalam,Department of Health,Clinical Services
+5198,Athman,hr_admin,Athman,Rajab,Department of Health,Clinical Services
+5752,Salma,hr_admin,Salma,Ali,Department of Health,Clinical Services
+5717,Amina,hr_admin,Amina,Ali,Department of Health,Clinical Services
+5055,Henrita,hr_admin,Henrita,Shali,Department of Health,Clinical Services
+3492,Barrau,hr_admin,Barrau,M,Department of Health,Clinical Services
+3832,Raymond,hr_admin,Raymond,N.,"Department of Public Service Administration, Youth, Gender and Sports","Youth, Gender, Sports & Social Services"
+4094,Fatma,hr_admin,Fatma,S.,"Department of Public Service Administration, Youth, Gender and Sports","Youth, Gender, Sports & Social Services"
+2978,Julie,hr_admin,Julie,Omondi,"Department of Public Service Administration, Youth, Gender and Sports","Youth, Gender, Sports & Social Services"
+3932,Ambrose,hr_admin,Ambrose,Kelle,"Department of Transport, Infrastructure & Governance",Governance
+5040,Hannan,hr_admin,Hannan,Abdun,"Department of Transport, Infrastructure & Governance",Governance
+3790,Brian,hr_admin,Brian,Email,"Department of Transport, Infrastructure & Governance",Governance
+1670,Kennedy,hr_admin,Kennedy,Asati,"Department of Transport, Infrastructure & Governance",Transport & Infrastructure
+2943,Ruth,hr_admin,Ruth,Akeyo,"Department of Transport, Infrastructure & Governance",Transport & Infrastructure
+5115,Maimuna,hr_admin,Maimuna,Abdi,"Department of Transport, Infrastructure & Governance",Transport & Infrastructure
+1306,Hashora,hr_admin,Hashora,Morowa,"Department of Lands, Urban Planning and Housing","Lands, Urban Planning and Housing"
+1095,Bakari,hr_admin,Bakari,Hamisi,"Department of Lands, Urban Planning and Housing","Lands, Urban Planning and Housing"
+1279,Neema,hr_admin,Neema,Mwidani,"Department of Lands, Urban Planning and Housing","Lands, Urban Planning and Housing"
+2562,Ahmed,hr_admin,Ahmed,Al-Amin,"Department of Lands, Urban Planning and Housing",Serikali Mitaani
+4703,AbdulRahman,hr_admin,AbdulRahman,Kassim,"Department of Lands, Urban Planning and Housing",Serikali Mitaani
+4346,Abdillatif,hr_admin,Abdillatif,Abdisalan,"Department of Lands, Urban Planning and Housing",Serikali Mitaani
+2288,Harun,hr_admin,Harun,Iddi,Department of Education & Vocational Training,Department of Education & Vocational Training
+2629,Amina,hr_admin,Amina,Shee,Department of Education & Vocational Training,Department of Education & Vocational Training
+2015,Florence,hr_admin,Florence,Kache,Department of Education & Vocational Training,Department of Education & Vocational Training
+2868,Nasra,hr_admin,Nasra,Mohamed,"Department of  Trade, Tourism and Culture","Department of  Trade, Tourism and Culture"
+2254,Amal,hr_admin,Amal,Mohamed,"Department of  Trade, Tourism and Culture","Department of  Trade, Tourism and Culture"
+4909,Alexander,hr_admin,Alexander,Kangentu,"Department of  Trade, Tourism and Culture","Department of  Trade, Tourism and Culture"
+4240,Salwa,hr_admin,Salwa,Said,"Department of Climate Change, Energy and Natural Resources","Department of Climate Change, Energy and Natural Resources"
+2303,Amina,hr_admin,Amina,Walegwa,"Department of Climate Change, Energy and Natural Resources","Department of Climate Change, Energy and Natural Resources"
+4190,Mohammed,hr_admin,Mohammed,Mwachiro,"Department of Climate Change, Energy and Natural Resources","Department of Climate Change, Energy and Natural Resources"
+4763,Habon,hr_admin,Habon,Mohamed,Department of Environment and Water ,Environment and Solid Waste Management
+4473,Kevin,hr_admin,Kevin,Ouma,Department of Environment and Water ,Environment and Solid Waste Management
+4199,Aisha,hr_admin,Aisha,Mohamed,Department of Environment and Water ,Environment and Solid Waste Management
+4683,John,hr_admin,John,Xavier,Department of Environment and Water ,Water and Sanitation
+1327,Nixon,hr_admin,Nixon,Kilukumi,Department of Environment and Water ,Water and Sanitation
+4507,Bramwel,hr_admin,Bramwel,Wanami,Department of Environment and Water ,Water and Sanitation
+532,Abigael,hr_admin,Abigael,Andanje,"Department of Blue Economy, Cooperatives, Agriculture and Livestock","Department of Blue Economy, Cooperatives, Agriculture and Livestock"
+4502,Lydia,hr_admin,Lydia,Michira,"Department of Blue Economy, Cooperatives, Agriculture and Livestock","Department of Blue Economy, Cooperatives, Agriculture and Livestock"
+2675,Takash,hr_admin,Takash,Mahfudh,"Department of Blue Economy, Cooperatives, Agriculture and Livestock","Department of Blue Economy, Cooperatives, Agriculture and Livestock"
+1667,Sheba,hr_admin,Sheba,Fakih,Mombasa County Public Service Board,Mombasa County Public Service Board
+2695,Andrew,hr_admin,Andrew,Muasya,Mombasa County Public Service Board,Mombasa County Public Service Board
+2846,Joan,hr_admin,Joan,Phidiliah,Mombasa County Public Service Board,Mombasa County Public Service Board
+3163,Swaleh,it_admin,Swaleh,Bakari,-,-
+5901,Saleh,it_admin,Saleh,Ali,-,-
+5896,Mariam,it_admin,Mariam,Jamal,-,-
+4878,Samuel,it_admin,Samuel,Mwanjala,-,-
+1143,Ahmed,it_admin,Ahmed,Abushiri,-,-
+4187,James ,it_admin,James,Tayo,-,-
+2500,Anastansia,super_admin,Anastansia,Nabukenya,-,-

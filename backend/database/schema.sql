@@ -166,7 +166,7 @@ CREATE TABLE IF NOT EXISTS admin_users (
         username VARCHAR(50) UNIQUE NOT NULL,
         password VARCHAR(255) NOT NULL,
         email VARCHAR(150),
-        role ENUM('super_admin','hr_admin','finance_admin','it_admin') NOT NULL DEFAULT 'hr_admin',
+        role ENUM('super_admin','hr_admin','it_admin') NOT NULL DEFAULT 'hr_admin',
         first_name VARCHAR(100),
         other_names VARCHAR(100),
         surname VARCHAR(100),

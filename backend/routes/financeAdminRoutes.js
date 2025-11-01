@@ -1,12 +1,10 @@
+// Deprecated: Finance Admin module has been removed.
+// This placeholder remains to avoid import errors in older builds.
 const express = require('express');
 const router = express.Router();
-const financeAdminController = require('../controllers/financeAdminController');
-const { verifyAdminToken } = require('../middleware/adminMiddleware');
-const { listQuery } = require('../middleware/requestValidators');
-// Finance admin declarations list validation (page, limit, search)
-const validate = listQuery();
 
-// Get all declarations for Finance admin
-router.get('/declarations', verifyAdminToken, validate, financeAdminController.getFinanceAdminDeclarations);
+router.all('*', (_req, res) => {
+	res.status(410).json({ success: false, message: 'Finance Admin module removed' });
+});
 
 module.exports = router;

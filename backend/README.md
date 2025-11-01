@@ -8,14 +8,14 @@ A Node.js/Express backend API for managing employee financial declarations.
 - Employee registration and login
 - Declaration management (CRUD operations)
 - Admin panel for viewing all declarations
-- Department-based data scoping: all non-super admins only see users & declarations within their assigned department
-- Super admin has unrestricted visibility across all departments
+- Department-based data scoping: HR admins only see users & declarations within their assigned department
+- IT and Super admins have unrestricted visibility across all departments
 - Input validation and security middleware
 - MySQL database integration
 
 ## Removed / Deprecated Features
 
-- The separate "departmental admin" login & dashboard flow has been removed. Department filtering is now applied automatically for every non-super admin role (HR, Finance, IT). Any existing references to deprecated departmental components should be cleaned up; placeholder files may remain temporarily for build stability until fully pruned.
+- The separate "departmental admin" login & dashboard flow has been removed. Department filtering is now applied automatically for HR admins. IT and Super admins are not department-scoped. Any existing references to deprecated departmental components should be cleaned up; placeholder files may remain temporarily for build stability until fully pruned.
 - Admin password reset request queue (endpoints: `/api/admin/forgot-password-request`, `/api/admin/password-reset-requests`, `/api/admin/password-reset-requests/:id/resolve`) was removed on 2025-10-08. Rationale: simplified security model; direct privileged admins can perform a secure password change instead. The table `admin_password_reset_requests` is dropped via migration `20251008_drop_admin_password_reset_requests.sql`. If you still have build artifacts referencing these endpoints, rebuild the frontend.
 
 ## Admin Linking Workflow (New)
@@ -58,7 +58,7 @@ Request (linked via userId example):
 ```json
 {
   "username": "john.admin",
-  "role": "finance_admin",
+  "role": "it_admin",
   "linkExistingUser": true,
   "userId": 42
 }
@@ -196,7 +196,7 @@ Input validation has been centralized in `middleware/requestValidators.js` to en
 Key exports:
 
 - `handleValidation` – terminal middleware that converts express-validator errors into a standardized `{ message, code, details[] }` response (HTTP 400)
-- `listQuery(options)` – factory for paginated list endpoints (page, limit, search + optional department). Used by finance & HR admin and user declaration list.
+- `listQuery(options)` – factory for paginated list endpoints (page, limit, search + optional department). Used by HR admin and user declaration list.
 - `adminUserList`, `statusAudit`, `bulkEmail`, `updateMe`, `declarationStatusUpdate`, `consentSubmit` – purpose‑specific validator arrays.
 - `dateRange` – reusable from/to ISO date validators with logical ordering check.
 
