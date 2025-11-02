@@ -169,9 +169,9 @@ const LoginPage = () => {
                                         } else {
                                             localStorage.removeItem('adminRawRoleHint');
                                         }
-                    // Immediately warm profile cache; no flicker on landing
+                    // Immediately warm profile cache; then go to consent screen
                     refreshProfile();
-                    navigate('/landing');
+                    navigate('/consent');
                 }
             } else {
                 const errorData = await response.json().catch(() => ({}));
