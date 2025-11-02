@@ -34,29 +34,45 @@ app.use(morgan("combined"));
 
 // CORS configuration early so even 429 responses include headers
 // Support multiple allowed origins via FRONTEND_URLS (comma-separated),
+// optional regex list via FRONTEND_URLS_REGEX (comma-separated regex strings),
 // fallback to FRONTEND_URL single value, then localhost for dev.
 const allowedOrigins = (process.env.FRONTEND_URLS || process.env.FRONTEND_URL || "http://localhost:3000")
   .split(',')
   .map(s => s && s.trim())
   .filter(Boolean);
-
+const allowedOriginRegexes = (process.env.FRONTEND_URLS_REGEX || '')
+  .split(',')
+  .map(s => s && s.trim())
+  .filter(Boolean)
+  .map(p => {
+    try { return new RegExp(p); } catch { return null; }
+  })
+  .filter(Boolean);
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow non-browser requests (no Origin header)
+      // Allow non-browser or same-origin requests (no Origin header)
       if (!origin) return callback(null, true);
+      // Exact allow list
       if (allowedOrigins.includes(origin)) return callback(null, true);
-      // Allow same-origin when API and frontend share host
+      // Regex allow list
+      try {
+        if (allowedOriginRegexes.some(rx => rx.test(origin))) {
+          return callback(null, true);
+        }
+      } catch {}
+      // Optional: treat origins matching the origin part of any allowed URL as allowed
       try {
         const url = new URL(origin);
-        // If the backend has its own public URL set as allowed, also allow exact match
         if (allowedOrigins.some(ao => {
           try { const a = new URL(ao); return a.origin === url.origin; } catch { return false; }
         })) {
           return callback(null, true);
         }
       } catch {}
-      return callback(new Error(`Not allowed by CORS: ${origin}`));
+      // Not allowed – do NOT throw; respond without CORS headers (browser will block), avoid 500s
+      console.warn(`CORS blocked origin: ${origin}`);
+      return callback(null, false);
     },
     credentials: true,
   })
