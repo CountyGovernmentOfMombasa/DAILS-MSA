@@ -18,7 +18,7 @@ import {
 } from "react-bootstrap";
 import useAdminSession from "../hooks/useAdminSession";
 import "./LandingPage.css"; // Assuming this file exists and is correct
-import { getDeclarations, getProgress, deleteProgress, getAllDeclarations } from "../api";
+import { getDeclarations, getProgress, deleteProgress, adminFetch } from "../api";
 // Department logic now mirrors UserForm: user selects sub_department, department auto-derived (read-only)
 import {
   SUB_DEPARTMENTS,
@@ -138,18 +138,21 @@ const LandingPage = () => {
             Array.isArray(list) &&
             list.length === 0 &&
             hasAdminAccess &&
-            adminToken &&
             profile &&
             profile.national_id
           ) {
-            const adminRes = await getAllDeclarations(adminToken);
-            const all = (adminRes && adminRes.data) || [];
-            const matched = all.filter(
-              (d) => String(d.national_id) === String(profile.national_id)
-            );
-            if (matched.length > 0) {
-              list = matched;
-              setAdminFallbackUsed(true);
+            // Auto-elevate if needed and fetch admin declarations, then filter by National ID
+            const resp = await adminFetch('/api/admin/declarations', { method: 'GET' });
+            if (resp && resp.ok) {
+              const data = await resp.json().catch(() => ({}));
+              const all = (data && data.data) || [];
+              const matched = all.filter(
+                (d) => String(d.national_id) === String(profile.national_id)
+              );
+              if (matched.length > 0) {
+                list = matched;
+                setAdminFallbackUsed(true);
+              }
             }
           }
         } catch (_) {
