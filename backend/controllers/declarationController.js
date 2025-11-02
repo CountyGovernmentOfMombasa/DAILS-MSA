@@ -1048,10 +1048,26 @@ exports.getDeclarations = async (req, res) => {
   try {
     const userId = req.user.id;
     const db = require("../config/db");
-    const [rows] = await db.execute(
+    let matchedBy = "user_id";
+    let [rows] = await db.execute(
       "SELECT * FROM declarations WHERE user_id = ?",
       [userId]
     );
+    // Migration compatibility: if none found by user_id, try matching by current user's national_id
+    if ((!rows || rows.length === 0) && req.user && req.user.national_id) {
+      const nationalId = String(req.user.national_id);
+      const [altRows] = await db.execute(
+        `SELECT d.*
+         FROM declarations d
+         JOIN users u ON d.user_id = u.id
+         WHERE u.national_id = ?`,
+        [nationalId]
+      );
+      if (altRows && altRows.length > 0) {
+        rows = altRows;
+        matchedBy = "national_id";
+      }
+    }
     // For each declaration, fetch spouses and children
     for (const decl of rows) {
       const [spouses] = await db.execute(
@@ -1065,7 +1081,7 @@ exports.getDeclarations = async (req, res) => {
       decl.spouses = spouses;
       decl.children = children;
     }
-    res.json({ success: true, declarations: rows });
+    res.json({ success: true, declarations: rows, matchedBy });
   } catch (error) {
     console.error("Error fetching declarations:", error);
     res
