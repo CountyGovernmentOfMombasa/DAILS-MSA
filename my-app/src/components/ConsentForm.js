@@ -45,7 +45,8 @@ export default function ConsentForm() {
         designation,
         signed
       });
-      navigate('/user-form', { state: { ...location.state } });
+      // After consent, proceed to landing page
+      navigate('/landing');
     } catch (e) {
       setError('Failed to log consent. Please try again.');
     } finally {

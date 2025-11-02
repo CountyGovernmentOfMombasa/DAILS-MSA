@@ -72,7 +72,8 @@ const ChangePasswordPage = () => {
                 localStorage.setItem('token', data.token);
                 if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
                 if (data.accessExpiresInMs) localStorage.setItem('tokenExpiresAt', String(Date.now() + data.accessExpiresInMs));
-                navigate('/landing');
+                // After password change, proceed to consent
+                navigate('/consent');
             } else {
                 setError(data.message || 'Failed to change password');
             }
