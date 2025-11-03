@@ -344,8 +344,8 @@ const SpouseFormInner = () => {
                     <Card.Body>
                       <Alert variant="info" className="mb-3">
                         <i className="fas fa-info-circle me-2"></i>
-                        <strong>Note:</strong> Only include children under the age of 18 years. Adopted children should also be listed.
-                      </Alert>
+                        <strong>Note:</strong> Only include dependant children under the age of 18 years.
+                        </Alert>
                       
                       {children.map((child, index) => (
                         <div key={index} className={index > 0 ? 'border-top pt-4 mt-4' : ''}>
