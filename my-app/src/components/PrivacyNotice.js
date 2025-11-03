@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 const privacyNotice = [
   'This Privacy Notice is issued pursuant to Section 29 of the Data Protection Act, 2019 and in compliance with the Conflict of Interest Act, 2025. It explains how the County Government of Mombasa collects, uses, stores, and protects personal and sensitive personal data through the Online Declaration of Income, Assets and Liabilities (ODIAL) System.',
@@ -37,6 +37,11 @@ const privacyNotice = [
 ];
 
 export default function PrivacyNotice() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const from = location.state?.from;
+  const backDest = from === 'consent' ? '/consent' : from === 'guidnotes' ? '/guidnotes' : '/guidnotes';
+  const backLabel = from === 'consent' ? 'Back to Consent Form' : 'Back to Guidelines';
   const sectionHeaders = [
     'Purpose of Collection:',
     'Categories of Data Collected:',
@@ -53,7 +58,20 @@ export default function PrivacyNotice() {
     <div style={{ maxWidth: 900, margin: '40px auto', padding: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h2 style={{ fontSize: 24, margin: 0 }}>Privacy Notice</h2>
-        <Link to="/guidnotes" style={{ color: '#0056b3', textDecoration: 'underline', fontWeight: 600 }}>Back to Guidelines</Link>
+        <button
+          type="button"
+          onClick={() => navigate(backDest, { state: { ...location.state } })}
+          style={{
+            color: '#0056b3',
+            textDecoration: 'underline',
+            fontWeight: 600,
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer'
+          }}
+        >
+          {backLabel}
+        </button>
       </div>
       <div style={{ background: '#f8f9fa', padding: 24, borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.07)' }}>
         {privacyNotice.map((line, idx) => {
