@@ -39,7 +39,7 @@ const User = {
     } = userData;
 
     // Validate nature_of_employment
-  const allowedEmployment = ['Permanent', 'Contract', 'Temporary'];
+  const allowedEmployment = ['Permanent', 'Contract', 'Temporary', 'Part-time'];
     const validNatureOfEmployment = allowedEmployment.includes(nature_of_employment) ? nature_of_employment : null;
 
     // Validate department & sub-department (now mandatory pair: if department provided must have valid sub_department; if sub_department given determines department)

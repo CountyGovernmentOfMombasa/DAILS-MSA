@@ -143,6 +143,7 @@ const AddUserForm = () => {
               <option value="Permanent">Permanent</option>
               <option value="Contract">Contract</option>
               <option value="Casual">Casual</option>
+              <option value="Part-time">Part-time</option>
             </select>
           </div>
           <div className="col-md-4">

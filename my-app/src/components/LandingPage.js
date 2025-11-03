@@ -950,6 +950,7 @@ const LandingPage = () => {
                           <option value="Permanent">Permanent</option>
                           <option value="Contract">Contract</option>
                           <option value="Temporary">Temporary</option>
+                          <option value="Part-time">Part-time</option>
                         </Form.Select>
                       </Form.Group>
                     </Col>
