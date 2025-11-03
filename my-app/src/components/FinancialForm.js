@@ -677,6 +677,12 @@ const incomeDescriptionPlaceholder = (type) => {
     // Description options are no longer grouped; free text is used for all liability types
     const liabilitiesDescriptionOptions = {};
 
+    // Display label mapping for certain asset types (preserve stored value but show friendlier label)
+    const labelForAssetType = (opt) => {
+      if (opt === 'Transportation Vehicles') return 'Matatus/Tuktuks/Bodaboda etc';
+      return opt;
+    };
+
   const liabilityErrors = section === 'liabilities' ? computeLiabilityErrors(currentData.liabilities || []) : {};
     const isNil = Array.isArray(currentData[section]) && currentData[section].length === 1 && currentData[section][0].type === 'Nil' && currentData[section][0].description === 'Nil';
 
@@ -726,9 +732,7 @@ const incomeDescriptionPlaceholder = (type) => {
               <tr>
                 <th style={{ width: '20%' }}>Type</th>
                 <th style={{ width: '40%' }}>Description</th>
-                <th style={{ width: '20%' }}>
-                  {section === 'liabilities' ? `Outstanding Amount (${currency})` : `Approximate Value (${currency})`}
-                </th>
+                <th style={{ width: '20%' }}>{section === 'liabilities' ? 'Outstanding amount' : 'Approximate Value'} ({currency})</th>
                 <th style={{ width: '20%' }}>Action</th>
               </tr>
             </thead>
@@ -826,7 +830,7 @@ const incomeDescriptionPlaceholder = (type) => {
                         >
                           <option value="">Select Type</option>
                           {assetTypeOptions.map(opt => (
-                            <option key={opt} value={opt}>{opt}</option>
+                            <option key={opt} value={opt}>{labelForAssetType(opt)}</option>
                           ))}
                         </Form.Select>
                         {/* For 'Other', show extra asset type field */}
@@ -850,7 +854,7 @@ const incomeDescriptionPlaceholder = (type) => {
                             <Form.Control
                               className="mb-1"
                               type="text"
-                                placeholder=" Make e.g. Toyota, Nissan, Mazda"
+                                placeholder="Make e.g Toyota, Nissan, Mazda."
                               value={item.make || ''}
                               onChange={e => handleTableChange('assets', index, 'make', e.target.value)}
                               style={{ borderRadius: '8px' }}
@@ -858,7 +862,7 @@ const incomeDescriptionPlaceholder = (type) => {
                             <Form.Control
                               className="mb-1"
                               type="text"
-                              placeholder="Model e.g. Corolla, Axio, Demio"
+                              placeholder="Model e.g Corolla, Xtrail, Demio."
                               value={item.model || ''}
                               onChange={e => handleTableChange('assets', index, 'model', e.target.value)}
                               style={{ borderRadius: '8px' }}
