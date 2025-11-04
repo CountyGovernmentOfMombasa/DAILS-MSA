@@ -1,5 +1,5 @@
 function getContactNumber() {
-  const num = process.env.WITNESS_CONTACT_NUMBER || '+254 785 444 001';
+  const num = process.env.WITNESS_CONTACT_NUMBER || '0793992115';
   return num.trim();
 }
 
