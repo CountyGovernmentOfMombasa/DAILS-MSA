@@ -678,6 +678,19 @@ exports.patchDeclaration = async (req, res) => {
 // --- Edit Request & Retrieval Handlers ---
 const db = require("../config/db");
 
+async function ensureEditRequestsTable() {
+  const sql = `CREATE TABLE IF NOT EXISTS declaration_edit_requests (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    declarationId INT NOT NULL,
+    userId INT NOT NULL,
+    reason TEXT NOT NULL,
+    requestedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_decl (declarationId),
+    INDEX idx_user (userId)
+  )`;
+  await db.query(sql);
+}
+
 // Record an edit request for a declaration
 exports.requestEdit = async (req, res) => {
   try {
@@ -688,10 +701,24 @@ exports.requestEdit = async (req, res) => {
       return res
         .status(400)
         .json({ success: false, message: "Reason is required." });
-    await db.execute(
-      "INSERT INTO declaration_edit_requests (declarationId, userId, reason, requestedAt) VALUES (?, ?, ?, ?)",
-      [declarationId, userId, reason, date || new Date()]
-    );
+    try {
+      await db.execute(
+        "INSERT INTO declaration_edit_requests (declarationId, userId, reason, requestedAt) VALUES (?, ?, ?, ?)",
+        [declarationId, userId, reason, date || new Date()]
+      );
+    } catch (e) {
+      if (e && (e.code === 'ER_NO_SUCH_TABLE' || /doesn\'t exist/i.test(e.message || ''))) {
+        // Create table on the fly and retry once
+        console.warn('declaration_edit_requests missing. Creating table and retrying insert.');
+        await ensureEditRequestsTable();
+        await db.execute(
+          "INSERT INTO declaration_edit_requests (declarationId, userId, reason, requestedAt) VALUES (?, ?, ? , ?)",
+          [declarationId, userId, reason, date || new Date()]
+        );
+      } else {
+        throw e;
+      }
+    }
     return res.json({ success: true, message: "Edit request submitted." });
   } catch (err) {
     console.error("Error submitting edit request:", err);
@@ -704,10 +731,18 @@ exports.requestEdit = async (req, res) => {
 // List all edit requests (admin usage)
 exports.getAllEditRequests = async (req, res) => {
   try {
-    const [rows] = await db.execute(
-      "SELECT * FROM declaration_edit_requests ORDER BY requestedAt DESC"
-    );
-    return res.json({ success: true, data: rows });
+    try {
+      const [rows] = await db.execute(
+        "SELECT * FROM declaration_edit_requests ORDER BY requestedAt DESC"
+      );
+      return res.json({ success: true, data: rows });
+    } catch (e) {
+      if (e && (e.code === 'ER_NO_SUCH_TABLE' || /doesn\'t exist/i.test(e.message || ''))) {
+        await ensureEditRequestsTable();
+        return res.json({ success: true, data: [] });
+      }
+      throw e;
+    }
   } catch (err) {
     console.error("Error fetching edit requests:", err);
     return res
