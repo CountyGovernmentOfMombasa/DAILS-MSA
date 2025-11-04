@@ -1,23 +1,43 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { useUser } from '../context/UserContext';
 
 export default function ConsentForm() {
   const navigate = useNavigate();
   const location = useLocation();
-  // Pre-fill from location.state.profile if available
-  const profile = location.state?.profile || {};
-  const [fullName, setFullName] = useState(() => {
-    if (profile.first_name || profile.surname) {
-      return `${profile.first_name || ''} ${profile.other_names || ''} ${profile.surname || ''}`.replace(/\s+/g, ' ').trim();
-    }
-    return '';
-  });
-  const [nationalId, setNationalId] = useState(profile.national_id || '');
-  const [designation, setDesignation] = useState(profile.designation || profile.department || '');
+  const { profile: ctxProfile, loading: profileLoading, refreshProfile } = useUser();
+  // Prefer context profile; fallback to any profile passed in navigation state
+  const profile = useMemo(() => ctxProfile || location.state?.profile || {}, [ctxProfile, location.state]);
+  const [fullName, setFullName] = useState('');
+  const [nationalId, setNationalId] = useState('');
+  const [designation, setDesignation] = useState('');
   const [signed, setSigned] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  // Auto-populate fields from profile when available; don't overwrite if user already typed
+  useEffect(() => {
+    const hasName = (fullName || '').trim().length > 0;
+    const hasId = (nationalId || '').trim().length > 0;
+    const hasDesig = (designation || '').trim().length > 0;
+    if (!ctxProfile && !location.state?.profile && !profileLoading) {
+      // Proactively fetch if nothing is cached yet
+      refreshProfile?.();
+    }
+    if (profile && (profile.first_name || profile.surname)) {
+      const nameFromProfile = `${profile.first_name || ''} ${profile.other_names || ''} ${profile.surname || ''}`
+        .replace(/\s+/g, ' ').trim();
+      if (!hasName && nameFromProfile) setFullName(nameFromProfile);
+    }
+    if (!hasId && (profile?.national_id || profile?.nationalId)) {
+      setNationalId(profile.national_id || profile.nationalId || '');
+    }
+    if (!hasDesig && (profile?.designation || profile?.department)) {
+      setDesignation(profile.designation || profile.department || '');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile, profileLoading]);
 
   const onSubmit = async () => {
     if (!signed) {

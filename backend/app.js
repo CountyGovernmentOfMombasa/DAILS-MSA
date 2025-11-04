@@ -231,11 +231,36 @@ app.use((error, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-if (process.env.NODE_ENV !== "test") {
-  app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
-  });
+async function startServer() {
+  // Optional: auto-run migrations on startup if enabled
+  if (process.env.AUTO_MIGRATE === 'true') {
+    try {
+      console.log('AUTO_MIGRATE=true detected. Running database migrations...');
+      const { spawn } = require('child_process');
+      await new Promise((resolve, reject) => {
+        const p = spawn(process.execPath, [require('path').join(__dirname, 'scripts', 'runMigrations.js')], { stdio: 'inherit' });
+        p.on('exit', (code) => {
+          if (code === 0) return resolve();
+          const msg = `Migration script exited with code ${code}`;
+          console.error(msg);
+          // Do not reject to avoid boot blocking; just log and continue
+          resolve();
+        });
+        p.on('error', reject);
+      });
+    } catch (e) {
+      console.error('Failed to run migrations on startup:', e.message);
+    }
+  }
+
+  if (process.env.NODE_ENV !== "test") {
+    app.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}`);
+      console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
+    });
+  }
 }
+
+startServer();
 
 module.exports = app;
