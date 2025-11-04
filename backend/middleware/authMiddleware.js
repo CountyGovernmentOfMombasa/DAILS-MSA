@@ -30,8 +30,10 @@ exports.verifyToken = async (req, res, next) => {
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         req.user = decoded; // base payload (likely { id })
+        const isOtpToken = !!(decoded && decoded.otp === true);
         // Inactivity check (soft). We query lightweight last_activity & update.
-        if (decoded && decoded.id) {
+        // Skip inactivity enforcement for OTP verification tokens to avoid blocking first-time logins.
+        if (!isOtpToken && decoded && decoded.id) {
             try {
                 const [rows] = await pool.query('SELECT last_activity FROM users WHERE id = ?', [decoded.id]);
                 if (rows.length) {
@@ -42,12 +44,14 @@ exports.verifyToken = async (req, res, next) => {
                             return res.status(401).json({ message: 'Session expired due to inactivity' });
                         }
                     }
-                    // Update last_activity asynchronously (do not block response)
-                    pool.query('UPDATE users SET last_activity = NOW() WHERE id = ?', [decoded.id]).catch(()=>{});
                 }
             } catch(e) {
                 console.warn('Inactivity check failed:', e.message);
             }
+        }
+        // Update last_activity asynchronously (do not block response). Do this for all tokens including OTP.
+        if (decoded && decoded.id) {
+            pool.query('UPDATE users SET last_activity = NOW() WHERE id = ?', [decoded.id]).catch(()=>{});
         }
         // Hydrate with full user record (non-blocking critical path, but awaited here for simplicity)
         try {
