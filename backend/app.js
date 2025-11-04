@@ -264,3 +264,28 @@ async function startServer() {
 startServer();
 
 module.exports = app;
+
+// Lightweight background task to clear expired OTPs so they don't linger in the DB
+// Uses application time for comparison (same as when OTPs are created) to avoid timezone drift issues.
+try {
+  const pool = require('./config/db');
+  const intervalMs = parseInt(process.env.OTP_CLEANUP_INTERVAL_MS || '60000', 10);
+  if (intervalMs > 0 && process.env.NODE_ENV !== 'test') {
+    setInterval(async () => {
+      try {
+        const now = new Date();
+        const [result] = await pool.query(
+          'UPDATE users SET otp_code = NULL, otp_expires_at = NULL WHERE otp_expires_at IS NOT NULL AND otp_expires_at < ? LIMIT 1000',
+          [now]
+        );
+        if (result && result.affectedRows) {
+          console.log(`[OTP CLEANUP] Cleared ${result.affectedRows} expired OTP(s)`);
+        }
+      } catch (e) {
+        console.warn('OTP cleanup task failed:', e.message);
+      }
+    }, intervalMs);
+  }
+} catch (e) {
+  console.warn('OTP cleanup not initialized:', e.message);
+}

@@ -633,10 +633,20 @@ exports.verifyOtp = async (req, res) => {
         .json({ message: "No OTP generated. Please login again." });
     const now = new Date();
     const expiry = new Date(otp_expires_at);
-    if (now > expiry)
+    if (now > expiry) {
+      // Proactively clear expired OTP to avoid lingering codes in DB
+      try {
+        await pool.query(
+          "UPDATE users SET otp_code = NULL, otp_expires_at = NULL WHERE id = ?",
+          [userId]
+        );
+      } catch (e) {
+        console.warn("Failed to clear expired OTP during verify:", e.message);
+      }
       return res
         .status(400)
         .json({ message: "OTP expired. Please request a new one." });
+    }
     if (String(otp) !== String(otp_code))
       return res.status(400).json({ message: "Invalid OTP" });
     // Clear OTP and create short-lived change-password token
