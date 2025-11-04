@@ -416,7 +416,7 @@ exports.login = async (req, res) => {
       try {
         await sendSMS({
           to: user.phone_number,
-          body: `Your WDP one-time code is ${code}. It expires in 10 minutes.`,
+          body: `Your WDP one-time code is ${code}. It expires in 6 hours.`,
         });
       } catch (e) {
         console.error("Failed to send OTP SMS:", e.message);
@@ -425,7 +425,7 @@ exports.login = async (req, res) => {
       const otpToken = jwt.sign(
         { id: user.id, otp: true },
         process.env.JWT_SECRET,
-        { expiresIn: "15m" }
+        { expiresIn: process.env.OTP_TOKEN_EXPIRES_IN || "6h" }
       );
       return res.json({
         otpRequired: true,
@@ -600,7 +600,7 @@ exports.resendOtp = async (req, res) => {
     try {
       await sendSMS({
         to: user.phone_number,
-        body: `Your WDP one-time code is ${code}. It expires in 10 minutes.`,
+        body: `Your WDP one-time code is ${code}. It expires in 6 hours.`,
       });
     } catch (e) {
       console.error("Failed to send OTP SMS:", e.message);

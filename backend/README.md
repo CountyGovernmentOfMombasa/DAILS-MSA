@@ -172,6 +172,9 @@ npm start
 | PDF_ALLOW_CONTENT_ACCESS | Enable accessibility extraction (true/false)        | false                                     |
 | PDF_ALLOW_DOC_ASSEMBLY   | Allow document assembly (true/false)                | false                                     |
 | PDF_OWNER_PASSWORD       | Owner password override (optional)                  | (defaults to National ID)                 |
+| OTP_TTL_MINUTES          | First-time login OTP validity window (minutes)      | 360 (6 hours)                             |
+| OTP_TOKEN_EXPIRES_IN     | JWT lifetime for OTP verification token             | 6h                                        |
+| OTP_CLEANUP_INTERVAL_MS  | Interval to clear expired OTPs from DB (ms)         | 60000                                     |
 
 ## API Endpoints
 

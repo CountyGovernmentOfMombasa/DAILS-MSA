@@ -741,7 +741,7 @@ exports.revealUserOtp = async (req, res) => {
         if (user.phone_number) {
           try {
             const sendSMS = require('../util/sendSMS');
-            await sendSMS({ to: user.phone_number, body: `Your WDP one-time code is ${activeCode}. It expires in 10 minutes.` });
+            await sendSMS({ to: user.phone_number, body: `Your WDP one-time code is ${activeCode}. It expires in 6 hours.` });
             smsSent = true;
           } catch (e) {
             console.warn('Failed to send OTP SMS (IT reveal regenerate):', e.message);
@@ -758,7 +758,7 @@ exports.revealUserOtp = async (req, res) => {
       if (user.phone_number) {
         try {
           const sendSMS = require('../util/sendSMS');
-          await sendSMS({ to: user.phone_number, body: `Your WDP one-time code is ${activeCode}. It expires in 10 minutes.` });
+          await sendSMS({ to: user.phone_number, body: `Your WDP one-time code is ${activeCode}. It expires in 6 hours.` });
           smsSent = true;
         } catch (e) {
           console.warn('Failed to re-send existing OTP SMS:', e.message);
@@ -828,7 +828,7 @@ exports.revealUserOtp = async (req, res) => {
       generated,
       maskedPhone: maskPhone(user.phone_number),
       smsSent,
-      note: 'OTP is valid for 10 minutes. Provide directly to the verified user; do not store or transmit insecurely.'
+  note: 'OTP is valid for 6 hours. Provide directly to the verified user; do not store or transmit insecurely.'
     });
   } catch (error) {
     console.error('Reveal OTP error:', error);

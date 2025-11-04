@@ -30,50 +30,48 @@ const LoginPage = () => {
         }
     }, []);
 
-    // Check if user has changed password when nationalId changes
-    useEffect(() => {
-        const checkUserStatus = async () => {
-            if (nationalId.trim()) {
-                try {
-                    const response = await fetch('/api/auth/check-password-status', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ nationalId: nationalId.trim() })
-                    });
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (!data.phone_number) {
-                            // New user without phone on record: require phone entry, but still show password field
-                            setRequirePhone(true);
-                            if (!data.password_changed) {
-                                // Provide default password guidance
-                                setPassword('Change@001');
-                                setShowDefaultPasswordInfo(true);
-                            } else {
-                                setPassword('');
-                                setShowDefaultPasswordInfo(false);
-                            }
-                        } else {
-                            setRequirePhone(false);
-                            if (!data.password_changed) {
-                                setPassword('Change@001');
-                                setShowDefaultPasswordInfo(true);
-                            } else {
-                                setPassword('');
-                                setShowDefaultPasswordInfo(false);
-                            }
-                        }
+    // Check password/phone status only after user finishes entering National ID (onBlur)
+    const checkUserStatus = async () => {
+        const nid = nationalId.trim();
+        if (!nid) {
+            setShowDefaultPasswordInfo(false);
+            setRequirePhone(false);
+            return;
+        }
+        try {
+            const response = await fetch('/api/auth/check-password-status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nationalId: nid })
+            });
+            if (response.ok) {
+                const data = await response.json();
+                if (!data.phone_number) {
+                    // New user without phone on record: require phone entry, but still show password field
+                    setRequirePhone(true);
+                    if (!data.password_changed) {
+                        // Provide default password guidance
+                        setPassword('Change@001');
+                        setShowDefaultPasswordInfo(true);
+                    } else {
+                        setPassword('');
+                        setShowDefaultPasswordInfo(false);
                     }
-                } catch {
-                    setShowDefaultPasswordInfo(false);
+                } else {
+                    setRequirePhone(false);
+                    if (!data.password_changed) {
+                        setPassword('Change@001');
+                        setShowDefaultPasswordInfo(true);
+                    } else {
+                        setPassword('');
+                        setShowDefaultPasswordInfo(false);
+                    }
                 }
-            } else {
-                setShowDefaultPasswordInfo(false);
-                setRequirePhone(false);
             }
-        };
-        checkUserStatus();
-    }, [nationalId]);
+        } catch {
+            setShowDefaultPasswordInfo(false);
+        }
+    };
     const [error, setError] = useState('');
     const [info, setInfo] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -319,6 +317,7 @@ const LoginPage = () => {
                                             placeholder="Enter your National ID number"
                                             value={nationalId}
                                             onChange={(e) => { const v = e.target.value; setNationalId(v); sessionStorage.setItem('loginNationalId', v); }}
+                                            onBlur={checkUserStatus}
                                             required
                                             className="py-3"
                                             style={{ borderRadius: '12px' }}
