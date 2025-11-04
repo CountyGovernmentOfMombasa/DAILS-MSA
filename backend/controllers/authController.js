@@ -120,11 +120,9 @@ exports.register = async (req, res) => {
     // Create user
     if (!sub_department && department) {
       // Prevent ambiguous registration without sub_department
-      return res
-        .status(400)
-        .json({
-          message: "sub_department is required when department is provided",
-        });
+      return res.status(400).json({
+        message: "sub_department is required when department is provided",
+      });
     }
     const userId = await User.create({
       national_id,
@@ -225,11 +223,9 @@ exports.login = async (req, res) => {
     if (user.lock_until && new Date(user.lock_until) > new Date()) {
       const remainingMs = new Date(user.lock_until) - new Date();
       const remainingMin = Math.ceil(remainingMs / 60000);
-      return res
-        .status(423)
-        .json({
-          message: `Account locked. Try again in ${remainingMin} minute(s).`,
-        });
+      return res.status(423).json({
+        message: `Account locked. Try again in ${remainingMin} minute(s).`,
+      });
     } else if (user.lock_until && new Date(user.lock_until) <= new Date()) {
       // Auto clear expired lock
       await pool.query(
@@ -258,26 +254,22 @@ exports.login = async (req, res) => {
     const { isValidPhone, normalizePhone } = require("../util/phone");
     if (!user.phone_number) {
       if (!phoneNumber) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            requirePhone: true,
-            code: "PHONE_REQUIRED",
-            field: "phone_number",
-            message: "Phone number required",
-          });
+        return res.status(400).json({
+          success: false,
+          requirePhone: true,
+          code: "PHONE_REQUIRED",
+          field: "phone_number",
+          message: "Phone number required",
+        });
       }
       if (!isValidPhone(phoneNumber)) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            code: "INVALID_PHONE_FORMAT",
-            field: "phone_number",
-            message:
-              "Invalid phone number format. Use 7-15 digits, optional leading +",
-          });
+        return res.status(400).json({
+          success: false,
+          code: "INVALID_PHONE_FORMAT",
+          field: "phone_number",
+          message:
+            "Invalid phone number format. Use 7-15 digits, optional leading +",
+        });
       }
       const normalized = normalizePhone(phoneNumber);
       const [dupRows] = await pool.query(
@@ -285,15 +277,13 @@ exports.login = async (req, res) => {
         [normalized]
       );
       if (dupRows.length) {
-        return res
-          .status(409)
-          .json({
-            success: false,
-            code: "PHONE_IN_USE",
-            field: "phone_number",
-            message:
-              "Phone number already in use. Please supply a different number.",
-          });
+        return res.status(409).json({
+          success: false,
+          code: "PHONE_IN_USE",
+          field: "phone_number",
+          message:
+            "Phone number already in use. Please supply a different number.",
+        });
       }
       try {
         await pool.query(
@@ -321,15 +311,13 @@ exports.login = async (req, res) => {
         }
       } catch (e) {
         if (e && e.code === "ER_DUP_ENTRY") {
-          return res
-            .status(409)
-            .json({
-              success: false,
-              code: "PHONE_IN_USE",
-              field: "phone_number",
-              message:
-                "Phone number already in use. Please supply a different number.",
-            });
+          return res.status(409).json({
+            success: false,
+            code: "PHONE_IN_USE",
+            field: "phone_number",
+            message:
+              "Phone number already in use. Please supply a different number.",
+          });
         }
         throw e;
       }
@@ -370,11 +358,9 @@ exports.login = async (req, res) => {
           } catch (e) {
             console.error("Lockout audit insert failed", e.message);
           }
-          return res
-            .status(423)
-            .json({
-              message: "Too many failed attempts. Account locked for 1 hour.",
-            });
+          return res.status(423).json({
+            message: "Too many failed attempts. Account locked for 1 hour.",
+          });
         }
         return res.status(401).json({
           message: "First-time login requires the default password Change@001",
@@ -417,6 +403,7 @@ exports.login = async (req, res) => {
         await sendSMS({
           to: user.phone_number,
           body: `Your WDP one-time code is ${code}. It expires in 6 hours.`,
+          type: "otp",
         });
       } catch (e) {
         console.error("Failed to send OTP SMS:", e.message);
@@ -468,11 +455,9 @@ exports.login = async (req, res) => {
         } catch (e) {
           console.error("Lockout audit insert failed", e.message);
         }
-        return res
-          .status(423)
-          .json({
-            message: "Too many failed attempts. Account locked for 1 hour.",
-          });
+        return res.status(423).json({
+          message: "Too many failed attempts. Account locked for 1 hour.",
+        });
       }
       return res.status(401).json({ message: "Invalid credentials" });
     }
@@ -601,6 +586,7 @@ exports.resendOtp = async (req, res) => {
       await sendSMS({
         to: user.phone_number,
         body: `Your WDP one-time code is ${code}. It expires in 6 hours.`,
+        type: "otp",
       });
     } catch (e) {
       console.error("Failed to send OTP SMS:", e.message);
@@ -887,14 +873,12 @@ exports.updateMe = async (req, res) => {
         if (field === "department") {
           // Basic sanity validation of department value
           if (value && !DEPARTMENTS.includes(value)) {
-            return res
-              .status(400)
-              .json({
-                success: false,
-                code: "INVALID_DEPARTMENT",
-                field: "department",
-                message: "Invalid department supplied.",
-              });
+            return res.status(400).json({
+              success: false,
+              code: "INVALID_DEPARTMENT",
+              field: "department",
+              message: "Invalid department supplied.",
+            });
           }
           updates.push("department = ?");
           values.push(value || null);
@@ -920,35 +904,29 @@ exports.updateMe = async (req, res) => {
     if (bodyDept) {
       const allowedSubs = SUB_DEPARTMENT_MAP[bodyDept] || [];
       if (!bodySub) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            code: "SUB_DEPARTMENT_REQUIRED",
-            field: "sub_department",
-            message: "Sub department is required when department is provided.",
-          });
+        return res.status(400).json({
+          success: false,
+          code: "SUB_DEPARTMENT_REQUIRED",
+          field: "sub_department",
+          message: "Sub department is required when department is provided.",
+        });
       }
       if (!allowedSubs.includes(bodySub)) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            code: "INVALID_SUB_DEPARTMENT",
-            field: "sub_department",
-            message: "Invalid sub department for selected department.",
-          });
+        return res.status(400).json({
+          success: false,
+          code: "INVALID_SUB_DEPARTMENT",
+          field: "sub_department",
+          message: "Invalid sub department for selected department.",
+        });
       }
     } else if (bodySub) {
       // Sub provided without department
-      return res
-        .status(400)
-        .json({
-          success: false,
-          code: "DEPARTMENT_REQUIRED",
-          field: "department",
-          message: "Department must be set when sub department is provided.",
-        });
+      return res.status(400).json({
+        success: false,
+        code: "DEPARTMENT_REQUIRED",
+        field: "department",
+        message: "Department must be set when sub department is provided.",
+      });
     }
     // Phone number validation & uniqueness (handle separately to allow early errors)
     if (incomingPhone !== undefined) {
@@ -957,15 +935,13 @@ exports.updateMe = async (req, res) => {
         updates.push("phone_number = NULL");
       } else {
         if (!isValidPhone(incomingPhone)) {
-          return res
-            .status(400)
-            .json({
-              success: false,
-              code: "INVALID_PHONE_FORMAT",
-              field: "phone_number",
-              message:
-                "Invalid phone number format. Use 7-15 digits, optional leading +",
-            });
+          return res.status(400).json({
+            success: false,
+            code: "INVALID_PHONE_FORMAT",
+            field: "phone_number",
+            message:
+              "Invalid phone number format. Use 7-15 digits, optional leading +",
+          });
         }
         const normalized = normalizePhone(incomingPhone);
         const RATE_LIMIT_MAX = 3;
@@ -982,14 +958,12 @@ exports.updateMe = async (req, res) => {
               since < 24 * 60 * 60 * 1000 &&
               rec.phone_change_count >= RATE_LIMIT_MAX
             ) {
-              return res
-                .status(429)
-                .json({
-                  success: false,
-                  code: "PHONE_CHANGE_RATE_LIMIT",
-                  field: "phone_number",
-                  message: `Phone number can only be changed ${RATE_LIMIT_MAX} times in 24 hours.`,
-                });
+              return res.status(429).json({
+                success: false,
+                code: "PHONE_CHANGE_RATE_LIMIT",
+                field: "phone_number",
+                message: `Phone number can only be changed ${RATE_LIMIT_MAX} times in 24 hours.`,
+              });
             }
           }
         }
@@ -998,14 +972,12 @@ exports.updateMe = async (req, res) => {
           [normalized, userId]
         );
         if (dup.length) {
-          return res
-            .status(409)
-            .json({
-              success: false,
-              code: "PHONE_IN_USE",
-              field: "phone_number",
-              message: "Phone number already in use by another user.",
-            });
+          return res.status(409).json({
+            success: false,
+            code: "PHONE_IN_USE",
+            field: "phone_number",
+            message: "Phone number already in use by another user.",
+          });
         }
         updates.push("phone_number = ?");
         values.push(normalized);
@@ -1057,14 +1029,12 @@ exports.updateMe = async (req, res) => {
       }
     } catch (e) {
       if (e && e.code === "ER_DUP_ENTRY" && /phone_number/.test(e.message)) {
-        return res
-          .status(409)
-          .json({
-            success: false,
-            code: "PHONE_IN_USE",
-            field: "phone_number",
-            message: "Phone number already in use by another user.",
-          });
+        return res.status(409).json({
+          success: false,
+          code: "PHONE_IN_USE",
+          field: "phone_number",
+          message: "Phone number already in use by another user.",
+        });
       }
       throw e;
     }
@@ -1099,12 +1069,10 @@ exports.updateMe = async (req, res) => {
     });
   } catch (error) {
     console.error("Update profile error:", error);
-    res
-      .status(500)
-      .json({
-        message: "Server error while updating profile",
-        error: error.message,
-      });
+    res.status(500).json({
+      message: "Server error while updating profile",
+      error: error.message,
+    });
   }
 };
 
@@ -1185,11 +1153,9 @@ exports.forgotPassword = async (req, res) => {
       );
     } else {
       if (rCount >= 3) {
-        return res
-          .status(429)
-          .json({
-            message: "Reset code request limit reached. Try again later.",
-          });
+        return res.status(429).json({
+          message: "Reset code request limit reached. Try again later.",
+        });
       }
       await pool.query(
         "UPDATE users SET reset_otp_request_count = reset_otp_request_count + 1 WHERE id = ?",
@@ -1206,6 +1172,7 @@ exports.forgotPassword = async (req, res) => {
       await sendSMS({
         to: user.phone_number,
         body: `Your password reset code is ${code}. It expires in 10 minutes.`,
+        type: "otp",
       });
     } catch (e) {
       console.error("Failed sending reset SMS:", e.message);
@@ -1279,12 +1246,9 @@ exports.resetForgottenPassword = async (req, res) => {
       !policy.number.test(newPassword) ||
       !policy.symbol.test(newPassword)
     ) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "Password must be 8+ chars incl upper, lower, number, symbol.",
-        });
+      return res.status(400).json({
+        message: "Password must be 8+ chars incl upper, lower, number, symbol.",
+      });
     }
     const bcrypt = require("bcryptjs");
     const [rows] = await pool.query("SELECT password FROM users WHERE id = ?", [

@@ -30,13 +30,11 @@ exports.updateDeclaration = async (req, res) => {
       ["approved"].includes(existingRow.status) &&
       (existingRow.user_edit_count || 0) >= 1
     ) {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message:
-            "You have already edited this declaration once. Further edits are not allowed.",
-        });
+      return res.status(403).json({
+        success: false,
+        message:
+          "You have already edited this declaration once. Further edits are not allowed.",
+      });
     }
 
     const payload = req.body || {};
@@ -223,6 +221,7 @@ exports.updateDeclaration = async (req, res) => {
         await sendSMS({
           to: witness_phone,
           body: buildWitnessSmsBody(fullName),
+          type: "sms",
         });
       }
     } catch (e) {
@@ -476,13 +475,11 @@ exports.patchDeclaration = async (req, res) => {
       ["approved"].includes(existingRow.status) &&
       (existingRow.user_edit_count || 0) >= 1
     ) {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message:
-            "You have already edited this declaration once. Further edits are not allowed.",
-        });
+      return res.status(403).json({
+        success: false,
+        message:
+          "You have already edited this declaration once. Further edits are not allowed.",
+      });
     }
     const allowedScalar = new Set([
       "marital_status",
@@ -692,7 +689,7 @@ async function ensureEditRequestsTable() {
   // Ensure id is AUTO_INCREMENT even if table pre-existed without it
   try {
     await db.query(
-      'ALTER TABLE declaration_edit_requests MODIFY id INT NOT NULL AUTO_INCREMENT PRIMARY KEY'
+      "ALTER TABLE declaration_edit_requests MODIFY id INT NOT NULL AUTO_INCREMENT PRIMARY KEY"
     );
   } catch (e) {
     // Ignore benign errors (already auto_increment or insufficient privileges)
@@ -716,21 +713,36 @@ exports.requestEdit = async (req, res) => {
         [declarationId, userId, reason, requestedAt]
       );
     } catch (e) {
-      if (e && (e.code === 'ER_NO_SUCH_TABLE' || /doesn\'t exist/i.test(e.message || ''))) {
+      if (
+        e &&
+        (e.code === "ER_NO_SUCH_TABLE" ||
+          /doesn\'t exist/i.test(e.message || ""))
+      ) {
         // Create table on the fly and retry once
-        console.warn('declaration_edit_requests missing. Creating table and retrying insert.');
+        console.warn(
+          "declaration_edit_requests missing. Creating table and retrying insert."
+        );
         await ensureEditRequestsTable();
         await db.execute(
           "INSERT INTO declaration_edit_requests (declarationId, userId, reason, requestedAt) VALUES (?, ?, ?, ?)",
           [declarationId, userId, reason, requestedAt]
         );
-      } else if (e && (e.code === 'ER_TRUNCATED_WRONG_VALUE' || e.code === 'ER_TRUNCATED_WRONG_VALUE_FOR_FIELD' || /Incorrect datetime value/i.test(e.message || ''))) {
+      } else if (
+        e &&
+        (e.code === "ER_TRUNCATED_WRONG_VALUE" ||
+          e.code === "ER_TRUNCATED_WRONG_VALUE_FOR_FIELD" ||
+          /Incorrect datetime value/i.test(e.message || ""))
+      ) {
         // Retry with server time if provided date was not acceptable to MySQL
         await db.execute(
           "INSERT INTO declaration_edit_requests (declarationId, userId, reason, requestedAt) VALUES (?, ?, ?, NOW())",
           [declarationId, userId, reason]
         );
-      } else if (e && (e.code === 'ER_NO_DEFAULT_FOR_FIELD' || /does not have a default value/i.test(e.message || ''))) {
+      } else if (
+        e &&
+        (e.code === "ER_NO_DEFAULT_FOR_FIELD" ||
+          /does not have a default value/i.test(e.message || ""))
+      ) {
         // Ensure auto increment on id and retry
         await ensureEditRequestsTable();
         await db.execute(
@@ -759,7 +771,11 @@ exports.getAllEditRequests = async (req, res) => {
       );
       return res.json({ success: true, data: rows });
     } catch (e) {
-      if (e && (e.code === 'ER_NO_SUCH_TABLE' || /doesn\'t exist/i.test(e.message || ''))) {
+      if (
+        e &&
+        (e.code === "ER_NO_SUCH_TABLE" ||
+          /doesn\'t exist/i.test(e.message || ""))
+      ) {
         await ensureEditRequestsTable();
         return res.json({ success: true, data: [] });
       }
@@ -985,12 +1001,10 @@ exports.downloadDeclarationPDF = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Declaration not found" });
     if (rows[0].user_id !== userId && req.user.role !== "super_admin") {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Not authorized to download this declaration",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized to download this declaration",
+      });
     }
 
     const { generateDeclarationPDF } = require("../util/pdfBuilder");
@@ -1045,13 +1059,11 @@ exports.downloadDeclarationPDF = async (req, res) => {
     return res.send(finalBuffer);
   } catch (err) {
     console.error("On-demand PDF generation failed:", err);
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to generate PDF",
-        error: err.message,
-      });
+    return res.status(500).json({
+      success: false,
+      message: "Failed to generate PDF",
+      error: err.message,
+    });
   }
 };
 
@@ -1070,12 +1082,10 @@ exports.getAllDeclarations = async (req, res) => {
     res.json({ success: true, data: rows });
   } catch (error) {
     console.error("Error fetching all admin declarations:", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Server error fetching admin declarations",
-      });
+    res.status(500).json({
+      success: false,
+      message: "Server error fetching admin declarations",
+    });
   }
 };
 
@@ -1092,12 +1102,10 @@ exports.getAdminDeclarationById = async (req, res) => {
     return res.json({ success: true, data: declaration });
   } catch (error) {
     console.error("Error fetching admin declaration details:", error);
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: "Server error fetching declaration details",
-      });
+    return res.status(500).json({
+      success: false,
+      message: "Server error fetching declaration details",
+    });
   }
 };
 // Get all declarations for a user
@@ -1181,12 +1189,10 @@ exports.submitDeclaration = async (req, res) => {
         "submitDeclaration reject: invalid declaration_type",
         declaration_type
       );
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Invalid or missing declaration type.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or missing declaration type.",
+      });
     }
 
     // Fetch user's previous declarations
@@ -1197,12 +1203,10 @@ exports.submitDeclaration = async (req, res) => {
       (declaration_type === "First" || declaration_type === "Final") &&
       previousDeclarations.some((d) => d.declaration_type === declaration_type)
     ) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: `You can only submit a ${declaration_type} declaration once.`,
-        });
+      return res.status(400).json({
+        success: false,
+        message: `You can only submit a ${declaration_type} declaration once.`,
+      });
     }
 
     // Bienniel logic: only allowed every two years, Nov 1 - Dec 31, starting 2025
@@ -1220,25 +1224,21 @@ exports.submitDeclaration = async (req, res) => {
       const day = dateObj.getDate();
       // Only allow odd years >= 2025
       if (year < 2025 || year % 2 === 0) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message:
-              "Biennial declaration is only allowed every two years starting 2025.",
-          });
+        return res.status(400).json({
+          success: false,
+          message:
+            "Biennial declaration is only allowed every two years starting 2025.",
+        });
       }
       // Only allow between Nov 1 and Dec 31
       const isAllowedWindow =
         (month === 11 && day >= 1) || (month === 12 && day <= 31);
       if (!isAllowedWindow) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message:
-              "Biennial declaration is only allowed between Nov 1 and Dec 31 of the allowed year.",
-          });
+        return res.status(400).json({
+          success: false,
+          message:
+            "Biennial declaration is only allowed between Nov 1 and Dec 31 of the allowed year.",
+        });
       }
       // Only one biennial per allowed year (account for legacy spelling in DB)
       if (
@@ -1249,13 +1249,11 @@ exports.submitDeclaration = async (req, res) => {
             new Date(d.declaration_date).getFullYear() === year
         )
       ) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message:
-              "You have already submitted a Biennial declaration for this period.",
-          });
+        return res.status(400).json({
+          success: false,
+          message:
+            "You have already submitted a Biennial declaration for this period.",
+        });
       }
     }
     // Use normalized type going forward
@@ -1332,13 +1330,10 @@ exports.submitDeclaration = async (req, res) => {
           "value" in item
       )
     ) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message:
-            "Biennial income entries must contain description and value.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Biennial income entries must contain description and value.",
+      });
     }
     const rootAssets = filterRows(normalizeFinArray(assets));
     const rootLiabilities = filterRows(normalizeFinArray(liabilities));
@@ -1442,6 +1437,7 @@ exports.submitDeclaration = async (req, res) => {
           const { buildWitnessSmsBody } = require("../util/witnessSms");
           await sendSMS({
             to: fallbackWitness.phone,
+            type: "sms",
             body: buildWitnessSmsBody(fullName),
           });
           witnessSmsSent = true;
@@ -1473,6 +1469,7 @@ exports.submitDeclaration = async (req, res) => {
         const { buildWitnessSmsBody } = require("../util/witnessSms");
         await sendSMS({
           to: effectiveWitnessPhone,
+          type: "sms",
           body: buildWitnessSmsBody(fullName),
         });
         witnessSmsSent = true;
@@ -1564,6 +1561,7 @@ exports.submitDeclaration = async (req, res) => {
           const declType = req.body.declaration_type || "Biennial";
           await sendSMS({
             to: phone,
+            type: "sms",
             body: `Your ${declType} Declaration of Income, Assets and Liabilities (DIALs) has been successfully submitted. Thank you for your compliance.`,
           });
         }
