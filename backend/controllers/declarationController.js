@@ -689,6 +689,14 @@ async function ensureEditRequestsTable() {
     INDEX idx_user (userId)
   )`;
   await db.query(sql);
+  // Ensure id is AUTO_INCREMENT even if table pre-existed without it
+  try {
+    await db.query(
+      'ALTER TABLE declaration_edit_requests MODIFY id INT NOT NULL AUTO_INCREMENT PRIMARY KEY'
+    );
+  } catch (e) {
+    // Ignore benign errors (already auto_increment or insufficient privileges)
+  }
 }
 
 // Record an edit request for a declaration
@@ -701,10 +709,11 @@ exports.requestEdit = async (req, res) => {
       return res
         .status(400)
         .json({ success: false, message: "Reason is required." });
+    const requestedAt = date ? new Date(date) : new Date();
     try {
       await db.execute(
         "INSERT INTO declaration_edit_requests (declarationId, userId, reason, requestedAt) VALUES (?, ?, ?, ?)",
-        [declarationId, userId, reason, date || new Date()]
+        [declarationId, userId, reason, requestedAt]
       );
     } catch (e) {
       if (e && (e.code === 'ER_NO_SUCH_TABLE' || /doesn\'t exist/i.test(e.message || ''))) {
@@ -712,8 +721,21 @@ exports.requestEdit = async (req, res) => {
         console.warn('declaration_edit_requests missing. Creating table and retrying insert.');
         await ensureEditRequestsTable();
         await db.execute(
-          "INSERT INTO declaration_edit_requests (declarationId, userId, reason, requestedAt) VALUES (?, ?, ? , ?)",
-          [declarationId, userId, reason, date || new Date()]
+          "INSERT INTO declaration_edit_requests (declarationId, userId, reason, requestedAt) VALUES (?, ?, ?, ?)",
+          [declarationId, userId, reason, requestedAt]
+        );
+      } else if (e && (e.code === 'ER_TRUNCATED_WRONG_VALUE' || e.code === 'ER_TRUNCATED_WRONG_VALUE_FOR_FIELD' || /Incorrect datetime value/i.test(e.message || ''))) {
+        // Retry with server time if provided date was not acceptable to MySQL
+        await db.execute(
+          "INSERT INTO declaration_edit_requests (declarationId, userId, reason, requestedAt) VALUES (?, ?, ?, NOW())",
+          [declarationId, userId, reason]
+        );
+      } else if (e && (e.code === 'ER_NO_DEFAULT_FOR_FIELD' || /does not have a default value/i.test(e.message || ''))) {
+        // Ensure auto increment on id and retry
+        await ensureEditRequestsTable();
+        await db.execute(
+          "INSERT INTO declaration_edit_requests (declarationId, userId, reason, requestedAt) VALUES (?, ?, ?, ?)",
+          [declarationId, userId, reason, requestedAt]
         );
       } else {
         throw e;
