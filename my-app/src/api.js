@@ -1,8 +1,37 @@
 import axios from 'axios';
 
-// Default to relative '/api' if no explicit base URL is provided.
-// This ensures local dev (CRA proxy) and production reverse-proxy both work.
-const API_URL = process.env.REACT_APP_API_URL || '/api';
+// Compute API base URL robustly.
+// If REACT_APP_API_URL is an absolute URL without a path and on the same origin
+// (e.g. https://dials.mcpsb.go.ke), assume the backend is reverse-proxied at '/api'.
+// Otherwise, respect the provided path (e.g. https://api.example.com or https://host/app/api).
+function normalizeApiBase(raw) {
+  try {
+    if (!raw) return '/api';
+    const trimmed = String(raw).trim();
+    // Absolute URL provided
+    if (/^https?:\/\//i.test(trimmed)) {
+      const u = new URL(trimmed);
+      const path = (u.pathname || '/').replace(/\/+$/, '');
+      if (!path || path === '/') {
+        // No path segment – if pointing to current origin, prefer relative '/api'
+        if (typeof window !== 'undefined' && u.origin === window.location.origin) {
+          return '/api';
+        }
+        // Different origin without path: default to '/api' on that origin
+        return u.origin + '/api';
+      }
+      // Has a path – use origin + normalized path as base
+      return u.origin + path;
+    }
+    // Relative string – ensure leading slash and fallback to '/api' if empty
+    const rel = trimmed.replace(/\/+$/, '');
+    return rel || '/api';
+  } catch {
+    return '/api';
+  }
+}
+
+const API_URL = normalizeApiBase(process.env.REACT_APP_API_URL);
 
 // Global Axios interceptor for uniform 401 / 404 handling
 let interceptorInstalled = false;
