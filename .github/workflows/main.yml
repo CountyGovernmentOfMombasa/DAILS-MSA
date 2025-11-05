@@ -19,6 +19,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
+          port: 4792
           script: |
             cd ${{ secrets.APP_DIR }}
             echo "📦 Pulling latest code..."
