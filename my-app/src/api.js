@@ -163,10 +163,14 @@ export const updateDeclaration = (id, data, token) =>
   });
 // Removed unified financial endpoints (financial tables deprecated); declaration GET now includes synthesized financial_unified
 // Additional idempotent GET helpers (fetch-based) with in-flight dedupe
-export const getAuthProfile = (token) =>
-  dedupedFetchJson("/api/auth/me", {
+export const getAuthProfile = (token) => {
+  if (!token) {
+    return Promise.reject(new Error("No token provided for getAuthProfile"));
+  }
+  return dedupedFetchJson("/api/auth/me", {
     headers: { Authorization: `Bearer ${token}` },
   });
+};
 export const getAdminDeclarations = (adminToken) =>
   dedupedFetchJson("/api/admin/declarations", {
     headers: { Authorization: `Bearer ${adminToken}` },
