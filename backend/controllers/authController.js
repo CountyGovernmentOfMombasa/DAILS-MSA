@@ -367,8 +367,9 @@ exports.login = async (req, res) => {
           code: "FIRST_TIME_DEFAULT_PASSWORD_REQUIRED",
         });
       }
-      // Generate and store OTP
-      const { code, expires } = createOtp();
+  // Generate and store OTP (expiry computed in DB using UTC to avoid TZ skew)
+  const { code } = createOtp();
+  const otpTtlMinutes = parseInt(process.env.OTP_TTL_MINUTES || '360', 10);
 
       // Rate limit OTP requests (first-time login): max 3 per rolling 1 hour window
       let resetWindow = false;
@@ -380,7 +381,7 @@ exports.login = async (req, res) => {
       }
       if (resetWindow) {
         await pool.query(
-          "UPDATE users SET otp_request_count = 1, otp_request_window_start = NOW() WHERE id = ?",
+          "UPDATE users SET otp_request_count = 1, otp_request_window_start = UTC_TIMESTAMP() WHERE id = ?",
           [user.id]
         );
       } else {
@@ -395,8 +396,8 @@ exports.login = async (req, res) => {
         );
       }
       await pool.query(
-        "UPDATE users SET otp_code = ?, otp_expires_at = ? WHERE id = ?",
-        [code, expires, user.id]
+        "UPDATE users SET otp_code = ?, otp_expires_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? MINUTE) WHERE id = ?",
+        [code, otpTtlMinutes, user.id]
       );
       // Send OTP via SMS
       try {
@@ -563,7 +564,7 @@ exports.resendOtp = async (req, res) => {
     }
     if (resetWindow) {
       await pool.query(
-        "UPDATE users SET otp_request_count = 1, otp_request_window_start = NOW() WHERE id = ?",
+        "UPDATE users SET otp_request_count = 1, otp_request_window_start = UTC_TIMESTAMP() WHERE id = ?",
         [user.id]
       );
     } else {
@@ -577,10 +578,11 @@ exports.resendOtp = async (req, res) => {
         [user.id]
       );
     }
-    const { code, expires } = createOtp();
+    const { code } = createOtp();
+    const otpTtlMinutes = parseInt(process.env.OTP_TTL_MINUTES || '360', 10);
     await pool.query(
-      "UPDATE users SET otp_code = ?, otp_expires_at = ? WHERE id = ?",
-      [code, expires, user.id]
+      "UPDATE users SET otp_code = ?, otp_expires_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? MINUTE) WHERE id = ?",
+      [code, otpTtlMinutes, user.id]
     );
     try {
       await sendSMS({
@@ -607,19 +609,17 @@ exports.verifyOtp = async (req, res) => {
     if (!otp) return res.status(400).json({ message: "OTP is required" });
     const userId = req.user.id;
     const [rows] = await pool.query(
-      "SELECT otp_code, otp_expires_at FROM users WHERE id = ?",
+      "SELECT otp_code, otp_expires_at, TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), otp_expires_at) AS remaining_secs FROM users WHERE id = ?",
       [userId]
     );
     if (!rows.length)
       return res.status(404).json({ message: "User not found" });
-    const { otp_code, otp_expires_at } = rows[0];
+    const { otp_code, otp_expires_at, remaining_secs } = rows[0];
     if (!otp_code || !otp_expires_at)
       return res
         .status(400)
         .json({ message: "No OTP generated. Please login again." });
-    const now = new Date();
-    const expiry = new Date(otp_expires_at);
-    if (now > expiry) {
+    if (typeof remaining_secs === 'number' && remaining_secs < 0) {
       // Proactively clear expired OTP to avoid lingering codes in DB
       try {
         await pool.query(
