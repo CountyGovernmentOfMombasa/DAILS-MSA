@@ -35,14 +35,14 @@ exports.verifyToken = async (req, res, next) => {
         // Skip inactivity enforcement for OTP verification tokens to avoid blocking first-time logins.
         if (!isOtpToken && decoded && decoded.id) {
             try {
-                const [rows] = await pool.query('SELECT last_activity FROM users WHERE id = ?', [decoded.id]);
-                if (rows.length) {
-                    const la = rows[0].last_activity;
-                    if (la && INACTIVITY_MS > 0) {
-                        const diff = Date.now() - new Date(la).getTime();
-                        if (diff > INACTIVITY_MS) {
-                            return res.status(401).json({ message: 'Session expired due to inactivity' });
-                        }
+                // Compute inactivity strictly in DB time using UTC to avoid app/DB timezone drift
+                const [rows] = await pool.query(
+                    'SELECT TIMESTAMPDIFF(SECOND, last_activity, UTC_TIMESTAMP()) AS idle_secs FROM users WHERE id = ?',[decoded.id]
+                );
+                if (rows.length && INACTIVITY_MS > 0) {
+                    const idleSecs = rows[0].idle_secs;
+                    if (typeof idleSecs === 'number' && idleSecs * 1000 > INACTIVITY_MS) {
+                        return res.status(401).json({ message: 'Session expired due to inactivity' });
                     }
                 }
             } catch(e) {
@@ -51,7 +51,7 @@ exports.verifyToken = async (req, res, next) => {
         }
         // Update last_activity asynchronously (do not block response). Do this for all tokens including OTP.
         if (decoded && decoded.id) {
-            pool.query('UPDATE users SET last_activity = NOW() WHERE id = ?', [decoded.id]).catch(()=>{});
+            pool.query('UPDATE users SET last_activity = UTC_TIMESTAMP() WHERE id = ?', [decoded.id]).catch(()=>{});
         }
         // Hydrate with full user record (non-blocking critical path, but awaited here for simplicity)
         try {
@@ -66,8 +66,22 @@ exports.verifyToken = async (req, res, next) => {
         }
         next();
     } catch (error) {
-        return res.status(401).json({ 
-            message: 'Invalid token' 
-        });
+        // Improve diagnostics and differentiate common JWT errors
+        let message = 'Invalid token';
+        if (error && error.name === 'TokenExpiredError') {
+            message = 'Token expired';
+        } else if (error && error.name === 'JsonWebTokenError') {
+            message = 'Invalid token';
+        }
+        try {
+            // Best-effort server log without leaking secrets
+            const hdr = (req.headers['authorization'] || '').slice(0, 16);
+            console.warn('[AUTH 401]', message, {
+                path: req.originalUrl,
+                authHdrPrefix: hdr ? (hdr.startsWith('Bearer ') ? 'Bearer ' : 'other') : 'missing',
+                ip: req.ip,
+            });
+        } catch {}
+        return res.status(401).json({ message });
     }
 };

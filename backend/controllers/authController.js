@@ -58,7 +58,7 @@ async function issueTokenPair(userId, extraClaims = {}) {
   const refreshToken = `${userId}.${refreshRaw}`;
   const refreshHash = hashToken(refreshToken);
   await pool.query(
-    "UPDATE users SET refresh_token_hash = ?, last_activity = NOW() WHERE id = ?",
+    "UPDATE users SET refresh_token_hash = ?, last_activity = UTC_TIMESTAMP() WHERE id = ?",
     [refreshHash, userId]
   );
   return {
@@ -804,9 +804,8 @@ exports.getMe = async (req, res) => {
     );
 
     if (users.length === 0) {
-      return res.status(404).json({
-        message: "User not found",
-      });
+      // If token verified but no user found, surface a clear 401 so the client can refresh/re-login
+      return res.status(401).json({ message: 'User not found' });
     }
     res.json(users[0]);
   } catch (error) {
@@ -1349,13 +1348,19 @@ exports.refresh = async (req, res) => {
       return res.status(401).json({ message: "Refresh token revoked" });
     }
     // Inactivity check (soft invalidation). If last_activity too old, revoke & deny.
-    if (row.last_activity && INACTIVITY_LIMIT_MS > 0) {
-      const last = new Date(row.last_activity).getTime();
-      if (Date.now() - last > INACTIVITY_LIMIT_MS) {
-        await revokeRefresh(userId);
-        return res
-          .status(401)
-          .json({ message: "Session expired due to inactivity" });
+    if (INACTIVITY_LIMIT_MS > 0) {
+      // Compute inactivity strictly in DB using UTC to avoid timezone skew
+      try {
+        const [[idle]] = await pool.query(
+          'SELECT TIMESTAMPDIFF(SECOND, last_activity, UTC_TIMESTAMP()) AS idle_secs FROM users WHERE id = ?',
+          [userId]
+        );
+        if (idle && typeof idle.idle_secs === 'number' && idle.idle_secs * 1000 > INACTIVITY_LIMIT_MS) {
+          await revokeRefresh(userId);
+          return res.status(401).json({ message: 'Session expired due to inactivity' });
+        }
+      } catch (tzErr) {
+        console.warn('Refresh inactivity check failed:', tzErr.message);
       }
     }
     // Rotate refresh token if rotation enabled
@@ -1370,7 +1375,7 @@ exports.refresh = async (req, res) => {
       });
     } else {
       // Update last_activity only
-      await pool.query("UPDATE users SET last_activity = NOW() WHERE id = ?", [
+      await pool.query("UPDATE users SET last_activity = UTC_TIMESTAMP() WHERE id = ?", [
         userId,
       ]);
       const accessToken = signAccess({ id: userId });

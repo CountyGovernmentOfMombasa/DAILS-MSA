@@ -22,6 +22,22 @@ const app = express();
 // Trust first proxy (needed for express-rate-limit with X-Forwarded-For)
 app.set("trust proxy", 1);
 
+// Startup sanity checks for critical env vars
+(() => {
+  const crypto = require('crypto');
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    console.error('[STARTUP] JWT_SECRET is missing. Tokens will fail validation. Set JWT_SECRET in environment.');
+  } else {
+    // Log short fingerprint to help verify consistency across instances without exposing the secret
+    const fp = crypto.createHash('sha256').update(String(secret)).digest('hex').slice(0, 8);
+    console.log(`[STARTUP] JWT secret fingerprint: ${fp}`);
+  }
+  const accessTtl = process.env.ACCESS_TOKEN_EXPIRES_IN || '30m';
+  const refreshTtl = process.env.REFRESH_TOKEN_EXPIRES_IN || '14d';
+  console.log(`[STARTUP] Access TTL=${accessTtl}, Refresh TTL=${refreshTtl}, Inactivity(min)=${process.env.INACTIVITY_TIMEOUT_MINUTES || '30'}`);
+})();
+
 // Security middleware (put Helmet & logging first)
 app.use(
   helmet({
