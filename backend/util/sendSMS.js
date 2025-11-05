@@ -7,7 +7,7 @@ function buildMsisdn(to) {
   return String(to);
 }
 
-async function sendSMS({ to, body }) {
+async function sendSMS({ to, body, type }) {
   const enabled = (process.env.SMS_ENABLED || "true").toLowerCase() === "true";
   if (!enabled) {
     console.log(`[SMS disabled] Would send to ${buildMsisdn(to)}: ${body}`);
@@ -27,6 +27,7 @@ async function sendSMS({ to, body }) {
     senderid: process.env.TOLCLIN_SENDER_ID || "COUNTY-MSA",
     msisdn: buildMsisdn(to),
     message: body,
+    type: type,
   };
 
   // Remove undefined keys
