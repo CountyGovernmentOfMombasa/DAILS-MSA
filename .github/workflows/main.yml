@@ -1,9 +1,9 @@
-name: 🚀 Auto Deploy to Ubuntu
+name: Deploy Node + React app
 
 on:
   push:
     branches:
-      - main    # deploy when code is pushed to main branch
+      - main
 
 jobs:
   deploy:
@@ -13,7 +13,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Deploy to Ubuntu server via SSH
+      - name: Deploy to Ubuntu Server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -21,20 +21,21 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           port: 4792
           script: |
-            cd ${{ secrets.APP_DIR }}
-            echo "📦 Pulling latest code..."
+            cd /var/www/dials-msa
+            echo "Pulling latest code..."
             git fetch --all
             git reset --hard origin/main
 
-            echo "🧰 Installing backend dependencies..."
+            echo "Installing dependencies..."
+            cd backend
             npm install --production
 
-            echo "🧱 Building React frontend..."
-            cd client
+            echo "Building frontend..."
+            cd ../frontend
             npm install
             npm run build
-            cd ..
 
-            echo "🔁 Restarting app..."
-            pm2 restart my-app || pm2 start server.js --name my-app
+            echo "Restarting PM2 app..."
+            cd ../backend
+            pm2 restart dials-msa || pm2 start app.js --name dials-msa
             pm2 save
