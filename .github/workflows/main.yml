@@ -31,7 +31,7 @@ jobs:
             npm install --production
 
             echo "Building frontend..."
-            cd ../frontend
+            cd /var/www/dial-msa/my-app
             npm install
             npm run build
 
