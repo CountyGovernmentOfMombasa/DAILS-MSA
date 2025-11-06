@@ -264,6 +264,12 @@ const LandingPage = () => {
       setError("Please select a sub department for the chosen department.");
       return;
     }
+    // Client-side validation: designation required
+    if (!form.designation || !String(form.designation).trim()) {
+      setSaving(false);
+      setError("Designation is required.");
+      return;
+    }
     try {
       const token = localStorage.getItem("token");
       const res = await fetch("/api/auth/me", {
@@ -887,7 +893,13 @@ const LandingPage = () => {
                           value={form.designation || ""}
                           onChange={handleChange}
                           disabled={!editMode}
+                          required={editMode}
                         />
+                        {editMode && !((form.designation || "").trim()) && (
+                          <div className="form-text text-danger">
+                            Designation is required.
+                          </div>
+                        )}
                       </Form.Group>
                     </Col>
                     <Col md={4}>

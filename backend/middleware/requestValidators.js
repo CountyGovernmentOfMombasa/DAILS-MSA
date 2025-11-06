@@ -91,7 +91,7 @@ const updateMe = [
   body('surname').optional().isString().trim().isLength({ min: 2, max: 100 }).matches(/^[A-Za-z'\-\s]+$/).withMessage('Invalid surname'),
   body('email').optional().isEmail().withMessage('Invalid email').normalizeEmail(),
   body('payroll_number').optional().isString().trim().isLength({ min: 3, max: 50 }),
-  body('designation').optional().isString().trim().isLength({ max: 120 }),
+  body('designation').optional().isString().trim().isLength({ min: 1, max: 120 }),
   body('department').optional().isString().trim().isLength({ max: 180 }),
   body('sub_department').optional().isString().trim().isLength({ max: 180 }),
   body('nature_of_employment').optional().isString().trim().isLength({ max: 120 }),
