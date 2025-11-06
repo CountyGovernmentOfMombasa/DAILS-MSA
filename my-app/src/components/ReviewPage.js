@@ -356,6 +356,38 @@ const ReviewPageInner = () => {
       if (!isEditingExisting) {
         const authToken = localStorage.getItem('token');
         if (!authToken) throw new Error('Authentication expired. Please log in again.');
+        // Best-effort: upsert user's profile before submitting the declaration so details persist to DB
+        try {
+          const profileUpdate = {};
+          const pick = (key, val) => {
+            if (val === undefined || val === null) return;
+            const s = typeof val === 'string' ? val.trim() : val;
+            if (s === '') return; // avoid overwriting with empty strings
+            profileUpdate[key] = s;
+          };
+          const source = userData || model?.profile || {};
+          pick('surname', source.surname);
+          pick('first_name', source.first_name);
+          pick('other_names', source.other_names);
+          pick('birthdate', toISODate(source.birthdate));
+          pick('place_of_birth', source.place_of_birth);
+          pick('marital_status', source.marital_status);
+          pick('postal_address', source.postal_address);
+          pick('physical_address', source.physical_address);
+          pick('email', source.email);
+          pick('payroll_number', source.payroll_number);
+          pick('designation', source.designation);
+          pick('department', source.department);
+          pick('sub_department', source.sub_department);
+          pick('nature_of_employment', source.nature_of_employment || source.employment_nature);
+          pick('phone_number', source.phone_number);
+          if (Object.keys(profileUpdate).length) {
+            await axios.put('/api/auth/me', profileUpdate, { headers: { Authorization: `Bearer ${authToken}` } });
+          }
+        } catch (profileErr) {
+          // Do not block submission if profile upsert fails; log and continue
+          console.warn('Profile update before submission failed:', profileErr?.response?.data || profileErr.message);
+        }
         const res = await axios.post('/api/declarations', payload, { headers: { Authorization: `Bearer ${authToken}` } });
         if (!res.data?.success) {
           throw new Error(res.data?.message || 'Server did not confirm declaration save.');

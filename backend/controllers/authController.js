@@ -1138,16 +1138,16 @@ exports.forgotPassword = async (req, res) => {
         .json({ message: "No phone number on record. Contact support." });
     // Rate limit forgot password code requests: max 3 per 1h window (separate counters)
     const [secRows] = await pool.query(
-      "SELECT reset_otp_request_count, reset_otp_request_window_start FROM users WHERE id = ?",
+      "SELECT reset_otp_request_count, reset_otp_request_window_start, TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), DATE_ADD(reset_otp_request_window_start, INTERVAL 60 MINUTE)) AS window_remaining FROM users WHERE id = ?",
       [user.id]
     );
     let rCount = secRows[0].reset_otp_request_count;
     let rStart = secRows[0].reset_otp_request_window_start;
-    const now = new Date();
-    if (!rStart || now - new Date(rStart) > 60 * 60 * 1000) {
-      // reset window
+    const windowRemaining = secRows[0].window_remaining; // seconds until window end; NULL if start is NULL
+    if (!rStart || windowRemaining === null || windowRemaining <= 0) {
+      // reset window (use UTC clock in DB)
       await pool.query(
-        "UPDATE users SET reset_otp_request_count = 1, reset_otp_request_window_start = NOW() WHERE id = ?",
+        "UPDATE users SET reset_otp_request_count = 1, reset_otp_request_window_start = UTC_TIMESTAMP() WHERE id = ?",
         [user.id]
       );
     } else {
@@ -1162,10 +1162,9 @@ exports.forgotPassword = async (req, res) => {
       );
     }
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const expires = new Date(Date.now() + 10 * 60 * 1000);
     await pool.query(
-      "UPDATE users SET password_reset_code = ?, password_reset_expires_at = ? WHERE id = ?",
-      [code, expires, user.id]
+      "UPDATE users SET password_reset_code = ?, password_reset_expires_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 10 MINUTE) WHERE id = ?",
+      [code, user.id]
     );
     try {
       await sendSMS({
@@ -1195,19 +1194,19 @@ exports.verifyForgotPasswordCode = async (req, res) => {
     if (!nationalId || !code)
       return res.status(400).json({ message: "nationalId and code required" });
     const [rows] = await pool.query(
-      "SELECT id, password_reset_code, password_reset_expires_at FROM users WHERE national_id = ?",
+      "SELECT id, password_reset_code, password_reset_expires_at, TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), password_reset_expires_at) AS remaining_secs FROM users WHERE national_id = ?",
       [nationalId]
     );
     if (!rows.length)
       return res.status(404).json({ message: "User not found" });
-    const { id, password_reset_code, password_reset_expires_at } = rows[0];
+  const { id, password_reset_code, password_reset_expires_at, remaining_secs } = rows[0];
     if (!password_reset_code || !password_reset_expires_at)
       return res
         .status(400)
         .json({ message: "No active reset code. Request a new one." });
     if (String(code) !== String(password_reset_code))
       return res.status(400).json({ message: "Invalid code" });
-    if (new Date() > new Date(password_reset_expires_at))
+    if (remaining_secs === null || remaining_secs <= 0)
       return res.status(400).json({ message: "Code expired" });
     // Issue short-lived token to allow password reset
     const token = jwt.sign({ id, reset: true }, process.env.JWT_SECRET, {

@@ -122,3 +122,10 @@ All files have been syntax-checked and are error-free. The application should no
 - Adjusted permissions in bulk SMS and department status endpoints to reflect the above.
 - Database: removed `finance_admin` from `admin_users.role` enum in `database/schema.sql` and added migration `20251101_alter_admin_users_role_drop_finance.sql` to update existing databases.
 - Seeding: replaced default `finance_admin` with `it_admin` in `databaseSetup.js`'s `ensureDefaultAdmins()`.
+
+## 2025-11-06: Forgot password flow uses UTC times
+
+- Switched forgot password rate-limit window and reset code expiry to use the database UTC clock.
+- Replaced NOW() with UTC_TIMESTAMP() and compute expiries via DATE_ADD(UTC_TIMESTAMP(), ...).
+- Verification now compares expiry using TIMESTAMPDIFF against UTC to avoid timezone skew.
+- Files: `controllers/authController.js`.
