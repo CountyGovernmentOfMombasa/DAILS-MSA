@@ -37,5 +37,5 @@ jobs:
 
             echo "Restarting PM2 app..."
             cd ../backend
-            pm2 restart dials-msa || pm2 start app.js --name dials-msa
+            pm2 restart dials-backend || pm2 start app.js --name dials-msa
             pm2 save
