@@ -836,6 +836,38 @@ exports.revealUserOtp = async (req, res) => {
   }
 };
 
+// Variant: reveal/regenerate OTP by National ID instead of userId
+// Route: POST /api/it-admin/users/by-national-id/:nationalId/reveal-otp
+exports.revealUserOtpByNationalId = async (req, res) => {
+  try {
+    const adminCtx = req.admin || {};
+    const role = (adminCtx.role || adminCtx.normalizedRole || '').toLowerCase();
+    if (!['it_admin','super_admin','it','super'].includes(role)) {
+      return res.status(403).json({ success:false, message: 'Insufficient role to reveal OTP.' });
+    }
+    const nationalId = String(req.params.nationalId || '').trim();
+    if (!nationalId) {
+      return res.status(400).json({ success:false, message: 'nationalId path parameter is required.' });
+    }
+    // Resolve national_id -> user id
+    const [rows] = await pool.query('SELECT id FROM users WHERE national_id = ? LIMIT 1', [nationalId]);
+    if (!rows.length) {
+      return res.status(404).json({ success:false, message: 'User not found for provided national ID.' });
+    }
+    const userId = rows[0].id;
+    // Delegate to core reveal logic by temporarily setting req.params.userId
+    const prior = req.params.userId;
+    req.params.userId = String(userId);
+    // Call and return to prevent double send
+    return exports.revealUserOtp(req, res).finally(() => {
+      req.params.userId = prior; // restore
+    });
+  } catch (error) {
+    console.error('Reveal OTP by nationalId error:', error);
+    return res.status(500).json({ success:false, message: 'Server error revealing OTP by national ID', error: error.message });
+  }
+};
+
 // View OTP disclosure audit with pagination & filtering
 // GET /api/it-admin/otp-disclosure-audit?adminId=&userId=&from=&to=&action=&page=&limit=&search=
 exports.getOtpDisclosureAudit = async (req, res) => {

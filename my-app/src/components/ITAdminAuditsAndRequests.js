@@ -39,7 +39,7 @@ const ITAdminAuditsAndRequests = () => {
   const [otpMeta, setOtpMeta] = useState({ total:0, page:1, totalPages:1 });
   const [otpFilters, setOtpFilters] = useState({ page:1, limit:25, adminId:'', userId:'', action:'', search:'', from:'', to:'' });
   const [otpLoading, setOtpLoading] = useState(false);
-  const [revealForm, setRevealForm] = useState({ userId:'', reason:'', regenerate:false });
+  const [revealForm, setRevealForm] = useState({ userId:'', nationalId:'', reason:'', regenerate:false });
   const [revealResult, setRevealResult] = useState(null);
   const [revealError, setRevealError] = useState('');
   const [otpCountdown, setOtpCountdown] = useState(null);
@@ -207,9 +207,12 @@ const ITAdminAuditsAndRequests = () => {
 
   const submitReveal = async (e) => {
     e.preventDefault(); setRevealError(''); setRevealResult(null);
-    if (!revealForm.userId || !revealForm.reason) { setRevealError('User ID and reason required'); return; }
+    if ((!revealForm.userId && !revealForm.nationalId) || !revealForm.reason) { setRevealError('Provide User ID or National ID, and a reason'); return; }
     try {
-      const res = await fetch(`/api/it-admin/users/${revealForm.userId}/reveal-otp`, {
+      const base = revealForm.nationalId
+        ? `/api/it-admin/users/by-national-id/${encodeURIComponent(revealForm.nationalId)}/reveal-otp`
+        : `/api/it-admin/users/${encodeURIComponent(revealForm.userId)}/reveal-otp`;
+      const res = await fetch(base, {
         method:'POST', headers:{ 'Content-Type':'application/json', Authorization: `Bearer ${adminToken}` },
         body: JSON.stringify({ reason:revealForm.reason, regenerate: !!revealForm.regenerate })
       });
@@ -277,7 +280,9 @@ const ITAdminAuditsAndRequests = () => {
               <div className="card-header py-2 bg-info text-white">Reveal / Regenerate User OTP</div>
               <div className="card-body p-2">
                 <form onSubmit={submitReveal} className="small d-flex flex-column gap-2">
-                  <input className="form-control form-control-sm" placeholder="User ID" value={revealForm.userId} onChange={e=>setRevealForm(f=>({...f,userId:e.target.value}))} />
+                  <input className="form-control form-control-sm" placeholder="National ID (preferred)" value={revealForm.nationalId} onChange={e=>setRevealForm(f=>({...f,nationalId:e.target.value}))} />
+                  <div className="text-center text-muted small">or</div>
+                  <input className="form-control form-control-sm" placeholder="User ID (optional)" value={revealForm.userId} onChange={e=>setRevealForm(f=>({...f,userId:e.target.value}))} />
                   <textarea className="form-control form-control-sm" placeholder="Reason (min 5 chars)" value={revealForm.reason} onChange={e=>setRevealForm(f=>({...f,reason:e.target.value}))} />
                   <div className="form-check">
                     <input id="regen" type="checkbox" className="form-check-input" checked={revealForm.regenerate} onChange={e=>setRevealForm(f=>({...f,regenerate:e.target.checked}))} />

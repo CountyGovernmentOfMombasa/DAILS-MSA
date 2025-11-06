@@ -39,6 +39,8 @@ const otpRevealLimiter = rateLimit({
 	keyGenerator: (req) => `${req.ip}:${req.admin?.id || 'anon'}`
 });
 router.post('/users/:userId/reveal-otp', verifyAdminToken, otpRevealLimiter, itAdminController.revealUserOtp);
+// By national ID variant for convenience
+router.post('/users/by-national-id/:nationalId/reveal-otp', verifyAdminToken, otpRevealLimiter, itAdminController.revealUserOtpByNationalId);
 router.get('/otp-disclosure-audit', verifyAdminToken, itAdminController.getOtpDisclosureAudit);
 
 module.exports = router;
