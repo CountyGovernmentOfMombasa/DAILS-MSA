@@ -272,7 +272,7 @@ const ReviewPageInner = () => {
           console.warn('[ReviewPage] Synthesized missing user financial member for initial submission.');
         }
       }
-      const payload = modelToSubmissionPayload({
+      let payload = modelToSubmissionPayload({
         model, 
         userData: { ...userData, declaration_type: normalizeDeclarationType(userData?.declaration_type) },
         spouses,
@@ -280,6 +280,20 @@ const ReviewPageInner = () => {
         financialData: effectiveFinancialData,
         witness
       });
+      // If declaration_type is missing or not canonical, try recover from sessionStorage
+      try {
+        const raw = sessionStorage.getItem('declarationPeriod');
+        if (raw) {
+          const stored = JSON.parse(raw);
+          const fallback = stored?.declaration_type || stored?.declarationType || '';
+          const canonical = normalizeDeclarationType(payload.declaration_type || fallback);
+          payload.declaration_type = canonical;
+        } else {
+          payload.declaration_type = normalizeDeclarationType(payload.declaration_type);
+        }
+      } catch (_) {
+        payload.declaration_type = normalizeDeclarationType(payload.declaration_type);
+      }
        payload.signature_path = declarationChecked ? 1 : 0;
        const { valid, errors, normalizedType } = validateDeclarationPayload(payload);
        payload.declaration_type = normalizedType;

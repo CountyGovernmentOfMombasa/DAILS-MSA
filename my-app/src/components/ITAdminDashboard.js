@@ -5,7 +5,7 @@ import ReportsAndAnalytics from './ReportsAndAnalytics';
 import AdminUserCreation from './AdminUserCreation';
 import AddUserForm from './AddUserForm';
 import ITAdminAuditsAndRequests from './ITAdminAuditsAndRequests';
-import DepartmentUserStatus from './DepartmentUserStatus';
+import DepartmentOverview from './DepartmentOverview';
 import BulkSMSPanel from './BulkSMSPanel';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './AdminPage.css';
@@ -50,8 +50,8 @@ const ITAdminDashboard = ({ adminUser }) => {
         <button className="btn btn-outline-primary" onClick={() => setCurrentTab('email')}>Email Management</button>
         <button className="btn btn-outline-primary" onClick={() => setCurrentTab('reports')}>Reports & Analytics</button>
         <button className="btn btn-outline-primary" onClick={() => setCurrentTab('audits')}>Audits & Edit Requests</button>
-        <button className="btn btn-outline-primary" onClick={() => setCurrentTab('dept-users')}>Dept User Status</button>
-  <button className="btn btn-outline-primary" onClick={() => setCurrentTab('bulk-sms')}>Bulk SMS</button>
+        <button className="btn btn-outline-primary" onClick={() => setCurrentTab('dept-overview')}>Department Overview</button>
+        <button className="btn btn-outline-primary" onClick={() => setCurrentTab('bulk-sms')}>Bulk SMS</button>
         <button className="btn btn-outline-success" onClick={() => setCurrentTab('adminUser')}>Admin User Creation</button>
         <button className="btn btn-outline-primary" onClick={() => setCurrentTab('consent-logs')}>Consent Logs</button>
         <div className="ms-auto d-flex gap-2">
@@ -64,9 +64,9 @@ const ITAdminDashboard = ({ adminUser }) => {
           {currentTab === 'add-user' && <AddUserForm />}
           {currentTab === 'email' && <EmailManagement adminUser={adminUser} />}
           {currentTab === 'audits' && <ITAdminAuditsAndRequests />}
-          {currentTab === 'dept-users' && <DepartmentUserStatus adminUser={adminUser} />}
           {currentTab === 'reports' && <ReportsAndAnalytics declarations={declarations} reportData={{}} adminUser={adminUser} />}
           {currentTab === 'adminUser' && <AdminUserCreation adminUser={adminUser} />}
+          {currentTab === 'dept-overview' && <DepartmentOverview />}
           {currentTab === 'consent-logs' && <AdminConsentLogs adminUser={adminUser}/>}
           {currentTab === 'bulk-sms' && <BulkSMSPanel itAdmin />}
         </div>

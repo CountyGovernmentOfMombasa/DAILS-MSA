@@ -19,6 +19,7 @@ import {
 import useAdminSession from "../hooks/useAdminSession";
 import "./LandingPage.css"; // Assuming this file exists and is correct
 import { getDeclarations, getProgress, deleteProgress, adminFetch } from "../api";
+import { normalizeDeclarationType } from "../util/normalizeDeclarationType"; // ensure resumed progress carries canonical declaration type
 // Department logic now mirrors UserForm: user selects sub_department, department auto-derived (read-only)
 import {
   SUB_DEPARTMENTS,
@@ -389,8 +390,17 @@ const LandingPage = () => {
   const handleResumeProgress = () => {
     if (!progress) return;
     const path = stepToPath(progress.lastStep || "user");
+    // Attempt to recover a canonical declaration type from saved snapshot
+    const rawType = progress.stateSnapshot?.userData?.declaration_type || progress.stateSnapshot?.userData?.declarationType || "";
+    const canonicalType = normalizeDeclarationType(rawType);
+    const mergedState = { ...progress.stateSnapshot };
+    // Inject declarationType (used by downstream pages) and keep userData in sync
+    mergedState.declarationType = canonicalType;
+    if (mergedState.userData) {
+      mergedState.userData = { ...mergedState.userData, declaration_type: canonicalType };
+    }
     setResumeToast({ show: true, step: progress.lastStep || "user" });
-    navigate(path, { state: { ...progress.stateSnapshot } });
+    navigate(path, { state: mergedState });
   };
   const handleRestoreFromServer = async () => {
     if (!profile) return;
