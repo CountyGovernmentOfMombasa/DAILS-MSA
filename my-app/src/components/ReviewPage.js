@@ -233,6 +233,15 @@ const ReviewPageInner = () => {
   setIsSubmitting(true);
   setSubmitError('');
     try {
+      // Final guard: ensure profile required fields are present before submission
+      const requiredProfileFields = ['surname','first_name','other_names','birthdate','place_of_birth','marital_status','physical_address','email','phone_number','national_id','payroll_number','designation','sub_department','department','nature_of_employment'];
+      const missingProfile = requiredProfileFields.filter(f => {
+        const val = userData && userData[f];
+        return !val || (typeof val === 'string' && !val.trim());
+      });
+      if (missingProfile.length) {
+        throw new Error('Profile incomplete. Missing: ' + missingProfile.join(', '));
+      }
 
         const witness = {
         signed: witnessChecked && declarationChecked,

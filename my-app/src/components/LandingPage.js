@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useUser } from "../context/UserContext";
 import { useNavigate } from "react-router-dom";
 import {
@@ -62,6 +62,9 @@ const LandingPage = () => {
   const [selectedDecl, setSelectedDecl] = useState(null);
   const [adminFallbackUsed, setAdminFallbackUsed] = useState(false);
   const navigate = useNavigate();
+  const profileCardRef = useRef(null);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [missingProfile, setMissingProfile] = useState([]);
   const {
     hasAdminAccess,
     adminToken,
@@ -70,6 +73,30 @@ const LandingPage = () => {
     error: elevationError,
     elevateAndGo,
   } = useAdminSession();
+
+  // --- Profile gating definitions placed early to satisfy hook ordering/lint ---
+  const REQUIRED_PROFILE_FIELDS = React.useMemo(() => ([
+    { key: "surname", label: "Surname" },
+    { key: "first_name", label: "First Name" },
+    { key: "marital_status", label: "Marital Status" },
+    { key: "designation", label: "Designation" },
+    { key: "sub_department", label: "Sub Department" },
+    { key: "department", label: "Department" },
+    { key: "email", label: "Email" },
+    { key: "phone_number", label: "Phone Number" },
+    { key: "other_names", label: "Other Names" },
+    { key: "birthdate", label: "Date of Birth" },
+    { key: "place_of_birth", label: "Place of Birth" },
+    { key: "physical_address", label: "Physical Address" },
+    { key: "payroll_number", label: "Payroll Number" },
+    { key: "nature_of_employment", label: "Nature of Employment" },
+    { key: "national_id", label: "National ID" }
+  ]), []);
+
+  const computeMissingProfileFields = React.useCallback((p) => {
+    const trim = (x) => (typeof x === "string" ? x.trim() : x);
+    return REQUIRED_PROFILE_FIELDS.filter(({ key }) => !p || !trim(p[key])).map(f => f.label);
+  }, [REQUIRED_PROFILE_FIELDS]);
 
   const handleExportPDF = async (declaration) => {
     try {
@@ -210,7 +237,8 @@ const LandingPage = () => {
           });
       }
     }
-  }, [profile]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile, computeMissingProfileFields]);
   // Profile now comes from UserContext; when it appears, initialize form
   useEffect(() => {
     if (!profile) return;
@@ -225,7 +253,16 @@ const LandingPage = () => {
       sub_department: profile.sub_department || "",
     });
     setLoading(false);
-  }, [profile]);
+    // After loading profile, pre-compute missing required fields for soft validation
+  const missing = computeMissingProfileFields(profile || {});
+    setMissingProfile(missing);
+    if (missing.length) {
+      // Force edit mode so user can immediately correct missing fields
+      setEditMode(true);
+      // Scroll to profile section to draw attention
+      try { profileCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
+    }
+  }, [profile, computeMissingProfileFields]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -302,6 +339,21 @@ const LandingPage = () => {
 
   const handleAdminAccess = () => {
     navigate("/admin-access");
+  };
+
+  // --- Profile gating logic ---
+  // (moved REQUIRED_PROFILE_FIELDS & computeMissingProfileFields above)
+
+  const handleStartDeclaration = () => {
+    const base = form && Object.keys(form).length ? form : profile;
+    const missing = computeMissingProfileFields(base || {});
+    if (missing.length) {
+      setMissingProfile(missing);
+      setShowProfileModal(true);
+      try { profileCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch(_) {}
+      return;
+    }
+    navigate('/select-declaration-type', { state: { profile: base } });
   };
 
   // Edit Declaration Handler
@@ -677,7 +729,7 @@ const LandingPage = () => {
           )}
         </div>
         {/* Profile Section */}
-        <Card className="mb-5 shadow border-0">
+  <Card className="mb-5 shadow border-0" ref={profileCardRef}>
           <Card.Body>
             <h3 className="fw-bold mb-4 text-primary">My Profile</h3>
             <Alert variant="warning" className="mb-4">
@@ -689,6 +741,14 @@ const LandingPage = () => {
               <Spinner animation="border" />
             ) : (
               <>
+                {missingProfile.length > 0 && (
+                  <Alert variant="danger" className="mb-4">
+                    <strong>Profile Incomplete:</strong> Please fill the following before starting a declaration:
+                    <ul className="mb-0 mt-2">
+                      {missingProfile.map(m => <li key={m}>{m}</li>)}
+                    </ul>
+                  </Alert>
+                )}
                 <Form onSubmit={handleSave}>
                   <Row>
                     <Alert variant="info" className="w-100">
@@ -706,7 +766,9 @@ const LandingPage = () => {
                           value={form.surname || ""}
                           onChange={handleChange}
                           disabled={!editMode}
+                          required
                         />
+                        {editMode && !String(form.surname||'').trim() && <div className="form-text text-danger">Required.</div>}
                       </Form.Group>
                     </Col>
                     <Col md={4}>
@@ -720,7 +782,9 @@ const LandingPage = () => {
                           value={form.first_name || ""}
                           onChange={handleChange}
                           disabled={!editMode}
+                          required
                         />
+                        {editMode && !String(form.first_name||'').trim() && <div className="form-text text-danger">Required.</div>}
                       </Form.Group>
                     </Col>
                     <Col md={4}>
@@ -734,7 +798,9 @@ const LandingPage = () => {
                           value={form.other_names || ""}
                           onChange={handleChange}
                           disabled={!editMode}
+                          required
                         />
+                        {editMode && !String(form.other_names||'').trim() && <div className="form-text text-danger">Required.</div>}
                       </Form.Group>
                     </Col>
                   </Row>
@@ -758,7 +824,9 @@ const LandingPage = () => {
                           }
                           onChange={handleChange}
                           disabled={!editMode}
+                          required
                         />
+                        {editMode && !String(form.birthdate||'').trim() && <div className="form-text text-danger">Required.</div>}
                       </Form.Group>
                     </Col>
                     <Col md={4}>
@@ -772,7 +840,9 @@ const LandingPage = () => {
                           value={form.place_of_birth || ""}
                           onChange={handleChange}
                           disabled={!editMode}
+                          required
                         />
+                        {editMode && !String(form.place_of_birth||'').trim() && <div className="form-text text-danger">Required.</div>}
                       </Form.Group>
                     </Col>
                     <Col md={4}>
@@ -786,6 +856,7 @@ const LandingPage = () => {
                           value={form.marital_status || ""}
                           onChange={handleChange}
                           disabled={!editMode}
+                          required
                         >
                           <option value="">Select status</option>
                           <option value="single">Single</option>
@@ -794,6 +865,7 @@ const LandingPage = () => {
                           <option value="divorced">Divorced</option>
                           <option value="widowed">Widowed</option>
                         </Form.Select>
+                        {editMode && !String(form.marital_status||'').trim() && <div className="form-text text-danger">Required.</div>}
                       </Form.Group>
                     </Col>
                   </Row>
@@ -827,7 +899,9 @@ const LandingPage = () => {
                           value={form.physical_address || ""}
                           onChange={handleChange}
                           disabled={!editMode}
+                          required
                         />
+                        {editMode && !String(form.physical_address||'').trim() && <div className="form-text text-danger">Required.</div>}
                       </Form.Group>
                     </Col>
                   </Row>
@@ -845,7 +919,9 @@ const LandingPage = () => {
                           value={form.email || ""}
                           onChange={handleChange}
                           disabled={!editMode}
+                          required
                         />
+                        {editMode && !String(form.email||'').trim() && <div className="form-text text-danger">Required.</div>}
                       </Form.Group>
                     </Col>
                     <Col md={3}>
@@ -859,7 +935,9 @@ const LandingPage = () => {
                           value={form.phone_number || ""}
                           onChange={handleChange}
                           disabled={!editMode}
+                          required
                         />
+                        {editMode && !String(form.phone_number||'').trim() && <div className="form-text text-danger">Required.</div>}
                       </Form.Group>
                     </Col>
                     <Col md={3}>
@@ -873,7 +951,9 @@ const LandingPage = () => {
                           value={form.national_id || ""}
                           onChange={handleChange}
                           disabled
+                          required
                         />
+                        {!String(form.national_id||'').trim() && <div className="form-text text-danger">Required (contact admin if missing).</div>}
                       </Form.Group>
                     </Col>
                     <Col md={3}>
@@ -887,7 +967,9 @@ const LandingPage = () => {
                           value={form.payroll_number || ""}
                           onChange={handleChange}
                           disabled={!editMode}
+                          required
                         />
+                        {editMode && !String(form.payroll_number||'').trim() && <div className="form-text text-danger">Required.</div>}
                       </Form.Group>
                     </Col>
                   </Row>
@@ -951,7 +1033,9 @@ const LandingPage = () => {
                           value={form.department || ""}
                           readOnly
                           placeholder="Derived from Sub Department"
+                          required
                         />
+                        {!String(form.department||'').trim() && <div className="form-text text-danger">Required (select Sub Department).</div>}
                       </Form.Group>
                     </Col>
                   </Row>
@@ -967,12 +1051,14 @@ const LandingPage = () => {
                           value={form.nature_of_employment || ""}
                           onChange={handleChange}
                           disabled={!editMode}
+                          required
                         >
                           <option value="">Select employment type</option>
                           <option value="Permanent">Permanent</option>
                           <option value="Contract">Contract</option>
                           <option value="Temporary">Temporary</option>
                         </Form.Select>
+                        {editMode && !String(form.nature_of_employment||'').trim() && <div className="form-text text-danger">Required.</div>}
                       </Form.Group>
                     </Col>
                   </Row>
@@ -1155,6 +1241,37 @@ const LandingPage = () => {
             </Button>
           </Modal.Footer>
         </Modal>
+        {/* Profile completion required modal */}
+        <Modal show={showProfileModal} onHide={() => setShowProfileModal(false)} centered>
+          <Modal.Header closeButton>
+            <Modal.Title>Complete Your Profile</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <p className="mb-2">Please complete the following before starting your declaration:</p>
+            {missingProfile.length === 0 ? (
+              <p className="text-success mb-0">All required fields are filled.</p>
+            ) : (
+              <ul className="mb-0">
+                {missingProfile.map(m => <li key={m}>{m}</li>)}
+              </ul>
+            )}
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={() => setShowProfileModal(false)}>Close</Button>
+            {missingProfile.length > 0 && (
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setShowProfileModal(false);
+                  setEditMode(true);
+                  try { profileCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch(_) {}
+                }}
+              >
+                Edit Profile Now
+              </Button>
+            )}
+          </Modal.Footer>
+        </Modal>
         <ToastContainer position="bottom-end" className="p-3">
           <Toast
             bg="info"
@@ -1191,9 +1308,7 @@ const LandingPage = () => {
             <div
               className="text-decoration-none"
               style={{ cursor: "pointer" }}
-              onClick={() =>
-                navigate("/select-declaration-type", { state: { profile } })
-              }
+              onClick={handleStartDeclaration}
             >
               <Card
                 className="h-100 shadow-sm border-primary border-2 hover-card"
