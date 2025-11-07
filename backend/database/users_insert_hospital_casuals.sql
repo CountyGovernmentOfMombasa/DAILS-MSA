@@ -41,7 +41,7 @@ INSERT INTO users (payroll_number, surname, first_name, other_names, email, phon
 ('HC036', 'Chama', 'Mgeni', 'Hamisi', 'HC036@mombasa.go.ke', NULL, '1900-02-05', '', 0, '34405770', ''),
 ('HC037', 'Chacha', 'Robert', 'Robi', 'HC037@mombasa.go.ke', NULL, '1900-02-06', '', 0, '33157594', ''),
 ('HC038', 'Salim', 'Mwanaidi', 'Manzi', 'HC038@mombasa.go.ke', NULL, '1900-02-07', '', 0, '38633819', ''),
-('HC039', 'Musili', 'Oscar', 'Kitheka', 'HC039@mombasa.go.ke', NULL, '1900-02-08', '', 0, '33389164', ''),
+('HC039', 'Musili', 'Oscar', 'Kitheka', 'HC039@mombasa.go.ke', NULL, '1900-02-08', '', 0, '30230174', ''),
 ('HC040', 'Onsongo', 'Caleb', 'Onsongo', 'HC040@mombasa.go.ke', NULL, '1900-02-09', '', 0, '26173424', ''),
 ('HC041', 'Nyamweya', 'Joseph', 'Nyamweya', 'HC041@mombasa.go.ke', NULL, '1900-02-10', '', 0, '32629008', ''),
 ('HC042', 'Barisa', 'Shamsa', 'Sakina', 'HC042@mombasa.go.ke', NULL, '1900-02-11', '', 0, '34346507', ''),
