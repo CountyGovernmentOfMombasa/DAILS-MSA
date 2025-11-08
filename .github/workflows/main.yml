@@ -1,4 +1,20 @@
-      - name: Deploy to Ubuntu Server
+name: 🚀 Deploy Node + React App to Ubuntu VM
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy to Ubuntu Server
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🧾 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🚀 Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -6,36 +22,49 @@
           key: ${{ secrets.SSH_KEY }}
           port: 4792
           script: |
-            echo "=== Starting Deployment ==="
-            cd /var/www/dial-msa
+            echo "=== 🚀 Starting Deployment on $(hostname) ==="
 
-            echo "Pulling latest code..."
+            # Go to the project directory
+            cd /var/www/dial-msa || exit 1
+
+            echo "📦 Pulling latest code..."
             git fetch --all
             git reset --hard origin/main
 
-            echo "Installing backend dependencies..."
+            echo "🧰 Installing backend dependencies..."
             cd backend
             npm ci --omit=dev
 
-            echo "Building frontend..."
+            echo "🧱 Building frontend..."
             cd /var/www/dial-msa/my-app
             npm ci
             npm run build
 
-            echo "Restarting PM2 app..."
-            cd ../backend
+            echo "🧹 Cleaning old frontend build (if served by backend)..."
+            rm -rf /var/www/dial-msa/backend/public
+            mkdir -p /var/www/dial-msa/backend/public
+            cp -r build/* /var/www/dial-msa/backend/public/
 
-            # Ensure PM2 is installed and available
-            if ! command -v pm2 &> /dev/null
-            then
-              echo "PM2 not found. Installing..."
+            echo "⚙️ Ensuring PM2 is installed..."
+            if ! command -v pm2 &> /dev/null; then
               sudo npm install -g pm2
             fi
 
-            # Ensure PM2 environment is linked to current Node version
-            pm2 resurrect || true
-            pm2 start app.js --name dials-msa || pm2 restart dials-msa --update-env
+            echo "🔄 Ensuring PM2 startup service is enabled..."
+            pm2 startup systemd -u root --hp /root || true
+            sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u root --hp /root || true
+
+            echo "🚀 Restarting PM2 process..."
+            cd /var/www/dial-msa/backend
+
+            # Restart or start the app under PM2
+            if pm2 describe dials-msa &> /dev/null; then
+              pm2 restart dials-msa --update-env
+            else
+              pm2 start app.js --name dials-msa
+            fi
+
             pm2 save
             pm2 list
 
-            echo "=== Deployment Complete ==="
+            echo "✅ Deployment complete at $(date)"
