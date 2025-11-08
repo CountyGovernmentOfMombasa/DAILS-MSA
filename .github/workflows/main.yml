@@ -12,10 +12,18 @@ jobs:
 
     steps:
       # 1️⃣ Checkout repository
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Copy deploy script (optional if already on VM)
+      # 2️⃣ Ensure deploy.sh exists at root
+      - name: Verify deploy.sh exists
+        run: |
+          if [ ! -f "./deploy.sh" ]; then
+            echo "Error: deploy.sh not found at repository root!"
+            exit 1
+          fi
+
+      # 3️⃣ Copy deploy.sh to server
       - name: Copy deploy.sh to server
         uses: appleboy/scp-action@v0.1.5
         with:
@@ -26,7 +34,7 @@ jobs:
           source: "./deploy.sh"
           target: "/tmp/deploy.sh"
 
-      # 3️⃣ Run deploy script via SSH
+      # 4️⃣ Run deployment script via SSH
       - name: Run deployment script
         uses: appleboy/ssh-action@v1.0.3
         with:
