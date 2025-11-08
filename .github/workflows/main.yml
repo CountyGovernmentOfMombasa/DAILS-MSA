@@ -1,18 +1,3 @@
-name: Deploy Node + React app
-
-on:
-  push:
-    branches:
-      - main
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
       - name: Deploy to Ubuntu Server
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -21,21 +6,36 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           port: 4792
           script: |
+            echo "=== Starting Deployment ==="
             cd /var/www/dial-msa
+
             echo "Pulling latest code..."
             git fetch --all
             git reset --hard origin/main
 
-            echo "Installing dependencies..."
+            echo "Installing backend dependencies..."
             cd backend
-            npm install --omit-dev
+            npm ci --omit=dev
 
             echo "Building frontend..."
             cd /var/www/dial-msa/my-app
-            npm install
+            npm ci
             npm run build
 
             echo "Restarting PM2 app..."
             cd ../backend
-            pm2 restart dials-msa || pm2 start app.js --name dials-msa
+
+            # Ensure PM2 is installed and available
+            if ! command -v pm2 &> /dev/null
+            then
+              echo "PM2 not found. Installing..."
+              sudo npm install -g pm2
+            fi
+
+            # Ensure PM2 environment is linked to current Node version
+            pm2 resurrect || true
+            pm2 start app.js --name dials-msa || pm2 restart dials-msa --update-env
             pm2 save
+            pm2 list
+
+            echo "=== Deployment Complete ==="
