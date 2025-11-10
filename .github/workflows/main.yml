@@ -1,4 +1,4 @@
-name: 🚀 Auto Deploy Node + React App to Angani
+name: 🚀 Deploy Node + React App to Ubuntu VM
 
 on:
   push:
@@ -11,37 +11,60 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout repository
-      - name: Checkout repository
+      - name: 🧾 Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Ensure deploy.sh exists at root
-      - name: Verify deploy.sh exists
-        run: |
-          if [ ! -f "./deploy.sh" ]; then
-            echo "Error: deploy.sh not found at repository root!"
-            exit 1
-          fi
-
-      # 3️⃣ Copy deploy.sh to server
-      - name: Copy deploy.sh to server
-        uses: appleboy/scp-action@v0.1.5
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          source: "./deploy.sh"
-          target: "/tmp/deploy.sh"
-
-      # 4️⃣ Run deployment script via SSH
-      - name: Run deployment script
+      - name: 🚀 Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SSH_PORT }}
+          port: 4792
           script: |
-            chmod +x /tmp/deploy.sh
-            sudo /tmp/deploy.sh
+            echo "=== 🚀 Starting Deployment on $(hostname) ==="
+
+            # Go to the project directory
+            cd /var/www/dial-msa || exit 1
+
+            echo "📦 Pulling latest code..."
+            git fetch --all
+            git reset --hard origin/main
+
+            echo "🧰 Installing backend dependencies..."
+            cd backend
+            npm ci --omit=dev
+
+            echo "🧱 Building frontend..."
+            cd /var/www/dial-msa/my-app
+            npm ci
+            npm run build
+
+            echo "🧹 Cleaning old frontend build (if served by backend)..."
+            rm -rf /var/www/dial-msa/backend/public
+            mkdir -p /var/www/dial-msa/backend/public
+            cp -r build/* /var/www/dial-msa/backend/public/
+
+            echo "⚙️ Ensuring PM2 is installed..."
+            if ! command -v pm2 &> /dev/null; then
+              sudo npm install -g pm2
+            fi
+
+            echo "🔄 Ensuring PM2 startup service is enabled..."
+            pm2 startup systemd -u root --hp /root || true
+            sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u root --hp /root || true
+
+            echo "🚀 Restarting PM2 process..."
+            cd /var/www/dial-msa/backend
+
+            # Restart or start the app under PM2
+            if pm2 describe dials-msa &> /dev/null; then
+              pm2 restart dials-msa --update-env
+            else
+              pm2 start app.js --name dials-msa
+            fi
+
+            pm2 save
+            pm2 list
+
+            echo "✅ Deployment complete at $(date)"
