@@ -177,6 +177,19 @@ const LandingPage = () => {
     return s.charAt(0).toUpperCase() + s.slice(1);
   };
   // Fetch declarations
+  const formatDateDDMMYYYY = (dateString) => {
+    if (!dateString) return "N/A";
+    try {
+      const date = new Date(dateString);
+      const day = String(date.getDate()).padStart(2, "0");
+      const month = String(date.getMonth() + 1).padStart(2, "0"); // Months are 0-indexed
+      const year = date.getFullYear();
+      return `${day}-${month}-${year}`;
+    } catch (e) {
+      return "N/A";
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     const fetchDeclarations = async (force = false) => {
@@ -630,18 +643,12 @@ const LandingPage = () => {
                   <td>{decl.declaration_type || "N/A"}</td>
                   <td>
                     {decl.period_start_date && decl.period_end_date
-                      ? `${new Date(
+                      ? `${formatDateDDMMYYYY(
                           decl.period_start_date
-                        ).toLocaleDateString()} to ${new Date(
-                          decl.period_end_date
-                        ).toLocaleDateString()}`
+                        )} to ${formatDateDDMMYYYY(decl.period_end_date)}`
                       : "N/A"}
                   </td>
-                  <td>
-                    {decl.declaration_date
-                      ? new Date(decl.declaration_date).toLocaleDateString()
-                      : "N/A"}
-                  </td>
+                  <td>{formatDateDDMMYYYY(decl.declaration_date)}</td>
                   <td>
                     <Badge
                       bg={
