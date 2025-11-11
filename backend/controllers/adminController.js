@@ -26,12 +26,10 @@ exports.updateDeclarationStatus = async (req, res) => {
         (status === "rejected" &&
           (prevCorrection || "") === (correction_message || "")))
     ) {
-      return res
-        .status(200)
-        .json({
-          success: false,
-          message: "No change: identical status already set.",
-        });
+      return res.status(200).json({
+        success: false,
+        message: "No change: identical status already set.",
+      });
     }
     const Declaration = require("../models/declarationModel");
     await Declaration.updateStatus(
@@ -132,13 +130,11 @@ exports.updateDeclarationStatus = async (req, res) => {
     return res.json({ success: true, message: `Declaration ${status}` });
   } catch (error) {
     console.error("Update declaration status error:", error);
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: "Server error updating declaration status",
-        error: error.message,
-      });
+    return res.status(500).json({
+      success: false,
+      message: "Server error updating declaration status",
+      error: error.message,
+    });
   }
 };
 
@@ -201,13 +197,11 @@ exports.getDeclarationStatusAudit = async (req, res) => {
     });
   } catch (err) {
     console.error("Fetch declaration status audit error:", err);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Server error fetching audit logs",
-        error: err.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Server error fetching audit logs",
+      error: err.message,
+    });
   }
 };
 
@@ -241,13 +235,11 @@ exports.getDeclarationPreviousCorrections = async (req, res) => {
     });
   } catch (err) {
     console.error("Fetch previous corrections error:", err);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Server error fetching previous corrections",
-        error: err.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Server error fetching previous corrections",
+      error: err.message,
+    });
   }
 };
 
@@ -314,13 +306,11 @@ exports.listAllDeclarationStatusAudits = async (req, res) => {
     });
   } catch (err) {
     console.error("Global status audit list error:", err);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Server error listing status audits",
-        error: err.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Server error listing status audits",
+      error: err.message,
+    });
   }
 };
 const pool = require("../config/db");
@@ -458,12 +448,10 @@ exports.getDepartmentDeclarationStats = async (req, res) => {
     return res.json({ success: true, data: payload });
   } catch (error) {
     console.error("getDepartmentDeclarationStats error:", error);
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: "Server error generating department stats",
-      });
+    return res.status(500).json({
+      success: false,
+      message: "Server error generating department stats",
+    });
   }
 };
 
@@ -973,11 +961,9 @@ exports.getAdminsMissingDepartment = async (req, res) => {
     }
   } catch (error) {
     console.error("Get admins missing department error:", error);
-    res
-      .status(500)
-      .json({
-        message: "Server error while fetching admins missing department",
-      });
+    res.status(500).json({
+      message: "Server error while fetching admins missing department",
+    });
   }
 };
 
@@ -990,8 +976,9 @@ exports.createAdmin = async (req, res) => {
       role,
       first_name,
       other_names = null,
-      surname: last_name,
+      surname,
       department,
+      sub_department,
       userId,
       nationalId,
       linkExistingUser = false,
@@ -1003,7 +990,7 @@ exports.createAdmin = async (req, res) => {
     const safeRole = role && allowedRoles.includes(role) ? role : "hr_admin";
 
     let finalFirst = first_name;
-    let finalSurname = last_name;
+    let finalSurname = surname;
     let finalEmail = email;
     let finalDept = department;
     let linkedUserId = null;
@@ -1022,11 +1009,9 @@ exports.createAdmin = async (req, res) => {
           [nationalId]
         );
       } else {
-        return res
-          .status(400)
-          .json({
-            message: "Provide userId or nationalId when linkExistingUser=true.",
-          });
+        return res.status(400).json({
+          message: "Provide userId or nationalId when linkExistingUser=true.",
+        });
       }
       if (!urows.length) {
         return res
@@ -1050,12 +1035,10 @@ exports.createAdmin = async (req, res) => {
     }
 
     if (!finalFirst || !finalSurname) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "First name and surname are required (either provided or derived from linked user).",
-        });
+      return res.status(400).json({
+        message:
+          "First name and surname are required (either provided or derived from linked user).",
+      });
     }
 
     if (safeRole !== "super_admin" && !finalDept) {
@@ -1073,11 +1056,9 @@ exports.createAdmin = async (req, res) => {
           require("crypto").randomBytes(16).toString("hex") + "Aa1!";
       } else {
         // Non-linked: must have password
-        return res
-          .status(400)
-          .json({
-            message: "Password required when not linking to an existing user.",
-          });
+        return res.status(400).json({
+          message: "Password required when not linking to an existing user.",
+        });
       }
     }
 
@@ -1089,7 +1070,7 @@ exports.createAdmin = async (req, res) => {
       department: safeRole === "super_admin" ? null : finalDept,
       first_name: finalFirst,
       other_names,
-      surname: finalSurname,
+      surname: finalSurname, // This now correctly uses the destructured surname
       created_by: req.admin.adminId,
       user_id: linkedUserId,
     };
@@ -1141,13 +1122,11 @@ exports.createAdmin = async (req, res) => {
     if (linkedUserId) {
       resp.link_method = nationalId ? "national_id" : "user_id";
     }
-    res
-      .status(201)
-      .json({
-        success: true,
-        message: "Admin created successfully",
-        data: resp,
-      });
+    res.status(201).json({
+      success: true,
+      message: "Admin created successfully",
+      data: resp,
+    });
   } catch (error) {
     console.error("Create admin error:", error);
     if (error.code === "ER_DUP_ENTRY") {
@@ -1333,12 +1312,10 @@ exports.sendTestEmail = async (req, res) => {
     const to =
       req.query.to || process.env.MAIL_FROM_ADDR || process.env.MAIL_USERNAME;
     if (!to) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "No destination email specified and no default configured.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "No destination email specified and no default configured.",
+      });
     }
     const info = await sendEmail({
       to,
@@ -1354,13 +1331,11 @@ exports.sendTestEmail = async (req, res) => {
     });
   } catch (error) {
     console.error("Test email send error:", error);
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to send test email",
-        error: error.message,
-      });
+    return res.status(500).json({
+      success: false,
+      message: "Failed to send test email",
+      error: error.message,
+    });
   }
 };
 
@@ -1690,13 +1665,11 @@ exports.adminDownloadDeclarationPDF = async (req, res) => {
     return res.send(buffer);
   } catch (err) {
     console.error("Admin declaration PDF generation failed:", err);
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to generate PDF",
-        error: err.message,
-      });
+    return res.status(500).json({
+      success: false,
+      message: "Failed to generate PDF",
+      error: err.message,
+    });
   }
 };
 
@@ -1750,6 +1723,28 @@ exports.getDistinctDepartments = async (req, res) => {
   }
 };
 
+// Get distinct designations (for dropdown filtering on frontend)
+exports.getDistinctDesignations = async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      SELECT DISTINCT designation
+      FROM users
+      WHERE designation IS NOT NULL AND designation != ''
+      ORDER BY designation ASC
+    `);
+    const designations = rows.map((r) => r.designation);
+    res.json({
+      success: true,
+      designations,
+    });
+  } catch (error) {
+    console.error("Get distinct designations error:", error);
+    res
+      .status(500)
+      .json({ message: "Server error while fetching designations" });
+  }
+};
+
 // Create a new user (admin only). Non-super admins are restricted to their department.
 exports.createUser = async (req, res) => {
   try {
@@ -1772,12 +1767,10 @@ exports.createUser = async (req, res) => {
       !national_id ||
       !department
     ) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "payroll_number, first_name, surname, national_id and department are required",
-        });
+      return res.status(400).json({
+        message:
+          "payroll_number, first_name, surname, national_id and department are required",
+      });
     }
 
     // Department scoping for HR admins only
@@ -1815,26 +1808,22 @@ exports.createUser = async (req, res) => {
     let normalizedPhone = phone_number;
     if (phone_number) {
       if (!isValidPhone(phone_number)) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            code: "INVALID_PHONE_FORMAT",
-            field: "phone_number",
-            message:
-              "Invalid phone number format. Use 7-15 digits, optional leading +",
-          });
+        return res.status(400).json({
+          success: false,
+          code: "INVALID_PHONE_FORMAT",
+          field: "phone_number",
+          message:
+            "Invalid phone number format. Use 7-15 digits, optional leading +",
+        });
       }
       const already = await User.existsByPhone(phone_number);
       if (already) {
-        return res
-          .status(409)
-          .json({
-            success: false,
-            code: "PHONE_IN_USE",
-            field: "phone_number",
-            message: "Phone number already in use by another user.",
-          });
+        return res.status(409).json({
+          success: false,
+          code: "PHONE_IN_USE",
+          field: "phone_number",
+          message: "Phone number already in use by another user.",
+        });
       }
       normalizedPhone = normalizePhone(phone_number);
     }
@@ -2151,12 +2140,10 @@ exports.getDepartmentUserDeclarationStatus = async (req, res) => {
     });
   } catch (error) {
     console.error("getDepartmentUserDeclarationStatus error:", error);
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: "Server error fetching department user statuses",
-      });
+    return res.status(500).json({
+      success: false,
+      message: "Server error fetching department user statuses",
+    });
   }
 };
 
@@ -2286,12 +2273,10 @@ exports.getAdminPasswordChangeAudit = async (req, res) => {
     });
   } catch (error) {
     console.error("Get admin password change audit error:", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Server error fetching password change audit",
-      });
+    res.status(500).json({
+      success: false,
+      message: "Server error fetching password change audit",
+    });
   }
 };
 
@@ -2506,13 +2491,11 @@ exports.listGlobalDeclarationStatusAudit = async (req, res) => {
     });
   } catch (err) {
     console.error("listGlobalDeclarationStatusAudit error:", err);
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: "Server error fetching status events",
-        error: err.message,
-      });
+    return res.status(500).json({
+      success: false,
+      message: "Server error fetching status events",
+      error: err.message,
+    });
   }
 };
 
@@ -2720,12 +2703,10 @@ exports.exportDeclarationsCsv = async (req, res) => {
     ) {
       // If they supplied a different department filter, override to enforce their own
       if (!req.admin.department) {
-        return res
-          .status(403)
-          .json({
-            success: false,
-            message: "Admin has no department assigned; cannot export.",
-          });
+        return res.status(403).json({
+          success: false,
+          message: "Admin has no department assigned; cannot export.",
+        });
       }
       const enforced = "u.department = ?";
       if (!conditions.includes(enforced)) {
@@ -2846,12 +2827,10 @@ exports.exportDeclarationsCsv = async (req, res) => {
     return res.send(lines.join("\n"));
   } catch (error) {
     console.error("Export declarations CSV error:", error);
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: "Server error exporting declarations CSV",
-      });
+    return res.status(500).json({
+      success: false,
+      message: "Server error exporting declarations CSV",
+    });
   }
 };
 
@@ -2861,12 +2840,10 @@ exports.lookupUserByNationalId = async (req, res) => {
   try {
     const { nationalId } = req.query;
     if (!nationalId || String(nationalId).trim().length < 3) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "nationalId query parameter required (min length 3)",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "nationalId query parameter required (min length 3)",
+      });
     }
     // Department scoping: non-super admins only allowed to see users in their department
     const params = [nationalId.trim()];
@@ -2924,32 +2901,26 @@ exports.sendBulkSMS = async (req, res) => {
       "hr_admin",
     ]);
     if (!allowed.has(role)) {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Insufficient role to send bulk SMS",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Insufficient role to send bulk SMS",
+      });
     }
 
     // Validate message
     const msg = (message || "").toString().trim();
     if (!msg)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          code: "EMPTY_MESSAGE",
-          message: "Message is required",
-        });
+      return res.status(400).json({
+        success: false,
+        code: "EMPTY_MESSAGE",
+        message: "Message is required",
+      });
     if (msg.length > 480)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          code: "MESSAGE_TOO_LONG",
-          message: "Message too long (max 480 chars)",
-        });
+      return res.status(400).json({
+        success: false,
+        code: "MESSAGE_TOO_LONG",
+        message: "Message too long (max 480 chars)",
+      });
 
     // Build base query: users with phone_number, optionally scoped by admin department
     const params = [];
@@ -3086,13 +3057,11 @@ exports.sendBulkSMS = async (req, res) => {
     });
   } catch (error) {
     console.error("sendBulkSMS error:", error);
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: "Server error sending bulk SMS",
-        error: error.message,
-      });
+    return res.status(500).json({
+      success: false,
+      message: "Server error sending bulk SMS",
+      error: error.message,
+    });
   }
 };
 
@@ -3104,12 +3073,10 @@ exports.listBulkSmsAudit = async (req, res) => {
       (req.admin && (req.admin.normalizedRole || req.admin.role)) || "";
     const allowed = new Set(["super", "super_admin", "it", "it_admin"]);
     if (!allowed.has(role)) {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Insufficient role to view bulk SMS audit.",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Insufficient role to view bulk SMS audit.",
+      });
     }
 
     const page = Math.max(1, parseInt(req.query.page) || 1);
@@ -3172,12 +3139,10 @@ exports.listBulkSmsAudit = async (req, res) => {
     });
   } catch (err) {
     console.error("listBulkSmsAudit error:", err);
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: "Server error listing bulk SMS audit",
-        error: err.message,
-      });
+    return res.status(500).json({
+      success: false,
+      message: "Server error listing bulk SMS audit",
+      error: err.message,
+    });
   }
 };

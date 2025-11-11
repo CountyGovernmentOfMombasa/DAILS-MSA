@@ -24,18 +24,28 @@ app.set("trust proxy", 1);
 
 // Startup sanity checks for critical env vars
 (() => {
-  const crypto = require('crypto');
+  const crypto = require("crypto");
   const secret = process.env.JWT_SECRET;
   if (!secret) {
-    console.error('[STARTUP] JWT_SECRET is missing. Tokens will fail validation. Set JWT_SECRET in environment.');
+    console.error(
+      "[STARTUP] JWT_SECRET is missing. Tokens will fail validation. Set JWT_SECRET in environment."
+    );
   } else {
     // Log short fingerprint to help verify consistency across instances without exposing the secret
-    const fp = crypto.createHash('sha256').update(String(secret)).digest('hex').slice(0, 8);
+    const fp = crypto
+      .createHash("sha256")
+      .update(String(secret))
+      .digest("hex")
+      .slice(0, 8);
     console.log(`[STARTUP] JWT secret fingerprint: ${fp}`);
   }
-  const accessTtl = process.env.ACCESS_TOKEN_EXPIRES_IN || '30m';
-  const refreshTtl = process.env.REFRESH_TOKEN_EXPIRES_IN || '14d';
-  console.log(`[STARTUP] Access TTL=${accessTtl}, Refresh TTL=${refreshTtl}, Inactivity(min)=${process.env.INACTIVITY_TIMEOUT_MINUTES || '30'}`);
+  const accessTtl = process.env.ACCESS_TOKEN_EXPIRES_IN || "30m";
+  const refreshTtl = process.env.REFRESH_TOKEN_EXPIRES_IN || "14d";
+  console.log(
+    `[STARTUP] Access TTL=${accessTtl}, Refresh TTL=${refreshTtl}, Inactivity(min)=${
+      process.env.INACTIVITY_TIMEOUT_MINUTES || "30"
+    }`
+  );
 })();
 
 // Security middleware (put Helmet & logging first)
@@ -52,16 +62,24 @@ app.use(morgan("combined"));
 // Support multiple allowed origins via FRONTEND_URLS (comma-separated),
 // optional regex list via FRONTEND_URLS_REGEX (comma-separated regex strings),
 // fallback to FRONTEND_URL single value, then localhost for dev.
-const allowedOrigins = (process.env.FRONTEND_URLS || process.env.FRONTEND_URL || "http://localhost:3000")
-  .split(',')
-  .map(s => s && s.trim())
+const allowedOrigins = (
+  process.env.FRONTEND_URLS ||
+  process.env.FRONTEND_URL ||
+  "http://localhost:3000"
+)
+  .split(",")
+  .map((s) => s && s.trim())
   .filter(Boolean);
-const allowedOriginRegexes = (process.env.FRONTEND_URLS_REGEX || '')
-  .split(',')
-  .map(s => s && s.trim())
+const allowedOriginRegexes = (process.env.FRONTEND_URLS_REGEX || "")
+  .split(",")
+  .map((s) => s && s.trim())
   .filter(Boolean)
-  .map(p => {
-    try { return new RegExp(p); } catch { return null; }
+  .map((p) => {
+    try {
+      return new RegExp(p);
+    } catch {
+      return null;
+    }
   })
   .filter(Boolean);
 app.use(
@@ -73,16 +91,23 @@ app.use(
       if (allowedOrigins.includes(origin)) return callback(null, true);
       // Regex allow list
       try {
-        if (allowedOriginRegexes.some(rx => rx.test(origin))) {
+        if (allowedOriginRegexes.some((rx) => rx.test(origin))) {
           return callback(null, true);
         }
       } catch {}
       // Optional: treat origins matching the origin part of any allowed URL as allowed
       try {
         const url = new URL(origin);
-        if (allowedOrigins.some(ao => {
-          try { const a = new URL(ao); return a.origin === url.origin; } catch { return false; }
-        })) {
+        if (
+          allowedOrigins.some((ao) => {
+            try {
+              const a = new URL(ao);
+              return a.origin === url.origin;
+            } catch {
+              return false;
+            }
+          })
+        ) {
           return callback(null, true);
         }
       } catch {}
@@ -124,7 +149,7 @@ const authLimiter = rateLimit({
   skip: (req) => {
     if (req.method === "OPTIONS") return true;
     const url = req.originalUrl;
-    return !(url.startsWith("/api/auth") || url.startsWith("/api/admin/login"));
+    return !url.startsWith("/api/auth/") && !url.startsWith("/api/admin/login");
   },
   message: { success: false, message: "Too many auth attempts, please wait." },
   handler: (req, res, next, options) => {
@@ -249,23 +274,27 @@ app.use((error, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 async function startServer() {
   // Optional: auto-run migrations on startup if enabled
-  if (process.env.AUTO_MIGRATE === 'true') {
+  if (process.env.AUTO_MIGRATE === "true") {
     try {
-      console.log('AUTO_MIGRATE=true detected. Running database migrations...');
-      const { spawn } = require('child_process');
+      console.log("AUTO_MIGRATE=true detected. Running database migrations...");
+      const { spawn } = require("child_process");
       await new Promise((resolve, reject) => {
-        const p = spawn(process.execPath, [require('path').join(__dirname, 'scripts', 'runMigrations.js')], { stdio: 'inherit' });
-        p.on('exit', (code) => {
+        const p = spawn(
+          process.execPath,
+          [require("path").join(__dirname, "scripts", "runMigrations.js")],
+          { stdio: "inherit" }
+        );
+        p.on("exit", (code) => {
           if (code === 0) return resolve();
           const msg = `Migration script exited with code ${code}`;
           console.error(msg);
           // Do not reject to avoid boot blocking; just log and continue
           resolve();
         });
-        p.on('error', reject);
+        p.on("error", reject);
       });
     } catch (e) {
-      console.error('Failed to run migrations on startup:', e.message);
+      console.error("Failed to run migrations on startup:", e.message);
     }
   }
 
@@ -284,24 +313,29 @@ module.exports = app;
 // Lightweight background task to clear expired OTPs so they don't linger in the DB
 // Uses application time for comparison (same as when OTPs are created) to avoid timezone drift issues.
 try {
-  const pool = require('./config/db');
-  const intervalMs = parseInt(process.env.OTP_CLEANUP_INTERVAL_MS || '60000', 10);
-  if (intervalMs > 0 && process.env.NODE_ENV !== 'test') {
+  const pool = require("./config/db");
+  const intervalMs = parseInt(
+    process.env.OTP_CLEANUP_INTERVAL_MS || "60000",
+    10
+  );
+  if (intervalMs > 0 && process.env.NODE_ENV !== "test") {
     setInterval(async () => {
       try {
         const now = new Date();
         const [result] = await pool.query(
-          'UPDATE users SET otp_code = NULL, otp_expires_at = NULL WHERE otp_expires_at IS NOT NULL AND otp_expires_at < ? LIMIT 1000',
+          "UPDATE users SET otp_code = NULL, otp_expires_at = NULL WHERE otp_expires_at IS NOT NULL AND otp_expires_at < ? LIMIT 1000",
           [now]
         );
         if (result && result.affectedRows) {
-          console.log(`[OTP CLEANUP] Cleared ${result.affectedRows} expired OTP(s)`);
+          console.log(
+            `[OTP CLEANUP] Cleared ${result.affectedRows} expired OTP(s)`
+          );
         }
       } catch (e) {
-        console.warn('OTP cleanup task failed:', e.message);
+        console.warn("OTP cleanup task failed:", e.message);
       }
     }, intervalMs);
   }
 } catch (e) {
-  console.warn('OTP cleanup not initialized:', e.message);
+  console.warn("OTP cleanup not initialized:", e.message);
 }
