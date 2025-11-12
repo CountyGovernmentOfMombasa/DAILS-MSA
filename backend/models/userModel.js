@@ -1,13 +1,12 @@
-
-const pool = require('../config/db');
-const { getDepartmentConfig } = require('../util/departmentsCache');
+const pool = require("../config/db");
+const { getDepartmentConfig } = require("../util/departmentsCache");
 
 // Utility functions
 const formatBirthdate = (birthdate) => {
   if (!birthdate) return null;
   // Accept either dd/mm/yyyy or yyyy-mm-dd
-  if (birthdate.includes('/')) {
-    const [day, month, year] = birthdate.split('/');
+  if (birthdate.includes("/")) {
+    const [day, month, year] = birthdate.split("/");
     return `${year}-${month}-${day}`;
   }
   return birthdate;
@@ -17,7 +16,7 @@ const formatBirthdate = (birthdate) => {
 const User = {
   // Create new user
   async create(userData) {
-    const bcrypt = require('bcryptjs');
+    const bcrypt = require("bcryptjs");
     const {
       payroll_number,
       birthdate,
@@ -35,33 +34,53 @@ const User = {
       department = null,
       nature_of_employment = null,
       sub_department = null,
-      phone_number = null
+      phone_number = null,
     } = userData;
 
     // Validate nature_of_employment
-  const allowedEmployment = ['Permanent', 'Contract', 'Temporary'];
-    const validNatureOfEmployment = allowedEmployment.includes(nature_of_employment) ? nature_of_employment : null;
+    const allowedEmployment = ["Permanent", "Contract", "Temporary"];
+    const validNatureOfEmployment = allowedEmployment.includes(
+      nature_of_employment
+    )
+      ? nature_of_employment
+      : null;
 
     // Validate department & sub-department (now mandatory pair: if department provided must have valid sub_department; if sub_department given determines department)
     let validDepartment = null;
     let validSubDepartment = null;
-    const { departments: DEPARTMENTS, subDepartmentMap: SUB_DEPARTMENT_MAP } = await getDepartmentConfig();
+    const { departments: DEPARTMENTS, subDepartmentMap: SUB_DEPARTMENT_MAP } =
+      await getDepartmentConfig();
     if (sub_department) {
-      const found = Object.entries(SUB_DEPARTMENT_MAP).find(([, subs]) => subs.includes(sub_department));
-      if (found) { validDepartment = found[0]; validSubDepartment = sub_department; }
+      const found = Object.entries(SUB_DEPARTMENT_MAP).find(([, subs]) =>
+        subs.includes(sub_department)
+      );
+      if (found) {
+        validDepartment = found[0];
+        validSubDepartment = sub_department;
+      }
     } else if (department) {
       if (DEPARTMENTS.includes(department)) {
         const allowedSubs = SUB_DEPARTMENT_MAP[department] || [];
-        if (allowedSubs.length === 1) { validDepartment = department; validSubDepartment = allowedSubs[0]; }
-        else throw new Error('sub_department is required for the selected department');
+        if (allowedSubs.length === 1) {
+          validDepartment = department;
+          validSubDepartment = allowedSubs[0];
+        } else
+          throw new Error(
+            "sub_department is required for the selected department"
+          );
       }
     }
     if (department && validDepartment && department !== validDepartment) {
       // Provided department inconsistent with derived one
-      throw new Error('Provided department does not match sub_department hierarchy');
+      throw new Error(
+        "Provided department does not match sub_department hierarchy"
+      );
     }
-    if ((department || sub_department) && (!validDepartment || !validSubDepartment)) {
-      throw new Error('Invalid department / sub_department combination');
+    if (
+      (department || sub_department) &&
+      (!validDepartment || !validSubDepartment)
+    ) {
+      throw new Error("Invalid department / sub_department combination");
     }
 
     // Hash password
@@ -104,9 +123,9 @@ const User = {
         postal_address,
         physical_address,
         designation,
-  validDepartment,
-  validSubDepartment,
-        validNatureOfEmployment
+        validDepartment,
+        validSubDepartment, // This was already here, but the query was missing the column
+        validNatureOfEmployment,
       ]
     );
 
@@ -116,7 +135,7 @@ const User = {
   // Find user by payroll number
   async findByPayrollNumber(payroll_number) {
     const [rows] = await pool.query(
-      'SELECT * FROM users WHERE payroll_number = ?',
+      "SELECT * FROM users WHERE payroll_number = ?",
       [payroll_number]
     );
     return rows[0];
@@ -124,7 +143,7 @@ const User = {
 
   async findByNationalId(national_id) {
     const [rows] = await pool.query(
-      'SELECT * FROM users WHERE national_id = ?',
+      "SELECT * FROM users WHERE national_id = ?",
       [national_id]
     );
     return rows[0];
@@ -160,7 +179,7 @@ const User = {
   // Update user password
   async updatePassword(id, newPassword) {
     await pool.query(
-      'UPDATE users SET password = ?, password_changed = ? WHERE id = ?',
+      "UPDATE users SET password = ?, password_changed = ? WHERE id = ?",
       [newPassword, true, id]
     );
   },
@@ -168,7 +187,7 @@ const User = {
   // Check if national_id or email exists
   async existsByNationalIdOrEmail(national_id, email) {
     const [rows] = await pool.query(
-      'SELECT id FROM users WHERE national_id = ? OR email = ?',
+      "SELECT id FROM users WHERE national_id = ? OR email = ?",
       [national_id, email]
     );
     return rows.length > 0;
@@ -178,7 +197,7 @@ const User = {
   async existsByPhone(phone_number) {
     if (!phone_number) return false;
     const [rows] = await pool.query(
-      'SELECT id FROM users WHERE phone_number = ?',
+      "SELECT id FROM users WHERE phone_number = ?",
       [phone_number]
     );
     return rows.length > 0;
@@ -187,11 +206,11 @@ const User = {
   async existsByPhoneExcludingId(phone_number, excludeId) {
     if (!phone_number) return false;
     const [rows] = await pool.query(
-      'SELECT id FROM users WHERE phone_number = ? AND id <> ?',
+      "SELECT id FROM users WHERE phone_number = ? AND id <> ?",
       [phone_number, excludeId]
     );
     return rows.length > 0;
-  }
+  },
 };
 
 module.exports = User;

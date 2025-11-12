@@ -993,6 +993,7 @@ exports.createAdmin = async (req, res) => {
     let finalSurname = surname;
     let finalEmail = email;
     let finalDept = department;
+    let finalSubDept = sub_department;
     let linkedUserId = null;
 
     // Optional linking to existing user record (by userId or nationalId)
@@ -1000,12 +1001,12 @@ exports.createAdmin = async (req, res) => {
       let urows = [];
       if (userId) {
         [urows] = await pool.query(
-          "SELECT id, first_name, other_names, surname, email, department, national_id FROM users WHERE id = ?",
+          "SELECT id, first_name, other_names, surname, email, department, sub_department, national_id FROM users WHERE id = ?",
           [userId]
         );
       } else if (nationalId) {
         [urows] = await pool.query(
-          "SELECT id, first_name, other_names, surname, email, department, national_id FROM users WHERE national_id = ?",
+          "SELECT id, first_name, other_names, surname, email, department, sub_department, national_id FROM users WHERE national_id = ?",
           [nationalId]
         );
       } else {
@@ -1032,6 +1033,8 @@ exports.createAdmin = async (req, res) => {
       if (!finalEmail) finalEmail = u.email || null;
       if (!finalDept && safeRole !== "super_admin")
         finalDept = u.department || null;
+      if (!finalSubDept && safeRole !== "super_admin")
+        finalSubDept = u.sub_department || null;
     }
 
     if (!finalFirst || !finalSurname) {
@@ -1068,6 +1071,7 @@ exports.createAdmin = async (req, res) => {
       email: finalEmail,
       role: safeRole,
       department: safeRole === "super_admin" ? null : finalDept,
+      sub_department: safeRole === "super_admin" ? null : finalSubDept,
       first_name: finalFirst,
       other_names,
       surname: finalSurname, // This now correctly uses the destructured surname
