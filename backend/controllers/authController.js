@@ -1091,10 +1091,9 @@ exports.checkPasswordStatus = async (req, res) => {
       [nationalId]
     );
     if (users.length === 0) {
-      return res.json({
-        password_changed: false,
-        phone_number: null,
-        success: true,
+      return res.status(404).json({
+        success: false,
+        message: "National ID is not registered in our system.",
       });
     }
     const user = users[0];
