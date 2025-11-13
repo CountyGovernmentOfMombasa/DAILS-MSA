@@ -66,7 +66,7 @@ const DeclarationTypePage = () => {
       if (year % 2 === 0) year += 1; // ensure odd year for biennial
       const end = `${year}-10-31`; // YYYY-MM-DD format
       setPeriodEnd(end);
-      // Do not auto-set start: user may need appointment date if joined after 1 Nov previous declaration year
+      setPeriodStart("2023-11-01"); // Set start date to 1/11/2023 for all biennial declarations
     } else if (type === "final") {
       // Clear pre-filled end/start for final to let user specify leaving date
       setPeriodEnd("");
@@ -207,6 +207,7 @@ const DeclarationTypePage = () => {
               }}
               style={{ borderRadius: "12px" }}
               required
+              readOnly
             />
           </div>
           <div className="mb-3">
@@ -227,6 +228,7 @@ const DeclarationTypePage = () => {
               }}
               style={{ borderRadius: "12px" }}
               required
+              readOnly
             />
             {validationErrors.length > 0 && (
               <div className="mt-3">
@@ -246,30 +248,7 @@ const DeclarationTypePage = () => {
             These dates will be used as the official period of your declaration.
           </span>
           {/* Contextual guidance based on declaration type */}
-          {pendingType === "biennial" &&
-            (() => {
-              // derive odd year used for end date to show dynamic message
-              const parseDDMMYYYY = (s) => {
-                if (!s || !/\d{2}\/\d{2}\/\d{4}/.test(s)) return new Date();
-                const [dd, mm, yyyy] = s.split("/");
-                return new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
-              };
-              const server = parseDDMMYYYY(serverDate);
-              let year = server.getFullYear();
-              if (year % 2 === 0) year += 1;
-              const prevDeclarationYear = year - 2; // previous odd declaration cycle
-              return (
-                <Alert variant="info" className="mt-3">
-                  <strong>Biennial Declaration Guidance:</strong>
-                  <br />
-                  The period end date is fixed to <b>31/10/{year}</b>.<br />
-                  If you joined the County after{" "}
-                  <b>01/11/{prevDeclarationYear}</b>, use your{" "}
-                  <b>date of appointment</b> as the start date. Otherwise use{" "}
-                  <b>01/11/{prevDeclarationYear}</b> as the start date.
-                </Alert>
-              );
-            })()}
+          {/* Biennial Declaration Guidance hidden for now */}
           {pendingType === "first" && (
             <Alert variant="info" className="mt-3">
               <strong>First (Initial) Declaration Guidance:</strong>
