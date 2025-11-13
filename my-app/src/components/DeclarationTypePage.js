@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { toISODate } from "../util/date";
 import { validateDeclarationPayload } from "../util/validateDeclarationPayload";
 import { normalizeDeclarationType } from "../util/normalizeDeclarationType";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { Alert, Modal, Button } from "react-bootstrap";
 
 const DeclarationTypePage = () => {
