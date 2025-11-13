@@ -1198,6 +1198,33 @@ exports.submitDeclaration = async (req, res) => {
     // Fetch user's previous declarations
     const previousDeclarations = await Declaration.findByUserId(req.user.id);
 
+    // --- Duplicate Period Check ---
+    const isoPeriodStart = convertDateToISO(
+      periodStart || period_start_date || ""
+    );
+    const isoPeriodEnd = convertDateToISO(periodEnd || period_end_date || "");
+
+    if (isoPeriodStart && isoPeriodEnd) {
+      const newStart = new Date(isoPeriodStart);
+      const newEnd = new Date(isoPeriodEnd);
+
+      const hasDuplicatePeriod = previousDeclarations.some((d) => {
+        if (d.declaration_type !== normalizedType) return false;
+        if (!d.period_start_date || !d.period_end_date) return false;
+        const existingStart = new Date(d.period_start_date);
+        const existingEnd = new Date(d.period_end_date);
+        // Check for overlap
+        return newStart <= existingEnd && newEnd >= existingStart;
+      });
+
+      if (hasDuplicatePeriod) {
+        return res.status(400).json({
+          success: false,
+          message: `You have already submitted a ${normalizedType} declaration for an overlapping period.`,
+        });
+      }
+    }
+
     // Check for existing 'First' or 'Final' declaration
     if (
       (declaration_type === "First" || declaration_type === "Final") &&
@@ -1340,20 +1367,24 @@ exports.submitDeclaration = async (req, res) => {
 
     // Convert date to ISO format for DB
     const isoDeclarationDate = convertDateToISO(declaration_date);
-    // Support both camelCase and snake_case for period start/end
-    const isoPeriodStart = convertDateToISO(
-      periodStart || period_start_date || ""
-    );
-    const isoPeriodEnd = convertDateToISO(periodEnd || period_end_date || "");
+    // Support both camelCase and snake_case for period start/end.
+    // If isoPeriodStart/isoPeriodEnd were computed earlier (during duplicate period check), reuse them; otherwise compute now.
+    const isoPeriodStartComputed =
+      typeof isoPeriodStart !== "undefined"
+        ? isoPeriodStart
+        : convertDateToISO(periodStart || period_start_date || "");
+    const isoPeriodEndComputed =
+      typeof isoPeriodEnd !== "undefined"
+        ? isoPeriodEnd
+        : convertDateToISO(periodEnd || period_end_date || "");
 
-    // Use model for declaration creation
     const declaration = await Declaration.create({
       user_id,
       department,
       marital_status,
       declaration_date: isoDeclarationDate,
-      period_start_date: isoPeriodStart,
-      period_end_date: isoPeriodEnd,
+      period_start_date: isoPeriodStartComputed,
+      period_end_date: isoPeriodEndComputed,
       biennial_income: validBiennialIncome,
       assets: rootAssets,
       liabilities: rootLiabilities,
