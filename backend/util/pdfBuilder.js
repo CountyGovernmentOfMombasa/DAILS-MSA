@@ -17,7 +17,23 @@ const pool = require("../config/db");
 // Fetch and normalize all declaration related data
 async function fetchDeclarationFull(declarationId) {
   const [declUserRows] = await pool.query(
-    `SELECT d.*, u.first_name, u.other_names, u.surname, u.email, u.national_id, u.payroll_number, u.department, u.designation, u.marital_status AS user_marital_status, u.birthdate, u.place_of_birth, u.postal_address, u.physical_address, u.nature_of_employment FROM declarations d JOIN users u ON d.user_id = u.id WHERE d.id = ?`,
+    `SELECT 
+        d.*, 
+        u.first_name, 
+        u.other_names, 
+        u.surname, 
+        u.email, 
+        u.national_id, 
+        u.payroll_number, 
+        u.department, 
+        u.designation, 
+        u.marital_status AS user_marital_status, 
+        u.birthdate, 
+        u.place_of_birth, 
+        u.postal_address, 
+        u.physical_address, 
+        u.nature_of_employment 
+     FROM declarations d JOIN users u ON d.user_id = u.id WHERE d.id = ?`,
     [declarationId]
   );
   const base = declUserRows[0] || {};
