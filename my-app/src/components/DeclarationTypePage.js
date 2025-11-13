@@ -19,6 +19,9 @@ const DeclarationTypePage = () => {
   const [pendingType, setPendingType] = useState(null);
   const [validationErrors, setValidationErrors] = useState([]);
 
+  // Check if essential profile information is missing
+  const isProfileIncomplete = !profile?.department || !profile?.sub_department;
+
   useEffect(() => {
     // Fetch all lock states from backend (public read-only route)
     fetch("/api/settings/locks")
@@ -146,8 +149,27 @@ const DeclarationTypePage = () => {
 
   return (
     <div className="container py-5">
-      <h2 className="mb-4">Select Declaration Type</h2>
+      <div className="d-flex justify-content-between align-items-center mb-4">
+        <h2 className="mb-0">Select Declaration Type</h2>
+        <Button
+          variant="outline-secondary"
+          onClick={() => navigate("/landing")}
+        >
+          <i className="fas fa-arrow-left me-2"></i>Back to Home
+        </Button>
+      </div>
 
+      {isProfileIncomplete && (
+        <Alert variant="danger">
+          <i className="fas fa-exclamation-triangle me-2"></i>
+          <strong>Profile Incomplete:</strong> Your department and
+          sub-department are not set. Please return to the{" "}
+          <Link to="/landing" className="alert-link">
+            Home Page
+          </Link>{" "}
+          to update your profile before proceeding.
+        </Alert>
+      )}
       {/* Declaration Period Modal */}
       <Modal show={showModal} onHide={handleModalClose} centered>
         <Modal.Header closeButton className="bg-primary text-white">
@@ -304,10 +326,12 @@ const DeclarationTypePage = () => {
           <button
             className="btn btn-primary w-100 py-3"
             onClick={() => handleSelect("first")}
-            disabled={firstLocked}
+            disabled={firstLocked || isProfileIncomplete}
             title={
               firstLocked
                 ? "First Declaration is currently locked by the administrator."
+                : isProfileIncomplete
+                ? "Please complete your profile (department/sub-department) to enable this option."
                 : ""
             }
           >
@@ -341,10 +365,12 @@ const DeclarationTypePage = () => {
           <button
             className="btn btn-success w-100 py-3"
             onClick={() => handleSelect("biennial")}
-            disabled={biennialLocked}
+            disabled={biennialLocked || isProfileIncomplete}
             title={
               biennialLocked
                 ? "Biennial Declaration is currently locked by the administrator."
+                : isProfileIncomplete
+                ? "Please complete your profile (department/sub-department) to enable this option."
                 : ""
             }
           >
@@ -371,10 +397,12 @@ const DeclarationTypePage = () => {
           <button
             className="btn btn-warning w-100 py-3"
             onClick={() => handleSelect("final")}
-            disabled={finalLocked}
+            disabled={finalLocked || isProfileIncomplete}
             title={
               finalLocked
                 ? "Final Declaration is currently locked by the administrator."
+                : isProfileIncomplete
+                ? "Please complete your profile (department/sub-department) to enable this option."
                 : ""
             }
           >
