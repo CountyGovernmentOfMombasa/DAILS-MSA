@@ -1087,16 +1087,27 @@ exports.checkPasswordStatus = async (req, res) => {
       return res.status(400).json({ message: "National ID is required." });
     }
     const [users] = await pool.query(
-      "SELECT password_changed, phone_number FROM users WHERE national_id = ?",
+      "SELECT password_changed, phone_number, lock_until FROM users WHERE national_id = ?",
       [nationalId]
     );
     if (users.length === 0) {
+      // To prevent user enumeration, we return a generic message.
+      // The frontend will show "Invalid credentials" upon login attempt.
+      // However, for a better UX on the blur event, we can indicate the ID is not found.
       return res.status(404).json({
         success: false,
         message: "National ID is not registered in our system.",
       });
     }
     const user = users[0];
+
+    // Check if the account is locked before proceeding
+    if (user.lock_until && new Date(user.lock_until) > new Date()) {
+      return res.status(404).json({
+        success: false,
+        message: "National ID is not registered in our system.",
+      });
+    }
     return res.json({
       password_changed: user.password_changed > 0,
       phone_number: user.phone_number,

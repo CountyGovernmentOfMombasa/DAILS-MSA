@@ -85,6 +85,12 @@ const LoginPage = () => {
         // Handle user not found from the backend
         const errorData = await response.json().catch(() => ({}));
         setError(errorData.message || "Could not verify National ID.");
+        if (response.status === 423) {
+          // Specifically handle locked account status
+          setError(
+            errorData.message || "Account is locked. Please contact support."
+          );
+        }
         setShowDefaultPasswordInfo(false);
       }
     } catch {
