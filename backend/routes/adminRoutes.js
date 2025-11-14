@@ -1,20 +1,21 @@
-const settingsLocksController = require('../controllers/settingsLocksController');
-const consentLogAdminController = require('../controllers/consentLogAdminController');
-const express = require('express');
+const settingsLocksController = require("../controllers/settingsLocksController");
+const consentLogAdminController = require("../controllers/consentLogAdminController");
+const express = require("express");
 const router = express.Router();
-const rateLimit = require('express-rate-limit');
-const settingsController = require('../controllers/settingsController');
-const windowAdminController = require('../controllers/windowAdminController');
-const adminController = require('../controllers/adminController');
-const declarationController = require('../controllers/declarationController');
-const deptMgmt = require('../controllers/departmentManagementController');
-const { 
-  adminLogin, 
+const rateLimit = require("express-rate-limit");
+const settingsController = require("../controllers/settingsController");
+const windowAdminController = require("../controllers/windowAdminController");
+const adminController = require("../controllers/adminController");
+const itAdminController = require("../controllers/itAdminController");
+const declarationController = require("../controllers/declarationController");
+const deptMgmt = require("../controllers/departmentManagementController");
+const {
+  adminLogin,
   adminRefresh,
   adminLogout,
-  verifyAdmin, 
-  getAllUsers, 
-  updateUserEmail, 
+  verifyAdmin,
+  getAllUsers,
+  updateUserEmail,
   bulkUpdateEmails,
   getDistinctDepartments,
   createUser,
@@ -26,144 +27,345 @@ const {
   changeAdminPassword,
   getAdminPasswordChangeAudit,
   // password reset request handlers removed
-  getDepartmentDeclarationStats
+  getDepartmentDeclarationStats,
 } = adminController;
-const { verifyAdminToken } = require('../middleware/adminMiddleware');
-const { verifyToken } = require('../middleware/authMiddleware'); // for elevation via user token
+const { verifyAdminToken } = require("../middleware/adminMiddleware");
+const { verifyToken } = require("../middleware/authMiddleware"); // for elevation via user token
 const {
   adminUserList: adminUserListValidators,
   updateUserEmailBody: updateUserEmailValidators,
   bulkEmail: bulkEmailValidators,
   statusAudit: statusAuditValidators,
   declarationStatusUpdate: declarationStatusUpdateValidators,
-  handleValidation
-} = require('../middleware/requestValidators');
-const upload = require('../middleware/fileUpload');
+  handleValidation,
+} = require("../middleware/requestValidators");
+const upload = require("../middleware/fileUpload");
 // Simple rate limiter for sensitive operations (e.g., bulk SMS)
-const smsLimiter = rateLimit({ windowMs: 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false });
+const smsLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // --- Declaration Locks Management ---
-router.get('/declaration-locks', verifyAdminToken, settingsController.getDeclarationLocks);
-router.put('/declaration-locks', verifyAdminToken, settingsController.setDeclarationLock);
+router.get(
+  "/declaration-locks",
+  verifyAdminToken,
+  settingsController.getDeclarationLocks
+);
+router.put(
+  "/declaration-locks",
+  verifyAdminToken,
+  settingsController.setDeclarationLock
+);
 
 // --- Biennial Windows & Overrides (Admin) ---
-router.get('/windows/biennial', verifyAdminToken, windowAdminController.listWindows);
-router.post('/windows/biennial', verifyAdminToken, windowAdminController.upsertWindow);
-router.get('/overrides/declaration-edits', verifyAdminToken, windowAdminController.listOverrides);
-router.post('/overrides/declaration-edits', verifyAdminToken, windowAdminController.createOverride);
-router.delete('/overrides/declaration-edits/:id', verifyAdminToken, windowAdminController.deactivateOverride);
-router.get('/windows/audit', verifyAdminToken, windowAdminController.listAudit);
+router.get(
+  "/windows/biennial",
+  verifyAdminToken,
+  windowAdminController.listWindows
+);
+router.post(
+  "/windows/biennial",
+  verifyAdminToken,
+  windowAdminController.upsertWindow
+);
+router.get(
+  "/overrides/declaration-edits",
+  verifyAdminToken,
+  windowAdminController.listOverrides
+);
+router.post(
+  "/overrides/declaration-edits",
+  verifyAdminToken,
+  windowAdminController.createOverride
+);
+router.delete(
+  "/overrides/declaration-edits/:id",
+  verifyAdminToken,
+  windowAdminController.deactivateOverride
+);
+router.get("/windows/audit", verifyAdminToken, windowAdminController.listAudit);
 
 // Settings Locks Management
-router.get('/settings/locks', verifyAdminToken, settingsLocksController.getAllLocks);
-router.post('/settings/locks', verifyAdminToken, settingsLocksController.setLocks);
+router.get(
+  "/settings/locks",
+  verifyAdminToken,
+  settingsLocksController.getAllLocks
+);
+router.post(
+  "/settings/locks",
+  verifyAdminToken,
+  settingsLocksController.setLocks
+);
 
 // Consent Logs (Admin)
-router.get('/consent-logs', verifyAdminToken, consentLogAdminController.getConsentLogs);
+router.get(
+  "/consent-logs",
+  verifyAdminToken,
+  consentLogAdminController.getConsentLogs
+);
 
 // --- Admin Authentication ---
-router.post('/login', adminLogin); // Login (no auth required)
-router.post('/elevate-from-user', verifyToken, adminController.elevateFromUser); // Elevate logged-in user to admin (if linked)
-router.post('/refresh', adminRefresh); // Refresh admin access token
-router.post('/logout', verifyAdminToken, adminLogout); // Revoke refresh token
+router.post("/login", adminLogin); // Login (no auth required)
+router.post("/elevate-from-user", verifyToken, adminController.elevateFromUser); // Elevate logged-in user to admin (if linked)
+router.post("/refresh", adminRefresh); // Refresh admin access token
+router.post("/logout", verifyAdminToken, adminLogout); // Revoke refresh token
 
 // --- Admin Verification ---
-router.get('/verify', verifyAdminToken, verifyAdmin); // Verify admin (auth required)
+router.get("/verify", verifyAdminToken, verifyAdmin); // Verify admin (auth required)
 
 // --- Declaration Management ---
 // Use adminController.getAllDeclarations so spouses & children are attached and department scoping is enforced
-router.get('/declarations', verifyAdminToken, adminController.getAllDeclarations); // Get all declarations (auth required)
+router.get(
+  "/declarations",
+  verifyAdminToken,
+  adminController.getAllDeclarations
+); // Get all declarations (auth required)
 // CSV export of declarations (includes Land size summary)
-router.get('/declarations/export/csv', verifyAdminToken, adminController.exportDeclarationsCsv);
+router.get(
+  "/declarations/export/csv",
+  verifyAdminToken,
+  adminController.exportDeclarationsCsv
+);
 // Static audit listing routes BEFORE parameterized :id
-router.get('/declarations/status-audit', verifyAdminToken, statusAuditValidators, handleValidation, adminController.listAllDeclarationStatusAudits);
-router.get('/declarations/status-audit/global', verifyAdminToken, adminController.listGlobalDeclarationStatusAudit);
+router.get(
+  "/declarations/status-audit",
+  verifyAdminToken,
+  statusAuditValidators,
+  handleValidation,
+  adminController.listAllDeclarationStatusAudits
+);
+router.get(
+  "/declarations/status-audit/global",
+  verifyAdminToken,
+  adminController.listGlobalDeclarationStatusAudit
+);
 // List declaration edit requests (must be BEFORE parameterized :id route)
-router.get('/declarations/edit-requests', verifyAdminToken, declarationController.getAllEditRequests);
+router.get(
+  "/declarations/edit-requests",
+  verifyAdminToken,
+  declarationController.getAllEditRequests
+);
 // Admin on-demand declaration PDF download (super only currently)
-router.get('/declarations/:id/download-pdf', verifyAdminToken, adminController.adminDownloadDeclarationPDF);
-router.get('/declarations/:id', verifyAdminToken, declarationController.getAdminDeclarationById); // Get single declaration details with relations
-router.put('/declarations/:declarationId/status', verifyAdminToken, declarationStatusUpdateValidators, handleValidation, adminController.updateDeclarationStatus);
-router.get('/declarations/:declarationId/status-audit', verifyAdminToken, statusAuditValidators, handleValidation, adminController.getDeclarationStatusAudit);
-router.get('/declarations/:declarationId/previous-corrections', verifyAdminToken, statusAuditValidators, handleValidation, adminController.getDeclarationPreviousCorrections);
+router.get(
+  "/declarations/:id/download-pdf",
+  verifyAdminToken,
+  adminController.adminDownloadDeclarationPDF
+);
+router.get(
+  "/declarations/:id",
+  verifyAdminToken,
+  declarationController.getAdminDeclarationById
+); // Get single declaration details with relations
+router.put(
+  "/declarations/:declarationId/status",
+  verifyAdminToken,
+  declarationStatusUpdateValidators,
+  handleValidation,
+  adminController.updateDeclarationStatus
+);
+router.get(
+  "/declarations/:declarationId/status-audit",
+  verifyAdminToken,
+  statusAuditValidators,
+  handleValidation,
+  adminController.getDeclarationStatusAudit
+);
+router.get(
+  "/declarations/:declarationId/previous-corrections",
+  verifyAdminToken,
+  statusAuditValidators,
+  handleValidation,
+  adminController.getDeclarationPreviousCorrections
+);
 
 // --- User Management ---
-router.get('/users', verifyAdminToken, adminUserListValidators, handleValidation, getAllUsers);
-router.get('/users/lookup', verifyAdminToken, adminController.lookupUserByNationalId); // Lookup by nationalId
-router.get('/users/departments/distinct', verifyAdminToken, getDistinctDepartments); // Get distinct departments
-router.put('/users/:userId/email', verifyAdminToken, updateUserEmailValidators, handleValidation, updateUserEmail);
-router.put('/users/bulk-email', verifyAdminToken, bulkEmailValidators, handleValidation, bulkUpdateEmails);
-router.post('/users', verifyAdminToken, createUser); // Create user
-router.delete('/users/:userId', verifyAdminToken, deleteUser); // Delete user
+router.get(
+  "/users",
+  verifyAdminToken,
+  adminUserListValidators,
+  handleValidation,
+  getAllUsers
+);
+router.get(
+  "/users/lookup",
+  verifyAdminToken,
+  adminController.lookupUserByNationalId
+); // Lookup by nationalId
+router.get(
+  "/users/departments/distinct",
+  verifyAdminToken,
+  getDistinctDepartments
+); // Get distinct departments
+router.put(
+  "/users/:userId/email",
+  verifyAdminToken,
+  updateUserEmailValidators,
+  handleValidation,
+  updateUserEmail
+);
+router.put(
+  "/users/bulk-email",
+  verifyAdminToken,
+  bulkEmailValidators,
+  handleValidation,
+  bulkUpdateEmails
+);
+router.post(
+  "/users/:userId/reset-password",
+  verifyAdminToken,
+  itAdminController.resetUserPassword
+);
+router.post("/users", verifyAdminToken, createUser); // Create user
+router.delete("/users/:userId", verifyAdminToken, deleteUser); // Delete user
 // Email audit
-router.get('/users/email-audit', verifyAdminToken, adminController.getEmailChangeAudit);
-router.get('/users/email-audit/export/pdf', verifyAdminToken, adminController.exportEmailChangeAuditPdf);
+router.get(
+  "/users/email-audit",
+  verifyAdminToken,
+  adminController.getEmailChangeAudit
+);
+router.get(
+  "/users/email-audit/export/pdf",
+  verifyAdminToken,
+  adminController.exportEmailChangeAuditPdf
+);
 
 // --- Admin Management ---
-router.get('/admins', verifyAdminToken, getAllAdmins); // Get all admins
-router.get('/admins/missing-department', verifyAdminToken, (req, res, next) => {
+router.get("/admins", verifyAdminToken, getAllAdmins); // Get all admins
+router.get("/admins/missing-department", verifyAdminToken, (req, res, next) => {
   // Allow only super (raw or normalized) to view
-  if (!req.admin || !['super','super_admin'].includes(req.admin.role) && req.admin.normalizedRole !== 'super') {
-    return res.status(403).json({ message: 'Access denied' });
+  if (
+    !req.admin ||
+    (!["super", "super_admin"].includes(req.admin.role) &&
+      req.admin.normalizedRole !== "super")
+  ) {
+    return res.status(403).json({ message: "Access denied" });
   }
   return adminController.getAdminsMissingDepartment(req, res, next);
 });
-router.post('/admins', verifyAdminToken, createAdmin); // Create admin
-router.put('/admins/:adminId', verifyAdminToken, updateAdmin); // Update admin
-router.delete('/admins/:adminId', verifyAdminToken, deleteAdmin); // Delete admin
-router.put('/change-password', verifyAdminToken, changeAdminPassword); // Change admin password
-router.get('/password-change-audit', verifyAdminToken, getAdminPasswordChangeAudit); // Audit logs for admin password changes
+router.post("/admins", verifyAdminToken, createAdmin); // Create admin
+router.put("/admins/:adminId", verifyAdminToken, updateAdmin); // Update admin
+router.delete("/admins/:adminId", verifyAdminToken, deleteAdmin); // Delete admin
+router.put("/change-password", verifyAdminToken, changeAdminPassword); // Change admin password
+router.get(
+  "/password-change-audit",
+  verifyAdminToken,
+  getAdminPasswordChangeAudit
+); // Audit logs for admin password changes
 // Admin password reset request feature removed
 
 // --- Utility / Diagnostics ---
-router.post('/test-email', verifyAdminToken, adminController.sendTestEmail); // Send test email (optional ?to=address)
+router.post("/test-email", verifyAdminToken, adminController.sendTestEmail); // Send test email (optional ?to=address)
 
 // Upload admin signature
-router.post('/admins/:adminId/upload-signature', verifyAdminToken, upload.single('signature'), async (req, res) => {
-  try {
-    const adminId = req.params.adminId;
-    // Only allow admin to upload their own signature
-    if (req.admin.adminId !== parseInt(adminId)) {
-      return res.status(403).json({ message: 'Access denied' });
+router.post(
+  "/admins/:adminId/upload-signature",
+  verifyAdminToken,
+  upload.single("signature"),
+  async (req, res) => {
+    try {
+      const adminId = req.params.adminId;
+      // Only allow admin to upload their own signature
+      if (req.admin.adminId !== parseInt(adminId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      // Save file path to database
+      const pool = require("../config/db");
+      await pool.execute(
+        "UPDATE admin_users SET signature_path = ? WHERE id = ?",
+        [req.file.path, adminId]
+      );
+      res.json({ success: true, filePath: req.file.path });
+    } catch (error) {
+      console.error("Error uploading admin signature:", error);
+      res.status(500).json({ message: "Server error during file upload" });
     }
-    if (!req.file) {
-      return res.status(400).json({ message: 'No file uploaded' });
-    }
-  // Save file path to database
-  const pool = require('../config/db');
-  await pool.execute('UPDATE admin_users SET signature_path = ? WHERE id = ?', [req.file.path, adminId]);
-  res.json({ success: true, filePath: req.file.path });
-  } catch (error) {
-    console.error('Error uploading admin signature:', error);
-    res.status(500).json({ message: 'Server error during file upload' });
   }
-});
+);
 
 // Reports
-router.get('/reports/departments', verifyAdminToken, getDepartmentDeclarationStats);
+router.get(
+  "/reports/departments",
+  verifyAdminToken,
+  getDepartmentDeclarationStats
+);
 // Department user declaration status (IT/HR/Finance & Super)
-router.get('/department/users-status', verifyAdminToken, adminController.getDepartmentUserDeclarationStatus);
+router.get(
+  "/department/users-status",
+  verifyAdminToken,
+  adminController.getDepartmentUserDeclarationStatus
+);
 // Dynamic Department Management (super admin only)
-router.get('/dept-config', verifyAdminToken, deptMgmt.list);
-router.post('/dept-config/department', verifyAdminToken, deptMgmt.createDepartment);
-router.put('/dept-config/department/:id', verifyAdminToken, deptMgmt.renameDepartment);
-router.delete('/dept-config/department/:id', verifyAdminToken, deptMgmt.deleteDepartment);
-router.post('/dept-config/department/:id/sub', verifyAdminToken, deptMgmt.addSubDepartment);
-router.put('/dept-config/sub/:subId', verifyAdminToken, deptMgmt.renameSubDepartment);
-router.delete('/dept-config/sub/:subId', verifyAdminToken, deptMgmt.deleteSubDepartment);
+router.get("/dept-config", verifyAdminToken, deptMgmt.list);
+router.post(
+  "/dept-config/department",
+  verifyAdminToken,
+  deptMgmt.createDepartment
+);
+router.put(
+  "/dept-config/department/:id",
+  verifyAdminToken,
+  deptMgmt.renameDepartment
+);
+router.delete(
+  "/dept-config/department/:id",
+  verifyAdminToken,
+  deptMgmt.deleteDepartment
+);
+router.post(
+  "/dept-config/department/:id/sub",
+  verifyAdminToken,
+  deptMgmt.addSubDepartment
+);
+router.put(
+  "/dept-config/sub/:subId",
+  verifyAdminToken,
+  deptMgmt.renameSubDepartment
+);
+router.delete(
+  "/dept-config/sub/:subId",
+  verifyAdminToken,
+  deptMgmt.deleteSubDepartment
+);
 // Super admin metrics
-router.get('/super/metrics', verifyAdminToken, adminController.getSuperAdminMetrics);
+router.get(
+  "/super/metrics",
+  verifyAdminToken,
+  adminController.getSuperAdminMetrics
+);
 // Clear user lockout (super/it only)
-router.post('/users/:userId/clear-lockout', verifyAdminToken, adminController.clearUserLockout);
+router.post(
+  "/users/:userId/clear-lockout",
+  verifyAdminToken,
+  adminController.clearUserLockout
+);
 // List locked users
-router.get('/users/locked', verifyAdminToken, adminController.listLockedUsers);
+router.get("/users/locked", verifyAdminToken, adminController.listLockedUsers);
 // Lockout audit
-router.get('/lockouts/audit', verifyAdminToken, adminController.getUserLockoutAudit);
+router.get(
+  "/lockouts/audit",
+  verifyAdminToken,
+  adminController.getUserLockoutAudit
+);
 
 // --- Communications ---
 // Bulk SMS to users (scoped by admin department unless super). Supports dry-run preview.
-router.post('/bulk-sms', verifyAdminToken, smsLimiter, adminController.sendBulkSMS);
+router.post(
+  "/bulk-sms",
+  verifyAdminToken,
+  smsLimiter,
+  adminController.sendBulkSMS
+);
 // Audit listing (super/it only)
-router.get('/bulk-sms/audit', verifyAdminToken, adminController.listBulkSmsAudit);
+router.get(
+  "/bulk-sms/audit",
+  verifyAdminToken,
+  adminController.listBulkSmsAudit
+);
 
 module.exports = router;

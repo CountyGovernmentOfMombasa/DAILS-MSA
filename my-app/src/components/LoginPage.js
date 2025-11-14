@@ -204,7 +204,11 @@ const LoginPage = () => {
           }
           // Immediately warm profile cache; then go to consent screen
           refreshProfile();
-          navigate("/consent");
+          if (data.hasConsented) {
+            navigate("/landing");
+          } else {
+            navigate("/consent");
+          }
         }
       } else {
         const errorData = await response.json().catch(() => ({}));

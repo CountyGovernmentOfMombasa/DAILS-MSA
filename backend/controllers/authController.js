@@ -58,7 +58,7 @@ async function issueTokenPair(userId, extraClaims = {}) {
   const refreshToken = `${userId}.${refreshRaw}`;
   const refreshHash = hashToken(refreshToken);
   await pool.query(
-    "UPDATE users SET refresh_token_hash = ?, last_activity = UTC_TIMESTAMP() WHERE id = ?",
+    "UPDATE users SET refresh_token_hash = ?, last_activity = NOW() WHERE id = ?",
     [refreshHash, userId]
   );
   return {
@@ -207,7 +207,7 @@ exports.login = async (req, res) => {
     // Find user by national ID
     const [users] = await pool.query(
       `SELECT id, national_id, payroll_number, first_name, other_names, surname, email, password,
-              password_changed, phone_number, failed_login_attempts, lock_until,
+              password_changed, phone_number, failed_login_attempts, lock_until, has_consented,
               otp_request_count, otp_request_window_start
          FROM users WHERE national_id = ?`,
       [nationalId]
@@ -381,7 +381,7 @@ exports.login = async (req, res) => {
       }
       if (resetWindow) {
         await pool.query(
-          "UPDATE users SET otp_request_count = 1, otp_request_window_start = UTC_TIMESTAMP() WHERE id = ?",
+          "UPDATE users SET otp_request_count = 1, otp_request_window_start = NOW() WHERE id = ?",
           [user.id]
         );
       } else {
@@ -396,7 +396,7 @@ exports.login = async (req, res) => {
         );
       }
       await pool.query(
-        "UPDATE users SET otp_code = ?, otp_expires_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? MINUTE) WHERE id = ?",
+        "UPDATE users SET otp_code = ?, otp_expires_at = DATE_ADD(NOW(), INTERVAL ? MINUTE) WHERE id = ?",
         [code, otpTtlMinutes, user.id]
       );
       // Send OTP via SMS
@@ -508,6 +508,7 @@ exports.login = async (req, res) => {
       refreshToken,
       accessExpiresInMs,
       hasAdminAccess,
+      hasConsented: !!user.has_consented,
       adminRole,
       user: {
         id: user.id,
@@ -564,7 +565,7 @@ exports.resendOtp = async (req, res) => {
     }
     if (resetWindow) {
       await pool.query(
-        "UPDATE users SET otp_request_count = 1, otp_request_window_start = UTC_TIMESTAMP() WHERE id = ?",
+        "UPDATE users SET otp_request_count = 1, otp_request_window_start = NOW() WHERE id = ?",
         [user.id]
       );
     } else {
@@ -581,7 +582,7 @@ exports.resendOtp = async (req, res) => {
     const { code } = createOtp();
     const otpTtlMinutes = parseInt(process.env.OTP_TTL_MINUTES || "360", 10);
     await pool.query(
-      "UPDATE users SET otp_code = ?, otp_expires_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? MINUTE) WHERE id = ?",
+      "UPDATE users SET otp_code = ?, otp_expires_at = DATE_ADD(NOW(), INTERVAL ? MINUTE) WHERE id = ?",
       [code, otpTtlMinutes, user.id]
     );
     try {
@@ -1103,9 +1104,8 @@ exports.checkPasswordStatus = async (req, res) => {
 
     // Check if the account is locked before proceeding
     if (user.lock_until && new Date(user.lock_until) > new Date()) {
-      return res.status(404).json({
-        success: false,
-        message: "National ID is not registered in our system.",
+      return res.status(423).json({
+        message: "Account is locked. Please contact the administrator.",
       });
     }
     return res.json({
@@ -1150,7 +1150,7 @@ exports.forgotPassword = async (req, res) => {
         .json({ message: "No phone number on record. Contact support." });
     // Rate limit forgot password code requests: max 3 per 1h window (separate counters)
     const [secRows] = await pool.query(
-      "SELECT reset_otp_request_count, reset_otp_request_window_start, TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), DATE_ADD(reset_otp_request_window_start, INTERVAL 60 MINUTE)) AS window_remaining FROM users WHERE id = ?",
+      "SELECT reset_otp_request_count, reset_otp_request_window_start, TIMESTAMPDIFF(SECOND, NOW(), DATE_ADD(reset_otp_request_window_start, INTERVAL 60 MINUTE)) AS window_remaining FROM users WHERE id = ?",
       [user.id]
     );
     let rCount = secRows[0].reset_otp_request_count;
@@ -1159,7 +1159,7 @@ exports.forgotPassword = async (req, res) => {
     if (!rStart || windowRemaining === null || windowRemaining <= 0) {
       // reset window (use UTC clock in DB)
       await pool.query(
-        "UPDATE users SET reset_otp_request_count = 1, reset_otp_request_window_start = UTC_TIMESTAMP() WHERE id = ?",
+        "UPDATE users SET reset_otp_request_count = 1, reset_otp_request_window_start = NOW() WHERE id = ?",
         [user.id]
       );
     } else {
@@ -1175,7 +1175,7 @@ exports.forgotPassword = async (req, res) => {
     }
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     await pool.query(
-      "UPDATE users SET password_reset_code = ?, password_reset_expires_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 10 MINUTE) WHERE id = ?",
+      "UPDATE users SET password_reset_code = ?, password_reset_expires_at = DATE_ADD(NOW(), INTERVAL 10 MINUTE) WHERE id = ?",
       [code, user.id]
     );
     try {
@@ -1206,7 +1206,7 @@ exports.verifyForgotPasswordCode = async (req, res) => {
     if (!nationalId || !code)
       return res.status(400).json({ message: "nationalId and code required" });
     const [rows] = await pool.query(
-      "SELECT id, password_reset_code, password_reset_expires_at, TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), password_reset_expires_at) AS remaining_secs FROM users WHERE national_id = ?",
+      "SELECT id, password_reset_code, password_reset_expires_at, TIMESTAMPDIFF(SECOND, NOW(), password_reset_expires_at) AS remaining_secs FROM users WHERE national_id = ?",
       [nationalId]
     );
     if (!rows.length)
@@ -1266,12 +1266,14 @@ exports.resetForgottenPassword = async (req, res) => {
       });
     }
     const bcrypt = require("bcryptjs");
-    const [rows] = await pool.query("SELECT password FROM users WHERE id = ?", [
-      req.user.id,
-    ]);
-    if (!rows.length)
+    const [userRows] = await pool.query(
+      "SELECT password FROM users WHERE id = ?",
+      [req.user.id]
+    );
+    if (!userRows.length)
       return res.status(404).json({ message: "User not found" });
-    const reuse = await bcrypt.compare(newPassword, rows[0].password);
+
+    const reuse = await bcrypt.compare(newPassword, userRows[0].password);
     if (reuse)
       return res
         .status(400)
@@ -1292,12 +1294,12 @@ exports.resetForgottenPassword = async (req, res) => {
     const hash = await bcrypt.hash(newPassword, 10);
     await pool.query(
       "UPDATE users SET password = ?, password_changed = password_changed + 1, password_reset_code = NULL, password_reset_expires_at = NULL WHERE id = ?",
-      [hash, req.user.id]
+      [hash, req.user.id] // Use ID from token
     );
     try {
       await pool.query(
         "INSERT INTO user_password_history (user_id, password_hash) VALUES (?, ?)",
-        [req.user.id, rows[0].password]
+        [req.user.id, userRows[0].password]
       );
       await pool.query(
         "DELETE FROM user_password_history WHERE user_id = ? AND id NOT IN (SELECT id FROM (SELECT id FROM user_password_history WHERE user_id = ? ORDER BY created_at DESC LIMIT ?) t)",
@@ -1368,7 +1370,7 @@ exports.refresh = async (req, res) => {
       // Compute inactivity strictly in DB using UTC to avoid timezone skew
       try {
         const [[idle]] = await pool.query(
-          "SELECT TIMESTAMPDIFF(SECOND, last_activity, UTC_TIMESTAMP()) AS idle_secs FROM users WHERE id = ?",
+          "SELECT TIMESTAMPDIFF(SECOND, last_activity, NOW()) AS idle_secs FROM users WHERE id = ?",
           [userId]
         );
         if (
@@ -1397,10 +1399,9 @@ exports.refresh = async (req, res) => {
       });
     } else {
       // Update last_activity only
-      await pool.query(
-        "UPDATE users SET last_activity = UTC_TIMESTAMP() WHERE id = ?",
-        [userId]
-      );
+      await pool.query("UPDATE users SET last_activity = NOW() WHERE id = ?", [
+        userId,
+      ]);
       const accessToken = signAccess({ id: userId });
       return res.json({
         token: accessToken,

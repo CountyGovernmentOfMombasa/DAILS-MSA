@@ -14,6 +14,73 @@ function maskPhone(phone) {
   );
 }
 
+exports.resetUserPassword = async (req, res) => {
+  try {
+    const adminCtx = req.admin || {};
+    const role = (adminCtx.role || adminCtx.normalizedRole || "").toLowerCase();
+    if (!["it_admin", "super_admin", "it", "super"].includes(role)) {
+      return res
+        .status(403)
+        .json({ success: false, message: "Insufficient role to reset password." });
+    }
+
+    const { userId } = req.params;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: "User ID is required." });
+    }
+
+    const [userRows] = await pool.query("SELECT id, email, phone_number, first_name FROM users WHERE id = ?", [userId]);
+    if (!userRows.length) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+    const user = userRows[0];
+
+    const DEFAULT_INITIAL_PASSWORD = process.env.DEFAULT_INITIAL_PASSWORD || "Change@001";
+    const hashedPassword = await bcrypt.hash(DEFAULT_INITIAL_PASSWORD, 10);
+
+    // Reset password and force change on next login
+    await pool.query(
+      "UPDATE users SET password = ?, password_changed = 0 WHERE id = ?",
+      [hashedPassword, userId]
+    );
+
+    // Audit the password reset action
+    try {
+      await pool.query(
+        "INSERT INTO user_password_change_audit (user_id, method, ip_address, user_agent, changed_by_admin_id) VALUES (?,?,?,?,?)",
+        [
+          userId,
+          "admin_reset",
+          (req.ip || "").substring(0, 64),
+          (req.headers["user-agent"] || "").substring(0, 255),
+          adminCtx.adminId || null,
+        ]
+      );
+    } catch (e) {
+      console.error("Admin password reset audit insert failed:", e.message);
+    }
+
+    // Notify user via SMS (best effort)
+    if (user.phone_number) {
+      try {
+        const sendSMS = require("../util/sendSMS");
+        await sendSMS({
+          to: user.phone_number,
+          body: `Your password has been reset by an administrator. Please login with the default password and change it immediately.`,
+          type: "sms",
+        });
+      } catch (smsErr) {
+        console.warn("Failed to send password reset notification SMS:", smsErr.message);
+      }
+    }
+
+    return res.json({ success: true, message: "User password has been reset to the default." });
+  } catch (error) {
+    console.error("Admin reset user password error:", error);
+    return res.status(500).json({ success: false, message: "Server error while resetting password." });
+  }
+};
+
 exports.getITAdminDeclarations = async (req, res) => {
   try {
     const role =

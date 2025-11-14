@@ -2373,9 +2373,10 @@ exports.getUserLockoutAudit = async (req, res) => {
   try {
     if (
       !req.admin ||
-      !["super", "it", "super_admin", "it_admin"].includes(
+      (!["super", "it", "super_admin", "it_admin"].includes(
         req.admin.normalizedRole
-      )
+      ) &&
+        !["super", "it", "super_admin", "it_admin"].includes(req.admin.role))
     ) {
       return res.status(403).json({ message: "Access denied" });
     }
