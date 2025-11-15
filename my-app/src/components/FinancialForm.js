@@ -602,9 +602,9 @@ const assetDescriptionPlaceholder = (type) => {
 const incomeDescriptionPlaceholder = (type) => {
   switch (type) {
     case 'Salary':
-      return 'e.g. Gross annual/biennial salary';
+      return 'e.g. Gross two year salary';
     case 'Rental Income':
-      return 'e.g. Gross annual/biennial rental income';
+      return 'e.g. Gross two year rental income';
     case 'Sale of Crops':
       return 'e.g. Crop type and harvest period';
     case 'Sale of Livestock and their Products':
