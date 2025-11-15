@@ -20,7 +20,7 @@ function mapToCanonical(raw, canonicalIndex) {
   // 2. Fallback: partial matching (contains or starts/ends with)
   for (const [normCanon, canonName] of canonicalIndex.entries()) {
     // Check if the user's department is a substring of a canonical one, or vice-versa.
-    if (normCanon.includes(norm) || norm.includes(nCanon)) {
+    if (normCanon.includes(norm) || norm.includes(normCanon)) {
       return canonName;
     }
   }
