@@ -21,26 +21,38 @@ exports.resetUserPassword = async (req, res) => {
     if (!["it_admin", "super_admin", "it", "super"].includes(role)) {
       return res
         .status(403)
-        .json({ success: false, message: "Insufficient role to reset password." });
+        .json({
+          success: false,
+          message: "Insufficient role to reset password.",
+        });
     }
 
     const { userId } = req.params;
     if (!userId) {
-      return res.status(400).json({ success: false, message: "User ID is required." });
+      return res
+        .status(400)
+        .json({ success: false, message: "User ID is required." });
     }
 
-    const [userRows] = await pool.query("SELECT id, email, phone_number, first_name FROM users WHERE id = ?", [userId]);
+    const [userRows] = await pool.query(
+      "SELECT id, email, phone_number, first_name FROM users WHERE id = ?",
+      [userId]
+    );
     if (!userRows.length) {
-      return res.status(404).json({ success: false, message: "User not found." });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found." });
     }
     const user = userRows[0];
 
-    const DEFAULT_INITIAL_PASSWORD = process.env.DEFAULT_INITIAL_PASSWORD || "Change@001";
+    const DEFAULT_INITIAL_PASSWORD =
+      process.env.DEFAULT_INITIAL_PASSWORD || "Change@001";
     const hashedPassword = await bcrypt.hash(DEFAULT_INITIAL_PASSWORD, 10);
 
     // Reset password and force change on next login
+    // Also clear any refresh token to invalidate existing sessions.
     await pool.query(
-      "UPDATE users SET password = ?, password_changed = 0 WHERE id = ?",
+      "UPDATE users SET password = ?, password_changed = 0, refresh_token_hash = NULL WHERE id = ?",
       [hashedPassword, userId]
     );
 
@@ -70,14 +82,25 @@ exports.resetUserPassword = async (req, res) => {
           type: "sms",
         });
       } catch (smsErr) {
-        console.warn("Failed to send password reset notification SMS:", smsErr.message);
+        console.warn(
+          "Failed to send password reset notification SMS:",
+          smsErr.message
+        );
       }
     }
 
-    return res.json({ success: true, message: "User password has been reset to the default." });
+    return res.json({
+      success: true,
+      message: "User password has been reset to the default.",
+    });
   } catch (error) {
     console.error("Admin reset user password error:", error);
-    return res.status(500).json({ success: false, message: "Server error while resetting password." });
+    return res
+      .status(500)
+      .json({
+        success: false,
+        message: "Server error while resetting password.",
+      });
   }
 };
 
@@ -174,12 +197,10 @@ exports.createAdminUser = async (req, res) => {
     const allowedRoles = ["super_admin", "hr_admin", "it_admin"];
 
     if (!username || !password || !role || !first_name || !surname) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "Username, password, role, first_name and surname are required.",
-        });
+      return res.status(400).json({
+        message:
+          "Username, password, role, first_name and surname are required.",
+      });
     }
     if (
       role !== "super_admin" &&
@@ -188,18 +209,14 @@ exports.createAdminUser = async (req, res) => {
     ) {
       const subs = SUB_DEPARTMENT_MAP[department];
       if (subs.length > 1 && !sub_department) {
-        return res
-          .status(400)
-          .json({
-            message: "Sub Department is required for the selected department.",
-          });
+        return res.status(400).json({
+          message: "Sub Department is required for the selected department.",
+        });
       }
       if (sub_department && !subs.includes(sub_department)) {
-        return res
-          .status(400)
-          .json({
-            message: "Invalid sub_department for the specified department.",
-          });
+        return res.status(400).json({
+          message: "Invalid sub_department for the specified department.",
+        });
       }
     }
     if (!allowedRoles.includes(role)) {
@@ -209,11 +226,9 @@ exports.createAdminUser = async (req, res) => {
     // Enforce department for non-super roles & validate department value
     if (role !== "super_admin") {
       if (!department) {
-        return res
-          .status(400)
-          .json({
-            message: "Department is required for non-super admin roles.",
-          });
+        return res.status(400).json({
+          message: "Department is required for non-super admin roles.",
+        });
       }
       if (!ALLOWED_DEPARTMENTS.includes(department)) {
         return res.status(400).json({ message: "Invalid department." });
@@ -384,38 +399,32 @@ exports.createRegularUser = async (req, res) => {
     // Duplicate checks (national_id/email first)
     const exists = await User.existsByNationalIdOrEmail(national_id, email);
     if (exists) {
-      return res
-        .status(409)
-        .json({
-          message: "User already exists with this National ID or email.",
-        });
+      return res.status(409).json({
+        message: "User already exists with this National ID or email.",
+      });
     }
     // Phone uniqueness check (shared util)
     const { isValidPhone, normalizePhone } = require("../util/phone");
     let normalizedPhone = phone_number;
     if (phone_number) {
       if (!isValidPhone(phone_number)) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            code: "INVALID_PHONE_FORMAT",
-            field: "phone_number",
-            message:
-              "Invalid phone_number format. Use 7-15 digits, optional leading +",
-          });
+        return res.status(400).json({
+          success: false,
+          code: "INVALID_PHONE_FORMAT",
+          field: "phone_number",
+          message:
+            "Invalid phone_number format. Use 7-15 digits, optional leading +",
+        });
       }
       normalizedPhone = normalizePhone(phone_number);
       const phoneInUse = await User.existsByPhone(normalizedPhone);
       if (phoneInUse) {
-        return res
-          .status(409)
-          .json({
-            success: false,
-            code: "PHONE_IN_USE",
-            field: "phone_number",
-            message: "Phone number already in use by another user.",
-          });
+        return res.status(409).json({
+          success: false,
+          code: "PHONE_IN_USE",
+          field: "phone_number",
+          message: "Phone number already in use by another user.",
+        });
       }
     }
 
@@ -423,12 +432,10 @@ exports.createRegularUser = async (req, res) => {
     // Align with login flow expecting default 'Change@001'.
     const INITIAL_DEFAULT_PASSWORD = "Change@001";
     if (department && !sub_department) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "sub_department is required when department is provided.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "sub_department is required when department is provided.",
+      });
     }
     const userId = await User.create({
       national_id,
@@ -470,14 +477,12 @@ exports.createRegularUser = async (req, res) => {
       console.warn("User creation audit insert failed:", logErr.message);
     }
 
-    return res
-      .status(201)
-      .json({
-        success: true,
-        message: "User created successfully.",
-        userId,
-        defaultPassword: INITIAL_DEFAULT_PASSWORD,
-      });
+    return res.status(201).json({
+      success: true,
+      message: "User created successfully.",
+      userId,
+      defaultPassword: INITIAL_DEFAULT_PASSWORD,
+    });
   } catch (error) {
     console.error("Create regular user error (admin route):", error);
     // Graceful duplicate phone fallback if race condition triggers DB unique index error
@@ -486,22 +491,18 @@ exports.createRegularUser = async (req, res) => {
       error.code === "ER_DUP_ENTRY" &&
       /phone_number/.test(error.message)
     ) {
-      return res
-        .status(409)
-        .json({
-          success: false,
-          code: "PHONE_IN_USE",
-          field: "phone_number",
-          message: "Phone number already in use by another user.",
-        });
-    }
-    return res
-      .status(500)
-      .json({
+      return res.status(409).json({
         success: false,
-        message: "Server error while creating user",
-        error: error.message,
+        code: "PHONE_IN_USE",
+        field: "phone_number",
+        message: "Phone number already in use by another user.",
       });
+    }
+    return res.status(500).json({
+      success: false,
+      message: "Server error while creating user",
+      error: error.message,
+    });
   }
 };
 
@@ -511,12 +512,10 @@ exports.getUserCreationAudit = async (req, res) => {
     const role =
       (req.admin && (req.admin.role || req.admin.normalizedRole)) || "";
     if (!["it", "super", "it_admin", "super_admin"].includes(role)) {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Insufficient role to view user creation audit.",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Insufficient role to view user creation audit.",
+      });
     }
     const {
       page = 1,
@@ -619,13 +618,11 @@ exports.getUserCreationAudit = async (req, res) => {
     });
   } catch (error) {
     console.error("Get user creation audit error:", error);
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: "Server error fetching audit log",
-        error: error.message,
-      });
+    return res.status(500).json({
+      success: false,
+      message: "Server error fetching audit log",
+      error: error.message,
+    });
   }
 };
 
@@ -635,12 +632,10 @@ exports.getAdminCreationAudit = async (req, res) => {
     const role =
       (req.admin && (req.admin.role || req.admin.normalizedRole)) || "";
     if (!["it", "it_admin", "super", "super_admin"].includes(role)) {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Insufficient role to view admin creation audit.",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Insufficient role to view admin creation audit.",
+      });
     }
     const {
       page = 1,
@@ -733,13 +728,11 @@ exports.getAdminCreationAudit = async (req, res) => {
     });
   } catch (error) {
     console.error("Get admin creation audit error:", error);
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: "Server error fetching admin audit log",
-        error: error.message,
-      });
+    return res.status(500).json({
+      success: false,
+      message: "Server error fetching admin audit log",
+      error: error.message,
+    });
   }
 };
 
@@ -1214,12 +1207,10 @@ exports.revealUserOtp = async (req, res) => {
       forceResendSms = false,
     } = req.body || {};
     if (!reason || String(reason).trim().length < 5) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "A meaningful reason (min 5 chars) is required.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "A meaningful reason (min 5 chars) is required.",
+      });
     }
 
     // Fetch user minimal fields needed
@@ -1234,13 +1225,11 @@ exports.revealUserOtp = async (req, res) => {
     const user = rows[0];
 
     if (user.password_changed) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message:
-            "User has already changed password; OTP flow no longer applicable.",
-        });
+      return res.status(400).json({
+        success: false,
+        message:
+          "User has already changed password; OTP flow no longer applicable.",
+      });
     }
 
     // Department scope enforcement for non-super roles
@@ -1248,20 +1237,16 @@ exports.revealUserOtp = async (req, res) => {
     const adminSub = adminCtx.sub_department || null;
     if (role !== "super_admin" && role !== "super") {
       if (adminDept && user.department && adminDept !== user.department) {
-        return res
-          .status(403)
-          .json({
-            success: false,
-            message: "Cannot access user outside your department.",
-          });
+        return res.status(403).json({
+          success: false,
+          message: "Cannot access user outside your department.",
+        });
       }
       if (adminSub && user.sub_department && adminSub !== user.sub_department) {
-        return res
-          .status(403)
-          .json({
-            success: false,
-            message: "Cannot access user outside your sub-department.",
-          });
+        return res.status(403).json({
+          success: false,
+          message: "Cannot access user outside your sub-department.",
+        });
       }
     }
 
@@ -1287,12 +1272,10 @@ exports.revealUserOtp = async (req, res) => {
           otp_request_count = 0; // reset
         }
         if (otp_request_count >= 3) {
-          return res
-            .status(429)
-            .json({
-              success: false,
-              message: "OTP request limit reached (hourly). Try later.",
-            });
+          return res.status(429).json({
+            success: false,
+            message: "OTP request limit reached (hourly). Try later.",
+          });
         }
         const { code, expires } = createOtp();
         activeCode = code;
@@ -1332,12 +1315,10 @@ exports.revealUserOtp = async (req, res) => {
     // Force resend SMS if requested and we did not generate a new OTP
     if (!generated && forceResendSms) {
       if (!activeCode || !expiry || now >= expiry) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: "No active OTP to resend. Use regenerate=true.",
-          });
+        return res.status(400).json({
+          success: false,
+          message: "No active OTP to resend. Use regenerate=true.",
+        });
       }
       if (user.phone_number) {
         try {
@@ -1354,12 +1335,10 @@ exports.revealUserOtp = async (req, res) => {
     }
 
     if (!activeCode || !expiry || now >= expiry) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          message: "No active OTP. Set regenerate=true to create one.",
-        });
+      return res.status(404).json({
+        success: false,
+        message: "No active OTP. Set regenerate=true to create one.",
+      });
     }
 
     // (Moved existence check above audit section)
@@ -1448,13 +1427,11 @@ exports.revealUserOtp = async (req, res) => {
     });
   } catch (error) {
     console.error("Reveal OTP error:", error);
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: "Server error revealing OTP",
-        error: error.message,
-      });
+    return res.status(500).json({
+      success: false,
+      message: "Server error revealing OTP",
+      error: error.message,
+    });
   }
 };
 
@@ -1471,12 +1448,10 @@ exports.revealUserOtpByNationalId = async (req, res) => {
     }
     const nationalId = String(req.params.nationalId || "").trim();
     if (!nationalId) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "nationalId path parameter is required.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "nationalId path parameter is required.",
+      });
     }
     // Resolve national_id -> user id
     const [rows] = await pool.query(
@@ -1484,12 +1459,10 @@ exports.revealUserOtpByNationalId = async (req, res) => {
       [nationalId]
     );
     if (!rows.length) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          message: "User not found for provided national ID.",
-        });
+      return res.status(404).json({
+        success: false,
+        message: "User not found for provided national ID.",
+      });
     }
     const userId = rows[0].id;
     // Delegate to core reveal logic by temporarily setting req.params.userId
@@ -1501,13 +1474,11 @@ exports.revealUserOtpByNationalId = async (req, res) => {
     });
   } catch (error) {
     console.error("Reveal OTP by nationalId error:", error);
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: "Server error revealing OTP by national ID",
-        error: error.message,
-      });
+    return res.status(500).json({
+      success: false,
+      message: "Server error revealing OTP by national ID",
+      error: error.message,
+    });
   }
 };
 
@@ -1599,12 +1570,10 @@ exports.getOtpDisclosureAudit = async (req, res) => {
     });
   } catch (error) {
     console.error("Get OTP disclosure audit error:", error);
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message: "Server error fetching OTP disclosure audit",
-        error: error.message,
-      });
+    return res.status(500).json({
+      success: false,
+      message: "Server error fetching OTP disclosure audit",
+      error: error.message,
+    });
   }
 };
