@@ -1,5 +1,5 @@
 import AdminConsentLogs from "./AdminConsentLogs";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import EmailManagement from "./EmailManagement";
 import ReportsAndAnalytics from "./ReportsAndAnalytics";
 import AdminUserCreation from "./AdminUserCreation";
@@ -16,8 +16,11 @@ const ITAdminDashboard = ({ adminUser }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   // Default to the new Add User tab since declarations tab is removed
-  const [currentTab, setCurrentTab] = useState("add-user");
-  // const [usersCount, setUsersCount] = useState(0); // Removed unused variable
+  const [currentTab, setCurrentTab] = useState("dept-overview");
+  const [deptStats, setDeptStats] = useState(null);
+  const [loadingDeptStats, setLoadingDeptStats] = useState(false);
+  const [deptStatsFetchedAt, setDeptStatsFetchedAt] = useState(null);
+  const DEPT_STATS_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
   const adminToken = localStorage.getItem("adminToken");
 
@@ -41,7 +44,42 @@ const ITAdminDashboard = ({ adminUser }) => {
     fetchDeclarations();
   }, [adminToken]);
 
-  // Removed usersCount effect since usersCount is not used
+  const fetchDeptStats = useCallback(
+    async (force = false) => {
+      try {
+        const now = Date.now();
+        if (
+          !force &&
+          deptStats &&
+          deptStatsFetchedAt &&
+          now - deptStatsFetchedAt < DEPT_STATS_TTL_MS
+        ) {
+          return;
+        }
+        setLoadingDeptStats(true);
+        const token = localStorage.getItem("adminToken");
+        const res = await fetch("/api/admin/reports/departments", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (data.success) {
+          setDeptStats(data.data);
+          setDeptStatsFetchedAt(now);
+        }
+      } catch (e) {
+        // Non-fatal
+      } finally {
+        setLoadingDeptStats(false);
+      }
+    },
+    [deptStats, deptStatsFetchedAt, DEPT_STATS_TTL_MS]
+  );
+
+  useEffect(() => {
+    if (currentTab === "dept-overview" && !loadingDeptStats) {
+      fetchDeptStats(false);
+    }
+  }, [currentTab, loadingDeptStats, fetchDeptStats]);
 
   return (
     <div className="container mt-4">
@@ -121,7 +159,14 @@ const ITAdminDashboard = ({ adminUser }) => {
           {currentTab === "adminUser" && (
             <AdminUserCreation adminUser={adminUser} />
           )}
-          {currentTab === "dept-overview" && <DepartmentOverview />}
+          {currentTab === "dept-overview" && (
+            <DepartmentOverview
+              declarations={declarations}
+              backendStats={deptStats}
+              loading={loadingDeptStats}
+              onRefresh={() => fetchDeptStats(true)}
+            />
+          )}
           {currentTab === "consent-logs" && (
             <AdminConsentLogs adminUser={adminUser} />
           )}
