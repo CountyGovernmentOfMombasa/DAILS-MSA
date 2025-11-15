@@ -68,3 +68,4 @@ backend/uploads/
 # OS specific
 ehthumbs.db
 Desktop.ini
+backend/.env
