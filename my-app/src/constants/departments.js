@@ -13,7 +13,7 @@ export const DEPARTMENTS = [
   'Department of Health',
   'Department of Trade, Tourism and Culture',
   'Mombasa County Public Service Board',
-  'Cooperatives'
+  'CORPORATIONS'
 ];
 
 export const SUB_DEPARTMENT_MAP = {
@@ -30,7 +30,7 @@ export const SUB_DEPARTMENT_MAP = {
   'Department of Trade, Tourism and Culture': ['Department of Trade, Tourism and Culture'],
   'Mombasa County Public Service Board': ['Mombasa County Public Service Board']
   ,
-  'Cooperatives': ['Mombasa Water Supply & Sanitation Company Limited (MOWASSCO)','Mombasa Investment Cooporation (MIC)', 'Elimu Schemes', 'Ardi Fund']
+  'CORPORATIONS': ['Mombasa Water Supply & Sanitation Company Limited (MOWASSCO)','Mombasa Investment Cooporation (MIC)', 'Elimu Schemes', 'Ardi Fund']
 };
 
 // Flattened list
