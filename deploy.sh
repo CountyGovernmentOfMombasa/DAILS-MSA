@@ -144,6 +144,20 @@ if [ "$ENABLE_SSL" = true ]; then
 
   # Obtain and install certificate (will modify NGINX config)
   echo "Obtaining SSL certificate from Let's Encrypt..."
+
+  # Add an additional check for existing certificates before running certbot
+  if [ -f "/etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem" ]; then
+    echo "SSL certificate already exists. Skipping Certbot..."
+  else
+    sudo certbot --nginx -d $DOMAIN_NAME --non-interactive --agree-tos -m admin@$DOMAIN_NAME --redirect
+    echo "SSL certificate obtained and configured."
+  fi
+
+  # Enforce HTTPS redirection by updating Nginx config
+  echo "Enforcing HTTPS redirection..."
+  sudo tee $NGINX_SITE > /dev/null <<EOL
+server {
+    listen 80;
   sudo certbot --nginx -d $DOMAIN_NAME --non-interactive --agree-tos -m admin@$DOMAIN_NAME --redirect
   echo "SSL certificate obtained and configured."
 fi
