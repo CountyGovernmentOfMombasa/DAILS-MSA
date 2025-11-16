@@ -11,6 +11,8 @@ NODE_VERSION="20"
 NODE_APP_NAME="dials-msa"
 NODE_PORT=5000
 NGINX_SITE="/etc/nginx/sites-enabled/dial-msa"
+ENABLE_SSL=true # Set to true to install Let's Encrypt SSL certificate
+DOMAIN_NAME="dialsdemo.mcpsb.go.ke" # IMPORTANT: Change this to your actual domain if using SSL
 
 # ------------------------------
 # 1️⃣ Install Node.js 20 if missing
@@ -84,11 +86,17 @@ fi
 # ------------------------------
 echo "Setting up NGINX site..."
 if [ ! -f $NGINX_SITE ]; then
+  # Use placeholder for server_name if SSL is disabled, otherwise use the domain
+  if [ "$ENABLE_SSL" = true ]; then
+    SERVER_NAME_CONFIG="$DOMAIN_NAME"
+  else
+    SERVER_NAME_CONFIG="_"
+  fi
   sudo tee $NGINX_SITE > /dev/null <<EOL
 server {
     listen 80;
-    server_name _;
-
+    server_name $SERVER_NAME_CONFIG;
+ 
     root $REACT_DIR/build;
     index index.html index.htm;
 
@@ -115,17 +123,48 @@ sudo nginx -t
 sudo systemctl restart nginx
 
 # ------------------------------
-# 8️⃣ Open firewall ports (idempotent)
+# 8️⃣ (Optional) Configure SSL with Certbot
+# ------------------------------
+if [ "$ENABLE_SSL" = true ]; then
+  if [ "$DOMAIN_NAME" = "your_domain.com" ] || [ -z "$DOMAIN_NAME" ]; then
+    echo "❌ Error: DOMAIN_NAME is not set to a valid domain. Please edit the script to enable SSL."
+    exit 1
+  fi
+
+  echo "Configuring SSL with Certbot for $DOMAIN_NAME..."
+
+  # Install Certbot and NGINX plugin if missing
+  if ! command -v certbot &>/dev/null; then
+    echo "Installing Certbot..."
+    sudo apt update
+    sudo apt install -y certbot python3-certbot-nginx
+  else
+    echo "Certbot already installed."
+  fi
+
+  # Obtain and install certificate (will modify NGINX config)
+  echo "Obtaining SSL certificate from Let's Encrypt..."
+  sudo certbot --nginx -d $DOMAIN_NAME --non-interactive --agree-tos -m admin@$DOMAIN_NAME --redirect
+  echo "SSL certificate obtained and configured."
+fi
+
+# ------------------------------
+# 9️⃣ Open firewall ports (idempotent)
 # ------------------------------
 sudo ufw allow 80/tcp || true
 sudo ufw allow 443/tcp || true
 sudo ufw reload || true
 
 # ------------------------------
-# 9️⃣ Deployment complete
+# 🔟 Deployment complete
 # ------------------------------
 echo "✅ Deployment completed successfully!"
-echo "React available at: http://<your-server-ip>/"
-echo "Node API available at: http://<your-server-ip>/api/"
+if [ "$ENABLE_SSL" = true ]; then
+  echo "React available at: https://$DOMAIN_NAME/"
+  echo "Node API available at: https://$DOMAIN_NAME/api/"
+else
+  echo "React available at: http://<your-server-ip>/"
+  echo "Node API available at: http://<your-server-ip>/api/"
+fi
 pm2 list
 sudo systemctl status nginx
