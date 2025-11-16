@@ -10,7 +10,7 @@ BACKEND_DIR="$APP_DIR/backend"
 NODE_VERSION="20"
 NODE_APP_NAME="dials-msa"
 NODE_PORT=5000
-NGINX_SITE="/etc/nginx/sites-available/dials-msa"
+NGINX_SITE="/etc/nginx/sites-enabled/dial-msa"
 
 # ------------------------------
 # 1️⃣ Install Node.js 20 if missing
