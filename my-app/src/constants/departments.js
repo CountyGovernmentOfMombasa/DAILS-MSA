@@ -23,14 +23,14 @@ export const SUB_DEPARTMENT_MAP = {
   'Department of Environment and Water': ['Environment and Solid Waste Management','Water and Sanitation'],
   'Department of Transport, Infrastructure and Governance': ['Transport and Infrastructure','Governance'],
   'Department of Climate Change, Energy and Natural Resources': ['Department of Climate Change, Energy and Natural Resources'],
-  'Department of Lands, Urban Planning, Housing and Serikali Mtaani': ['Lands, Urban Planning and Housing','Serikali Mtaani'],
-  'Department of Education and Vocational Training': ['Department of Education and Vocational Training'],
+  'Department of Lands, Urban Planning, Housing and Serikali Mtaani': ['Lands, Urban Planning and Housing','Serikali Mtaani', 'Ardi Fund'],
+  'Department of Education and Vocational Training': ['Department of Education and Vocational Training','Elimu Scheme',],
   'Department of Finance, Economic Planning and Digital Transformation': ['Finance and Investment','Economic Planning and Digital Transformation'],
   'Department of Health': ['Clinical Services','Public Health and Disease Prevention','Coast General Teaching and Referral Hospital (CGTRH)'],
   'Department of Trade, Tourism and Culture': ['Department of Trade, Tourism and Culture'],
   'Mombasa County Public Service Board': ['Mombasa County Public Service Board']
   ,
-  'CORPORATIONS': ['Mombasa Water Supply & Sanitation Company Limited (MOWASSCO)','Mombasa Investment Cooporation (MIC)', 'Elimu Schemes', 'Ardi Fund']
+  'Corporations': ['Mombasa Water Supply & Sanitation Company Limited (MOWASSCO)','Mombasa Investment Cooporation (MIC)']
 };
 
 // Flattened list
