@@ -31,6 +31,10 @@ jobs:
             # The GITHUB_REPOSITORY variable is in the format "owner/repo"
             git remote set-url origin git@github.com:${GITHUB_REPOSITORY}.git
 
+            echo "🔑 Adding GitHub's SSH key to known_hosts..."
+            # Create .ssh directory if it doesn't exist
+            mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
+
             echo "� Pulling latest code..."
             git fetch --all
             git reset --hard origin/main
