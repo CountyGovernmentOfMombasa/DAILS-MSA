@@ -15,6 +15,8 @@ import {
   Modal,
   Toast,
   ToastContainer,
+  OverlayTrigger,
+  Tooltip,
 } from "react-bootstrap";
 import useAdminSession from "../hooks/useAdminSession";
 import "./LandingPage.css"; // Assuming this file exists and is correct
@@ -1530,41 +1532,54 @@ const LandingPage = () => {
 
         <Row className="justify-content-center">
           <Col lg={3} md={6} className="mb-4">
-            <div
-              className="text-decoration-none"
-              style={{ cursor: "pointer" }}
-              onClick={handleStartDeclaration}
+            <OverlayTrigger
+              placement="top"
+              overlay={
+                missingProfile.length > 0 ? (
+                  <Tooltip id="tooltip-start-declaration">
+                    Please complete your profile before starting a declaration.
+                  </Tooltip>
+                ) : (
+                  <></> // Empty tooltip when not disabled
+                )
+              }
             >
-              <Card
-                className="h-100 shadow-sm border-primary border-2 hover-card"
-                style={{ transition: "all 0.3s ease", cursor: "pointer" }}
+              <div
+                className="text-decoration-none"
+                style={{ cursor: missingProfile.length > 0 ? "not-allowed" : "pointer" }}
+                onClick={missingProfile.length > 0 ? undefined : handleStartDeclaration}
               >
-                <Card.Body className="text-center p-4">
-                  <div className="mb-4">
-                    <div
-                      className="rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3"
-                      style={{
-                        width: "80px",
-                        height: "80px",
-                        background:
-                          "linear-gradient(45deg, var(--primary-blue), #0056b3)",
-                      }}
-                    >
-                      <i
-                        className="fas fa-file-alt text-white"
-                        style={{ fontSize: "2rem" }}
-                      ></i>
+                <Card
+                  className={`h-100 shadow-sm border-primary border-2 ${missingProfile.length === 0 ? 'hover-card' : ''}`}
+                  style={{ transition: "all 0.3s ease", opacity: missingProfile.length > 0 ? 0.65 : 1 }}
+                >
+                  <Card.Body className="text-center p-4">
+                    <div className="mb-4">
+                      <div
+                        className="rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3"
+                        style={{
+                          width: "80px",
+                          height: "80px",
+                          background:
+                            "linear-gradient(45deg, var(--primary-blue), #0056b3)",
+                        }}
+                      >
+                        <i
+                          className="fas fa-file-alt text-white"
+                          style={{ fontSize: "2rem" }}
+                        ></i>
+                      </div>
                     </div>
-                  </div>
-                  <h4 className="card-title text-primary fw-bold mb-3">
-                    Declaration of Income, Assets and Liabilities Form
-                  </h4>
-                  <p className="card-text text-muted">
-                    Complete your DIALs disclosure
-                  </p>
-                </Card.Body>
-              </Card>
+                    <h4 className="card-title text-primary fw-bold mb-3">
+                      Declaration of Income, Assets and Liabilities Form
+                    </h4>
+                    <p className="card-text text-muted">
+                      Complete your DIALs disclosure
+                    </p>
+                  </Card.Body>
+                </Card>
             </div>
+            </OverlayTrigger>
           </Col>
 
           <Col lg={3} md={6} className="mb-4">
@@ -1652,42 +1667,56 @@ const LandingPage = () => {
           </Col>
 
           <Col lg={3} md={6} className="mb-4">
-            <div
-              //className="text-decoration-none"
-              className="text-decoration-none h-100"
-              style={{ cursor: "pointer" }}
-              onClick={handleAdminAccess}
+            <OverlayTrigger
+              placement="top"
+              overlay={
+                !hasAdminAccess ? (
+                  <Tooltip id="tooltip-admin-access">
+                    You do not have administrative rights.
+                  </Tooltip>
+                ) : (
+                  <></>
+                )
+              }
             >
-              <Card
-                className="h-100 shadow-sm border-success border-2 hover-card"
-                style={{ transition: "all 0.3s ease", cursor: "pointer" }}
+              <div
+                className="text-decoration-none h-100"
+                style={{
+                  cursor: hasAdminAccess ? "pointer" : "not-allowed",
+                }}
+                onClick={hasAdminAccess ? handleAdminAccess : undefined}
               >
-                <Card.Body className="text-center p-4">
-                  <div className="mb-4">
-                    <div
-                      className="rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3"
-                      style={{
-                        width: "80px",
-                        height: "80px",
-                        background:
-                          "linear-gradient(45deg, var(--secondary-green), #1e7e34)",
-                      }}
-                    >
-                      <i
-                        className="fas fa-users-cog text-white"
-                        style={{ fontSize: "2rem" }}
-                      ></i>
+                <Card
+                  className={`h-100 shadow-sm border-success border-2 ${hasAdminAccess ? 'hover-card' : ''}`}
+                  style={{ transition: "all 0.3s ease", opacity: hasAdminAccess ? 1 : 0.65 }}
+                >
+                  <Card.Body className="text-center p-4">
+                    <div className="mb-4">
+                      <div
+                        className="rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3"
+                        style={{
+                          width: "80px",
+                          height: "80px",
+                          background:
+                            "linear-gradient(45deg, var(--secondary-green), #1e7e34)",
+                        }}
+                      >
+                        <i
+                          className="fas fa-users-cog text-white"
+                          style={{ fontSize: "2rem" }}
+                        ></i>
+                      </div>
                     </div>
-                  </div>
-                  <h4 className="card-title text-success fw-bold mb-3">
-                    Admin Access
-                  </h4>
-                  <p className="card-text text-muted">
-                    View and manage declarations
-                  </p>
-                </Card.Body>
-              </Card>
-            </div>
+                    <h4 className="card-title text-success fw-bold mb-3">
+                      Admin Access
+                    </h4>
+                    <p className="card-text text-muted">
+                      View and manage declarations
+                    </p>
+                  </Card.Body>
+                </Card>
+              </div>
+            </OverlayTrigger>
           </Col>
         </Row>
 

@@ -21,6 +21,15 @@ function formatDateDMY(dateStr) {
   return dateStr;
 }
 
+function normalizeDepartment(name) {
+  if (!name) return '';
+  return name
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 /**
  * WealthDeclarationRegister
  * Displays register with required columns:
@@ -91,8 +100,11 @@ const WealthDeclarationRegister = ({ adminUser }) => {
   const filtered = useMemo(() => {
     let list = declarations;
   if (showOnlyFinal) list = list.filter(d => (d.declaration_type || '').toLowerCase().startsWith('fin'));
-  if (typeFilter) list = list.filter(d => (d.declaration_type || '').toLowerCase().startsWith(typeFilter));
-    if (deptFilter) list = list.filter(d => (d.department || '') === deptFilter);
+    if (typeFilter) list = list.filter(d => (d.declaration_type || '').toLowerCase().startsWith(typeFilter));
+    if (deptFilter) {
+      const normalizedDeptFilter = normalizeDepartment(deptFilter);
+      list = list.filter(d => normalizeDepartment(d.department) === normalizedDeptFilter);
+    }
     if (search) {
       const term = search.toLowerCase();
       list = list.filter(d => (
