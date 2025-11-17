@@ -27,7 +27,11 @@ jobs:
             # Go to the project directory
             cd /var/www/dial-msa || exit 1
 
-            echo "📦 Pulling latest code..."
+            echo "🔧 Configuring git remote to use SSH..."
+            # The GITHUB_REPOSITORY variable is in the format "owner/repo"
+            git remote set-url origin git@github.com:${GITHUB_REPOSITORY}.git
+
+            echo "� Pulling latest code..."
             git fetch --all
             git reset --hard origin/main
 
