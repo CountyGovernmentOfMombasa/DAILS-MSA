@@ -965,10 +965,9 @@ exports.updateMe = async (req, res) => {
 
     // If there are any validation errors, return a 400 response with all of them
     if (Object.keys(validationErrors).length > 0) {
-      return res.status(400).json({
-        message: "Validation failed. Please check the highlighted fields.",
-        errors: validationErrors,
-      });
+      return res
+        .status(400)
+        .json({ message: "Validation failed", errors: validationErrors });
     }
 
     console.log("Update values for user:", values);

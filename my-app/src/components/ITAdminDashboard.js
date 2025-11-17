@@ -1,5 +1,6 @@
 import AdminConsentLogs from "./AdminConsentLogs";
 import React, { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import EmailManagement from "./EmailManagement";
 import ReportsAndAnalytics from "./ReportsAndAnalytics";
 import AdminUserCreation from "./AdminUserCreation";
@@ -23,6 +24,7 @@ const ITAdminDashboard = ({ adminUser }) => {
   const DEPT_STATS_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
   const adminToken = localStorage.getItem("adminToken");
+  const navigate = useNavigate();
 
   useEffect(() => {
     // Fetch declarations (excluding financial data)
@@ -139,7 +141,12 @@ const ITAdminDashboard = ({ adminUser }) => {
         >
           Consent Logs
         </button>
-        <div className="ms-auto d-flex gap-2"></div>
+        <div className="ms-auto d-flex gap-2">
+          <button
+            className="btn btn-secondary"
+            onClick={() => navigate("/landing")}
+          >Back to Landing</button>
+        </div>
       </div>
       {loading && <div>Loading...</div>}
       {error && <div className="alert alert-danger">{error}</div>}
