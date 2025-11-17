@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import AdminSessionMonitor from './AdminSessionMonitor';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
@@ -174,6 +174,12 @@ const AdminPage = ({ adminUser }) => {
   const [deptStats, setDeptStats] = useState(null);
   const [loadingDeptStats, setLoadingDeptStats] = useState(false);
   const [deptStatsFetchedAt, setDeptStatsFetchedAt] = useState(null);
+  const [declarationFilters, setDeclarationFilters] = useState({
+    search: '',
+    department: '',
+    declarationType: '',
+    status: ''
+  });
   const DEPT_STATS_TTL_MS = 5 * 60 * 1000; // 5 minutes
   // Status audit state moved into StatusAuditModule component
 
@@ -194,6 +200,28 @@ const AdminPage = ({ adminUser }) => {
       return acc;
     }, { first: 0, biennial: 0, final: 0 });
   }, [declarations]);
+
+  const filteredDeclarations = useMemo(() => {
+    if (!declarations) return [];
+    return declarations.filter(d => {
+      const searchLower = declarationFilters.search.toLowerCase();
+      const name = `${d.first_name || ''} ${d.other_names || ''} ${d.surname || ''}`.toLowerCase();
+      const matchSearch = !declarationFilters.search ||
+        name.includes(searchLower) ||
+        (d.payroll_number && String(d.payroll_number).toLowerCase().includes(searchLower)) ||
+        (d.national_id && String(d.national_id).toLowerCase().includes(searchLower)) ||
+        (d.email && d.email.toLowerCase().includes(searchLower));
+
+      const matchDept = !declarationFilters.department || d.department === declarationFilters.department;
+      
+      const normalizedDeclType = (d.declaration_type || '').toLowerCase();
+      const matchType = !declarationFilters.declarationType || (declarationFilters.declarationType === 'biennial' ? normalizedDeclType.startsWith('bien') : normalizedDeclType.startsWith(declarationFilters.declarationType));
+
+      const matchStatus = !declarationFilters.status || d.status === declarationFilters.status;
+
+      return matchSearch && matchDept && matchType && matchStatus;
+    });
+  }, [declarations, declarationFilters]);
   // Export to Excel logic
   const handleExportExcel = () => {
     setShowExportModal(true);
@@ -270,7 +298,7 @@ const AdminPage = ({ adminUser }) => {
 
   const handleExportConfirm = () => {
     // Prepare data
-    const dataToExport = declarations.map(declaration => {
+    const dataToExport = filteredDeclarations.map(declaration => {
       const row = {};
       selectedExportColumns.forEach(col => {
         if (col === 'biennial_income') {
@@ -967,7 +995,51 @@ const handleRemovePersonnel = async (person) => {
                 )}
                   </div>
                   <div className="card-body">
-                    {Array.isArray(declarations) && declarations.length > 0 ? (
+                    <div className="row g-2 mb-3 p-2 border-bottom">
+                      <div className="col-md-3">
+                        <input 
+                          type="text" 
+                          className="form-control form-control-sm" 
+                          placeholder="Search name, payroll, ID..."
+                          value={declarationFilters.search}
+                          onChange={e => setDeclarationFilters(f => ({ ...f, search: e.target.value }))}
+                        />
+                      </div>
+                      <div className="col-md-3">
+                        <select 
+                          className="form-select form-select-sm"
+                          value={declarationFilters.department}
+                          onChange={e => setDeclarationFilters(f => ({ ...f, department: e.target.value }))}
+                        >
+                          <option value="">All Departments</option>
+                          {[...new Set(declarations.map(d => d.department).filter(Boolean))].sort().map(dept => (
+                            <option key={dept} value={dept}>{dept}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="col-md-2">
+                        <select 
+                          className="form-select form-select-sm"
+                          value={declarationFilters.declarationType}
+                          onChange={e => setDeclarationFilters(f => ({ ...f, declarationType: e.target.value }))}
+                        >
+                          <option value="">Any Type</option>
+                          <option value="first">First</option>
+                          <option value="biennial">Biennial</option>
+                          <option value="final">Final</option>
+                        </select>
+                      </div>
+                      <div className="col-md-2">
+                        <select className="form-select form-select-sm" value={declarationFilters.status} onChange={e => setDeclarationFilters(f => ({ ...f, status: e.target.value }))}>
+                          <option value="">Any Status</option>
+                          <option value="pending">Submitted</option>
+                          <option value="approved">Approved</option>
+                          <option value="rejected">Requesting Clarification</option>
+                        </select>
+                      </div>
+                      <div className="col-md-2 d-flex align-items-center justify-content-end small text-muted">{filteredDeclarations.length} / {declarations.length}</div>
+                    </div>
+                    {Array.isArray(filteredDeclarations) && filteredDeclarations.length > 0 ? (
                       <div className="table-responsive">
                         <table className="table table-striped table-hover">
                           <thead className="table-dark">
@@ -983,7 +1055,7 @@ const handleRemovePersonnel = async (person) => {
                             </tr>
                           </thead>
                           <tbody>
-                            {declarations.map((declaration) => {
+                            {filteredDeclarations.map((declaration) => {
                               // Aggregate root + spouse + child values since data may live only in spouses/children tables
                               const rootAssets = sumFinancialField(declaration.assets);
                               const rootLiabilities = sumFinancialField(declaration.liabilities);
