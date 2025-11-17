@@ -47,32 +47,15 @@ else
 fi
 
 # ------------------------------
-# 4️⃣ Build React frontend
+# 4️⃣ Create Application Directory
 # ------------------------------
-echo "Building React frontend..."
-cd $REACT_DIR
-npm ci
-npm run build
+echo "Creating application directories..."
+sudo mkdir -p $APP_DIR $REACT_DIR $BACKEND_DIR
+sudo chown -R $USER:$USER $APP_DIR
 
 # ------------------------------
-# 5️⃣ Install backend dependencies
+# 5️⃣ Setup PM2 to start on boot
 # ------------------------------
-echo "Installing backend dependencies..."
-cd $BACKEND_DIR
-npm ci --omit=dev
-
-# ------------------------------
-# 6️⃣ Setup PM2 for Node backend
-# ------------------------------
-echo "Starting Node backend with PM2..."
-cd $BACKEND_DIR
-if pm2 describe $NODE_APP_NAME &>/dev/null; then
-  pm2 restart $NODE_APP_NAME --update-env
-else
-  pm2 start app.js --name $NODE_APP_NAME
-fi
-pm2 save
-
 # Ensure PM2 restarts on reboot (idempotent)
 if ! sudo systemctl list-unit-files | grep -q pm2-root.service; then
   echo "Configuring PM2 to start on boot..."
@@ -82,7 +65,7 @@ if ! sudo systemctl list-unit-files | grep -q pm2-root.service; then
 fi
 
 # ------------------------------
-# 7️⃣ Configure NGINX
+# 6️⃣ Configure NGINX
 # ------------------------------
 echo "Setting up NGINX site..."
 if [ ! -f $NGINX_SITE ]; then
@@ -123,7 +106,7 @@ sudo nginx -t
 sudo systemctl restart nginx
 
 # ------------------------------
-# 8️⃣ (Optional) Configure SSL with Certbot
+# 7️⃣ (Optional) Configure SSL with Certbot
 # ------------------------------
 if [ "$ENABLE_SSL" = true ]; then
   if [ "$DOMAIN_NAME" = "your_domain.com" ] || [ -z "$DOMAIN_NAME" ]; then
@@ -153,26 +136,20 @@ if [ "$ENABLE_SSL" = true ]; then
     echo "SSL certificate obtained and configured."
   fi
 
-  # Enforce HTTPS redirection by updating Nginx config
-  echo "Enforcing HTTPS redirection..."
-  sudo tee $NGINX_SITE > /dev/null <<EOL
-server {
-    listen 80;
-  sudo certbot --nginx -d $DOMAIN_NAME --non-interactive --agree-tos -m admin@$DOMAIN_NAME --redirect
-  echo "SSL certificate obtained and configured."
 fi
 
 # ------------------------------
-# 9️⃣ Open firewall ports (idempotent)
+# 8️⃣ Open firewall ports (idempotent)
 # ------------------------------
 sudo ufw allow 80/tcp || true
 sudo ufw allow 443/tcp || true
 sudo ufw reload || true
 
 # ------------------------------
-# 🔟 Deployment complete
+# 9️⃣ Setup complete
 # ------------------------------
-echo "✅ Deployment completed successfully!"
+echo "✅ Server setup completed successfully!"
+echo "You can now push to the main branch to trigger the first deployment."
 if [ "$ENABLE_SSL" = true ]; then
   echo "React available at: https://$DOMAIN_NAME/"
   echo "Node API available at: https://$DOMAIN_NAME/api/"
@@ -180,5 +157,3 @@ else
   echo "React available at: http://<your-server-ip>/"
   echo "Node API available at: http://<your-server-ip>/api/"
 fi
-pm2 list
-sudo systemctl status nginx

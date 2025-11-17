@@ -51,8 +51,9 @@ jobs:
             fi
 
             echo "🔄 Ensuring PM2 startup service is enabled..."
-            pm2 startup systemd -u root --hp /root || true
-            sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u root --hp /root || true
+            # This command generates a startup script. We run it and then save the current process list.
+            # The `|| true` prevents the workflow from failing if the service is already set up.
+            sudo env PATH=$PATH:/usr/bin /usr/lib/node_modules/pm2/bin/pm2 startup systemd -u ${{ secrets.SSH_USER }} --hp /home/${{ secrets.SSH_USER }} || true
 
             echo "🚀 Restarting PM2 process..."
             cd /var/www/dial-msa/backend
