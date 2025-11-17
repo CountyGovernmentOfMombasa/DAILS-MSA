@@ -1200,6 +1200,11 @@ const LandingPage = () => {
                             </option>
                           ))}
                         </Form.Select>
+                        {editMode && (
+                          <Form.Text muted>
+                            Select your current sub-department of deployment.
+                          </Form.Text>
+                        )}
                         {editMode && !form.sub_department && (
                           <div className="form-text text-danger">
                             Sub department is required.
