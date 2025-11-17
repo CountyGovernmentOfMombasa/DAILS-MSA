@@ -823,6 +823,9 @@ exports.getMe = async (req, res) => {
 // @access  Private
 exports.updateMe = async (req, res) => {
   try {
+    // Object to collect validation errors
+    const validationErrors = {};
+
     const userId = req.user.id;
     const { getDepartmentConfig } = require("../util/departmentsCache");
     const { departments: DEPARTMENTS, subDepartmentMap: SUB_DEPARTMENT_MAP } =
@@ -873,12 +876,8 @@ exports.updateMe = async (req, res) => {
         if (field === "department") {
           // Basic sanity validation of department value
           if (value && !DEPARTMENTS.includes(value)) {
-            return res.status(400).json({
-              success: false,
-              code: "INVALID_DEPARTMENT",
-              field: "department",
-              message: "Invalid department supplied.",
-            });
+            validationErrors.department = "Invalid department supplied.";
+            // Continue to collect other errors
           }
         }
         // Separate if statements to ensure all fields are processed
@@ -906,29 +905,17 @@ exports.updateMe = async (req, res) => {
     if (bodyDept) {
       const allowedSubs = SUB_DEPARTMENT_MAP[bodyDept] || [];
       if (!bodySub) {
-        return res.status(400).json({
-          success: false,
-          code: "SUB_DEPARTMENT_REQUIRED",
-          field: "sub_department",
-          message: "Sub department is required when department is provided.",
-        });
+        validationErrors.sub_department =
+          "Sub department is required when department is provided.";
       }
       if (!allowedSubs.includes(bodySub)) {
-        return res.status(400).json({
-          success: false,
-          code: "INVALID_SUB_DEPARTMENT",
-          field: "sub_department",
-          message: "Invalid sub department for selected department.",
-        });
+        validationErrors.sub_department =
+          "Invalid sub department for selected department.";
       }
     } else if (bodySub) {
       // Sub provided without department
-      return res.status(400).json({
-        success: false,
-        code: "DEPARTMENT_REQUIRED",
-        field: "department",
-        message: "Department must be set when sub department is provided.",
-      });
+      validationErrors.department =
+        "Department must be set when sub department is provided.";
     }
     // Phone number validation & uniqueness (handle separately to allow early errors)
     if (incomingPhone !== undefined) {
@@ -937,13 +924,8 @@ exports.updateMe = async (req, res) => {
         updates.push("phone_number = NULL");
       } else {
         if (!isValidPhone(incomingPhone)) {
-          return res.status(400).json({
-            success: false,
-            code: "INVALID_PHONE_FORMAT",
-            field: "phone_number",
-            message:
-              "Invalid phone number format. Use 7-15 digits, optional leading +",
-          });
+          validationErrors.phone_number =
+            "Invalid phone number format. Use 7-15 digits, optional leading +";
         }
         const normalized = normalizePhone(incomingPhone);
         const RATE_LIMIT_MAX = 3;
@@ -960,12 +942,7 @@ exports.updateMe = async (req, res) => {
               since < 24 * 60 * 60 * 1000 &&
               rec.phone_change_count >= RATE_LIMIT_MAX
             ) {
-              return res.status(429).json({
-                success: false,
-                code: "PHONE_CHANGE_RATE_LIMIT",
-                field: "phone_number",
-                message: `Phone number can only be changed ${RATE_LIMIT_MAX} times in 24 hours.`,
-              });
+              validationErrors.phone_number = `Phone number can only be changed ${RATE_LIMIT_MAX} times in 24 hours.`;
             }
           }
         }
@@ -974,12 +951,8 @@ exports.updateMe = async (req, res) => {
           [normalized, userId]
         );
         if (dup.length) {
-          return res.status(409).json({
-            success: false,
-            code: "PHONE_IN_USE",
-            field: "phone_number",
-            message: "Phone number already in use by another user.",
-          });
+          validationErrors.phone_number =
+            "Phone number already in use by another user.";
         }
         updates.push("phone_number = ?");
         values.push(normalized);
@@ -989,6 +962,15 @@ exports.updateMe = async (req, res) => {
         );
       }
     }
+
+    // If there are any validation errors, return a 400 response with all of them
+    if (Object.keys(validationErrors).length > 0) {
+      return res.status(400).json({
+        message: "Validation failed. Please check the highlighted fields.",
+        errors: validationErrors,
+      });
+    }
+
     console.log("Update values for user:", values);
     if (updates.length === 0) {
       return res.status(400).json({ message: "No fields to update." });

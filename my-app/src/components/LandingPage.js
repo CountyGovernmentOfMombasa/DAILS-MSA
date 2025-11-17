@@ -49,6 +49,7 @@ const LandingPage = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
   const [declarations, setDeclarations] = useState([]);
   const [declarationsLoading, setDeclarationsLoading] = useState(true);
   const [declarationsError, setDeclarationsError] = useState("");
@@ -351,6 +352,7 @@ const LandingPage = () => {
     setSaving(true);
     setError("");
     setSuccess("");
+    setFieldErrors({});
     // Client-side validation: if department selected, sub_department required
     if (form.department && !form.sub_department) {
       setSaving(false);
@@ -373,8 +375,16 @@ const LandingPage = () => {
         },
         body: JSON.stringify(form),
       });
-      if (!res.ok) throw new Error("Failed to update profile");
-      setSuccess("Profile updated successfully.");
+      const data = await res.json();
+      if (!res.ok) {
+        // Throw an error object that includes the parsed data
+        const error = new Error(data.message || "Failed to update profile");
+        error.response = data; // Attach the full response data
+        throw error;
+      }
+      if (data.message) {
+        setSuccess(data.message);
+      }
       setEditMode(false);
       // Merge new form values into context profile if available
       setProfile((prev) => ({
@@ -386,7 +396,12 @@ const LandingPage = () => {
             : "",
       }));
     } catch (e) {
-      setError("Could not update profile.");
+      const errorMessage = e.message || "Could not update profile. Please check your connection and try again.";
+      setError(errorMessage);
+      // If the error object has a 'response' property with an 'errors' object, set fieldErrors
+      if (e.response && e.response.errors) {
+        setFieldErrors(e.response.errors);
+      }
     } finally {
       setSaving(false);
     }
@@ -834,10 +849,14 @@ const LandingPage = () => {
                           onChange={handleChange}
                           disabled={!editMode}
                           required
+                          isInvalid={!!fieldErrors.surname}
                         />
                         {editMode && !String(form.surname || "").trim() && (
                           <div className="form-text text-danger">Required.</div>
                         )}
+                        <Form.Control.Feedback type="invalid">
+                          {fieldErrors.surname}
+                        </Form.Control.Feedback>
                       </Form.Group>
                     </Col>
                     <Col md={4}>
@@ -852,10 +871,14 @@ const LandingPage = () => {
                           onChange={handleChange}
                           disabled={!editMode}
                           required
+                          isInvalid={!!fieldErrors.first_name}
                         />
                         {editMode && !String(form.first_name || "").trim() && (
                           <div className="form-text text-danger">Required.</div>
                         )}
+                        <Form.Control.Feedback type="invalid">
+                          {fieldErrors.first_name}
+                        </Form.Control.Feedback>
                       </Form.Group>
                     </Col>
                     <Col md={4}>
@@ -870,10 +893,14 @@ const LandingPage = () => {
                           onChange={handleChange}
                           disabled={!editMode}
                           required
+                          isInvalid={!!fieldErrors.other_names}
                         />
                         {editMode && !String(form.other_names || "").trim() && (
                           <div className="form-text text-danger">Required.</div>
                         )}
+                        <Form.Control.Feedback type="invalid">
+                          {fieldErrors.other_names}
+                        </Form.Control.Feedback>
                       </Form.Group>
                     </Col>
                   </Row>
@@ -898,10 +925,14 @@ const LandingPage = () => {
                           onChange={handleChange}
                           disabled={!editMode}
                           required
+                          isInvalid={!!fieldErrors.birthdate}
                         />
                         {editMode && !String(form.birthdate || "").trim() && (
                           <div className="form-text text-danger">Required.</div>
                         )}
+                        <Form.Control.Feedback type="invalid">
+                          {fieldErrors.birthdate}
+                        </Form.Control.Feedback>
                       </Form.Group>
                     </Col>
                     <Col md={4}>
@@ -916,6 +947,7 @@ const LandingPage = () => {
                           onChange={handleChange}
                           disabled={!editMode}
                           required
+                          isInvalid={!!fieldErrors.place_of_birth}
                         />
                         {editMode &&
                           !String(form.place_of_birth || "").trim() && (
@@ -923,6 +955,9 @@ const LandingPage = () => {
                               Required.
                             </div>
                           )}
+                        <Form.Control.Feedback type="invalid">
+                          {fieldErrors.place_of_birth}
+                        </Form.Control.Feedback>
                         {editMode && sampleDesignations.length > 0 && (
                           <Alert variant="light" className="mt-2 p-2 small">
                             <i className="fas fa-info-circle me-1"></i>
@@ -944,6 +979,7 @@ const LandingPage = () => {
                           onChange={handleChange}
                           disabled={!editMode}
                           required
+                          isInvalid={!!fieldErrors.marital_status}
                         >
                           <option value="">Select status</option>
                           <option value="single">Single</option>
@@ -958,6 +994,9 @@ const LandingPage = () => {
                               Required.
                             </div>
                           )}
+                        <Form.Control.Feedback type="invalid">
+                          {fieldErrors.marital_status}
+                        </Form.Control.Feedback>
                       </Form.Group>
                     </Col>
                   </Row>
@@ -977,7 +1016,11 @@ const LandingPage = () => {
                           value={form.postal_address || ""}
                           onChange={handleChange}
                           disabled={!editMode}
+                          isInvalid={!!fieldErrors.postal_address}
                         />
+                        <Form.Control.Feedback type="invalid">
+                          {fieldErrors.postal_address}
+                        </Form.Control.Feedback>
                       </Form.Group>
                     </Col>
                     <Col md={6}>
@@ -992,6 +1035,7 @@ const LandingPage = () => {
                           onChange={handleChange}
                           disabled={!editMode}
                           required
+                          isInvalid={!!fieldErrors.physical_address}
                         />
                         {editMode &&
                           !String(form.physical_address || "").trim() && (
@@ -999,6 +1043,9 @@ const LandingPage = () => {
                               Required.
                             </div>
                           )}
+                        <Form.Control.Feedback type="invalid">
+                          {fieldErrors.physical_address}
+                        </Form.Control.Feedback>
                       </Form.Group>
                     </Col>
                   </Row>
@@ -1017,10 +1064,14 @@ const LandingPage = () => {
                           onChange={handleChange}
                           disabled={!editMode}
                           required
+                          isInvalid={!!fieldErrors.email}
                         />
                         {editMode && !String(form.email || "").trim() && (
                           <div className="form-text text-danger">Required.</div>
                         )}
+                        <Form.Control.Feedback type="invalid">
+                          {fieldErrors.email}
+                        </Form.Control.Feedback>
                       </Form.Group>
                     </Col>
                     <Col md={3}>
@@ -1035,6 +1086,7 @@ const LandingPage = () => {
                           onChange={handleChange}
                           disabled={!editMode}
                           required
+                          isInvalid={!!fieldErrors.phone_number}
                         />
                         {editMode &&
                           !String(form.phone_number || "").trim() && (
@@ -1042,9 +1094,10 @@ const LandingPage = () => {
                               Required.
                             </div>
                           )}
+                        <Form.Control.Feedback type="invalid">
+                          {fieldErrors.phone_number}
+                        </Form.Control.Feedback>
                       </Form.Group>
-                    </Col>
-                    <Col md={3}>
                       <Form.Group className="mb-3">
                         <Form.Label htmlFor="profile-national-id">
                           National ID
@@ -1056,12 +1109,16 @@ const LandingPage = () => {
                           onChange={handleChange}
                           disabled
                           required
+                          isInvalid={!!fieldErrors.national_id}
                         />
                         {!String(form.national_id || "").trim() && (
                           <div className="form-text text-danger">
                             Required (contact admin if missing).
                           </div>
                         )}
+                        <Form.Control.Feedback type="invalid">
+                          {fieldErrors.national_id}
+                        </Form.Control.Feedback>
                       </Form.Group>
                     </Col>
                     <Col md={3}>
@@ -1076,6 +1133,7 @@ const LandingPage = () => {
                           onChange={handleChange}
                           disabled={!editMode}
                           required
+                          isInvalid={!!fieldErrors.payroll_number}
                         />
                         {editMode &&
                           !String(form.payroll_number || "").trim() && (
@@ -1083,6 +1141,9 @@ const LandingPage = () => {
                               Required.
                             </div>
                           )}
+                        <Form.Control.Feedback type="invalid">
+                          {fieldErrors.payroll_number}
+                        </Form.Control.Feedback>
                       </Form.Group>
                     </Col>
                   </Row>
@@ -1099,6 +1160,7 @@ const LandingPage = () => {
                           onChange={handleChange}
                           disabled={!editMode}
                           required={editMode}
+                          isInvalid={!!fieldErrors.designation}
                         />
                         {editMode && (
                           <Form.Text muted>
@@ -1110,6 +1172,9 @@ const LandingPage = () => {
                             Designation is required.
                           </div>
                         )}
+                        <Form.Control.Feedback type="invalid">
+                          {fieldErrors.designation}
+                        </Form.Control.Feedback>
                       </Form.Group>
                     </Col>
                     <Col md={4}>
@@ -1124,6 +1189,7 @@ const LandingPage = () => {
                           onChange={handleChange}
                           disabled={!editMode}
                           required={editMode}
+                          isInvalid={!!fieldErrors.sub_department}
                         >
                           <option value="">Select sub department</option>
                           {SUB_DEPARTMENTS.map((sd) => (
@@ -1137,6 +1203,9 @@ const LandingPage = () => {
                             Sub department is required.
                           </div>
                         )}
+                        <Form.Control.Feedback type="invalid">
+                          {fieldErrors.sub_department}
+                        </Form.Control.Feedback>
                       </Form.Group>
                     </Col>
                     <Col md={4}>
@@ -1152,12 +1221,16 @@ const LandingPage = () => {
                           readOnly
                           placeholder="Derived from Sub Department"
                           required
+                          isInvalid={!!fieldErrors.department}
                         />
                         {!String(form.department || "").trim() && (
                           <div className="form-text text-danger">
                             Required (select Sub Department).
                           </div>
                         )}
+                        <Form.Control.Feedback type="invalid">
+                          {fieldErrors.department}
+                        </Form.Control.Feedback>
                       </Form.Group>
                     </Col>
                   </Row>
@@ -1174,6 +1247,7 @@ const LandingPage = () => {
                           onChange={handleChange}
                           disabled={!editMode}
                           required
+                          isInvalid={!!fieldErrors.nature_of_employment}
                         >
                           <option value="">Select employment type</option>
                           <option value="Permanent">Permanent</option>
@@ -1186,6 +1260,9 @@ const LandingPage = () => {
                               Required.
                             </div>
                           )}
+                        <Form.Control.Feedback type="invalid">
+                          {fieldErrors.nature_of_employment}
+                        </Form.Control.Feedback>
                       </Form.Group>
                     </Col>
                   </Row>
