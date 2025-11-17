@@ -1202,7 +1202,7 @@ const LandingPage = () => {
                         </Form.Select>
                         {editMode && (
                           <Form.Text muted>
-                            Select your current sub-department of deployment.
+                            Select your the sub-department based on your current station.
                           </Form.Text>
                         )}
                         {editMode && !form.sub_department && (
