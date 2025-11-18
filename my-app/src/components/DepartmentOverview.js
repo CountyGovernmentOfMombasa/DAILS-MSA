@@ -48,7 +48,7 @@ const DepartmentOverview = ({
   const { departments: dynamicDeps } = useDepartments();
   const CANONICAL_DEPARTMENTS =
     dynamicDeps && dynamicDeps.length ? dynamicDeps : STATIC_DEPARTMENTS;
-  const { rows, overallTotalsSource, hadUnknown, backendUsed } = useMemo(() => {
+  const { rows, overallTotalsSource, hadUnknown, backendUsed, employeeMap } = useMemo(() => {
     // If backendStats provided, build rows directly from it (authoritative unique declarant counts)
     if (backendStats && backendStats.counts) {
       const totalUnique =
@@ -87,6 +87,7 @@ const DepartmentOverview = ({
         overallTotalsSource: "backend (unique declarants)",
         hadUnknown: (backendStats.unknown || 0) > 0,
         backendUsed: true,
+        employeeMap: new Map(), // Not used in this path, but return for consistent shape
       };
     }
     // Build canonical index
@@ -190,7 +191,7 @@ const DepartmentOverview = ({
     if (showUnknown && unknownCount > 0) {
       const totalForUnknown = employeeTotalsByDepartment
         ? employeeTotalsByDepartment["Unknown / Other"] ?? null
-        : overallUnique;
+        : unknownCount;
       let percent;
       if (employeeTotalsByDepartment) {
         percent =
@@ -217,6 +218,7 @@ const DepartmentOverview = ({
         ? "department totals"
         : "unique declarants",
       hadUnknown: unknownCount > 0,
+      employeeMap,
       backendUsed: false,
     };
   }, [
@@ -284,14 +286,14 @@ const DepartmentOverview = ({
             <tfoot>
               <tr className="fw-bold">
                 <td>Total</td>
-                <td>{rows.reduce((a, r) => a + r.declared, 0)}</td>
+                <td>{backendUsed ? rows.reduce((a, r) => a + r.declared, 0) : employeeMap.size}</td>
                 <td>
                   {employeeTotalsByDepartment
                     ? Object.values(employeeTotalsByDepartment).reduce(
                         (a, v) => a + (typeof v === "number" ? v : 0),
                         0
                       )
-                    : rows.reduce((a, r) => a + r.total, 0)}
+                    : rows.reduce((a, r) => a + r.declared, 0)}
                 </td>
                 <td>100.0</td>
               </tr>

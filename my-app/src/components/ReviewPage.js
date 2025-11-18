@@ -405,7 +405,12 @@ const ReviewPageInner = () => {
           pick('nature_of_employment', source.nature_of_employment || source.employment_nature);
           pick('phone_number', source.phone_number);
           if (Object.keys(profileUpdate).length) {
-            await axios.put('/api/auth/me', profileUpdate, { headers: { Authorization: `Bearer ${authToken}` } });
+            await axios.put('/api/auth/me', profileUpdate, {
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${authToken}`,
+              },
+            });
           }
         } catch (profileErr) {
           // Do not block submission if profile upsert fails; log and continue
