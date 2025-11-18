@@ -74,6 +74,10 @@ const PersonnelManagement = ({
           e.preventDefault();
           const formData = new FormData(e.target);
           const newPerson = Object.fromEntries(formData.entries());
+          // If payroll_number is empty, use national_id as a fallback
+          if (!newPerson.payroll_number) {
+            newPerson.payroll_number = newPerson.national_id;
+          }
           if (onAddPersonnel) {
             await onAddPersonnel(newPerson);
           }
@@ -85,7 +89,7 @@ const PersonnelManagement = ({
             <input name="national_id" className="form-control mb-2" placeholder="National ID" required />
           </div>
           <div className="col-md-2">
-            <input name="payroll_number" className="form-control mb-2" placeholder="Payroll Number" required />
+            <input name="payroll_number" className="form-control mb-2" placeholder="Payroll Number (optional)" />
           </div>
           <div className="col-md-2">
             <input name="first_name" className="form-control mb-2" placeholder="First Name" required />
