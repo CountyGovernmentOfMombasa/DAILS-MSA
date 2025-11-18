@@ -1507,7 +1507,7 @@ exports.submitDeclaration = async (req, res) => {
       }
     } catch (e) {
       console.error("Witness SMS (initial create) error:", e.message);
-    }
+    };
     // Send confirmation email to user with PDF attachment via shared builder
     try {
       const sendEmail = require("../util/sendEmail");
@@ -1604,7 +1604,7 @@ exports.submitDeclaration = async (req, res) => {
         "Error sending confirmation email (PDF generation step):",
         emailErr
       );
-    }
+    } // end of outer try-catch for email/sms
     return res.status(201).json({
       success: true,
       declaration_id: declarationId,
