@@ -859,7 +859,7 @@ exports.updateMe = async (req, res) => {
         if (
           field === "nature_of_employment" &&
           typeof value === "string" &&
-          value.length > 0
+          value.length >= 1
         ) {
           // Capitalize first letter, lowercase the rest
           value = value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
@@ -928,7 +928,7 @@ exports.updateMe = async (req, res) => {
             "Invalid phone number format. Use 7-15 digits, optional leading +";
         }
         const normalized = normalizePhone(incomingPhone);
-        const RATE_LIMIT_MAX = 3;
+        const RATE_LIMIT_MAX = 5;
         const [hist] = await pool.query(
           "SELECT phone_change_count, phone_last_changed_at FROM users WHERE id = ?",
           [userId]
