@@ -20,7 +20,10 @@ const DeclarationTypePage = () => {
   const [validationErrors, setValidationErrors] = useState([]);
 
   // Check if essential profile information is missing
-  const isProfileIncomplete = !profile?.department || !profile?.sub_department;
+  const isProfileIncomplete =
+    !profile?.designation ||
+    !profile?.department ||
+    !profile?.sub_department;
 
   useEffect(() => {
     // Fetch all lock states from backend (public read-only route)
