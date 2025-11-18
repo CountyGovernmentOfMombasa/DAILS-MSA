@@ -11,6 +11,7 @@ import DepartmentManagement from './DepartmentManagement';
 import PersonnelManagement from './PersonnelManagement';
 import ReportsAndAnalytics from './ReportsAndAnalytics';
 import SuperAdminMetricsModule from './SuperAdminMetricsModule';
+import SubDepartmentOverview from './SubDepartmentOverview';
 import StatusAuditModule from './StatusAuditModule';
 import BiennialWindowsAdmin from './BiennialWindowsAdmin';
 import FamilyFinancials from './FamilyFinancials';
@@ -18,6 +19,7 @@ import ITAdminAuditsAndRequests from './ITAdminAuditsAndRequests';
 import BulkSMSPanel from './BulkSMSPanel';
 import WealthDeclarationRegister from './WealthDeclarationRegister';
 import { getUsersCount } from '../api';
+import { DEPARTMENTS as CANONICAL_DEPARTMENTS } from '../constants/departments';
 import LandingPageButton from './shared/LandingPageButton';
 import {
   Chart as ChartJS,
@@ -497,7 +499,7 @@ const handleRemovePersonnel = async (person) => {
       const fetchDataWithLog = async () => {
         try {
           setLoading(true);
-          const response = await fetch('/api/admin/declarations', {
+          const response = await fetch('/api/admin/declarations?detailed=true', {
             headers: {
               'Authorization': `Bearer ${adminToken}`,
               'Content-Type': 'application/json'
@@ -581,6 +583,14 @@ const handleRemovePersonnel = async (person) => {
       if (res.ok) {
         const data = await res.json();
         if (data?.success && data?.data) {
+          // Update the main declarations list with the newly fetched detailed data.
+          // This is crucial for the Sub-Department Overview to get updated info.
+          setDeclarations(prevDeclarations => 
+            prevDeclarations.map(d => 
+              d.id === declaration.id ? { ...d, ...data.data } : d
+            )
+          );
+          // Also update the state for the modal to show the new details immediately.
           setSelectedDeclaration(prev => ({ ...prev, ...data.data }));
         }
       }
@@ -876,6 +886,18 @@ const handleRemovePersonnel = async (person) => {
                 Department Overview
               </button>
             </li>
+            {(isSuper || isIT) && (
+              <li className="nav-item" role="presentation">
+                <button
+                  className={`nav-link ${currentTab === 'sub-department' ? 'active' : ''}`}
+                  onClick={() => setCurrentTab('sub-department')}
+                  type="button"
+                >
+                  <i className="bi bi-diagram-3 me-2"></i>
+                  Sub-Dept Overview
+                </button>
+              </li>
+            )}
             <li className="nav-item" role="presentation">
               <button 
                 className={`nav-link ${currentTab === 'personnel' ? 'active' : ''}`}
@@ -1012,8 +1034,8 @@ const handleRemovePersonnel = async (person) => {
                           onChange={e => setDeclarationFilters(f => ({ ...f, department: e.target.value }))}
                         >
                           <option value="">All Departments</option>
-                          {[...new Set(declarations.map(d => d.department).filter(Boolean))].sort().map(dept => (
-                            <option key={dept} value={dept}>{dept}</option>
+                          {CANONICAL_DEPARTMENTS.sort().map(dept => (
+                            <option key={dept} value={dept}>{dept}</option> // Use canonical list
                           ))}
                         </select>
                       </div>
@@ -1526,6 +1548,14 @@ const handleRemovePersonnel = async (person) => {
                 </div>
               )}
 
+            {currentTab === 'sub-department' && (isSuper || isIT) && (
+              <div className="tab-pane fade show active">
+                <SubDepartmentOverview
+                  declarations={declarations}
+                  loading={loading}
+                />
+              </div>
+            )}
               {currentTab === 'personnel' && (
                 <div className="tab-pane fade show active">
                   <PersonnelManagement

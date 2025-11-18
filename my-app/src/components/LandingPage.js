@@ -375,7 +375,12 @@ const LandingPage = () => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          // Ensure department and sub_department are included in the save payload
+          department: form.department,
+          sub_department: form.sub_department,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {

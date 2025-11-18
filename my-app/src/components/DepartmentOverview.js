@@ -50,7 +50,7 @@ const DepartmentOverview = ({
     dynamicDeps && dynamicDeps.length ? dynamicDeps : STATIC_DEPARTMENTS;
   const { rows, overallTotalsSource, hadUnknown, backendUsed, employeeMap } = useMemo(() => {
     // If backendStats provided, build rows directly from it (authoritative unique declarant counts)
-    if (backendStats && backendStats.counts) {
+    if (backendStats && backendStats.counts) { // This block is for when pre-calculated stats are available
       const totalUnique =
         backendStats.totalUniqueEmployeesWithDeclarations ||
         Object.values(backendStats.counts).reduce(
@@ -87,23 +87,26 @@ const DepartmentOverview = ({
         overallTotalsSource: "backend (unique declarants)",
         hadUnknown: (backendStats.unknown || 0) > 0,
         backendUsed: true,
-        employeeMap: new Map(), // Not used in this path, but return for consistent shape
+        employeeMap: new Map(), // Not used in this path, but return for consistent shape,
+        subDepartmentSummary: [], // Sub-department summary is handled in a separate component.
       };
     }
+
+    // --- Frontend Calculation Path (if no backendStats) ---
+
     // Build canonical index
     const canonicalIndex = new Map(); // normalized -> canonical string
     CANONICAL_DEPARTMENTS.forEach((c) =>
       canonicalIndex.set(normalizeDepartment(c), c)
     );
 
-    // Helper to derive a stable user key
-    const userKey = (d) =>
-      d.user_id ?? d.payroll_number ?? d.email ?? `decl-${d.id}`;
-
     // We want to count UNIQUE employees who have at least one declaration, not raw declaration rows.
     // If an employee has multiple declarations (e.g., First + Biennial), they should be counted once.
     // If their department changes, prefer the most recent (by submitted_at, declaration_date, or id).
-    const employeeMap = new Map(); // key -> {deptCanonical|null, dateValue:number, isKnown:boolean}
+    const employeeMap = new Map(); // key -> {deptCanonical|null, subDept:string|null, dateValue:number, isKnown:boolean}
+
+    const userKey = (d) =>
+      d.user_id ?? d.payroll_number ?? d.email ?? `decl-${d.id}`;
 
     const parseDatePriority = (d) => {
       // Prefer submitted_at, then declaration_date, else use id as last resort
@@ -128,7 +131,7 @@ const DepartmentOverview = ({
       } else {
         const prev = employeeMap.get(key);
         // Update if newer, or if previous was unknown and this one is known
-        if (dateVal >= prev.dateValue) {
+        if (dateVal > prev.dateValue || (dateVal === prev.dateValue && !prev.isKnown && canonical)) {
           if (!prev.isKnown && canonical) {
             employeeMap.set(key, {
               dept: canonical,
@@ -155,6 +158,7 @@ const DepartmentOverview = ({
     // Count unique employees per canonical department
     const counts = new Map();
     let unknownCount = 0;
+
     for (const { dept, isKnown } of employeeMap.values()) {
       if (isKnown && dept) {
         counts.set(dept, (counts.get(dept) || 0) + 1);
@@ -219,6 +223,7 @@ const DepartmentOverview = ({
         : "unique declarants",
       hadUnknown: unknownCount > 0,
       employeeMap,
+      subDepartmentSummary: [], // This is now handled by SubDepartmentOverview component
       backendUsed: false,
     };
   }, [
