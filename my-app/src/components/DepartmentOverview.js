@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
 import { useDepartments } from "../hooks/useDepartments";
+import { DEPARTMENTS as STATIC_DEPARTMENTS } from "../constants/departments";
 
 // Normalization helper: collapse whitespace, remove most punctuation (keep alphanumerics & spaces), map & -> and
 function normalizeDepartment(name) {
@@ -46,9 +47,7 @@ const DepartmentOverview = ({
 }) => {
   const { departments: dynamicDeps } = useDepartments();
   const CANONICAL_DEPARTMENTS =
-    dynamicDeps && dynamicDeps.length
-      ? dynamicDeps
-      : require("../constants/departments").DEPARTMENTS;
+    dynamicDeps && dynamicDeps.length ? dynamicDeps : STATIC_DEPARTMENTS;
   const { rows, overallTotalsSource, hadUnknown, backendUsed } = useMemo(() => {
     // If backendStats provided, build rows directly from it (authoritative unique declarant counts)
     if (backendStats && backendStats.counts) {

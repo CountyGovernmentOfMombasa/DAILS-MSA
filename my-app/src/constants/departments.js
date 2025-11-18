@@ -13,7 +13,7 @@ export const DEPARTMENTS = [
   'Department of Health',
   'Department of Trade, Tourism and Culture',
   'Mombasa County Public Service Board',
-  'CORPORATIONS'
+  'Corporations'
 ];
 
 export const SUB_DEPARTMENT_MAP = {

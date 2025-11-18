@@ -1,17 +1,5 @@
 import React from 'react';
-
-const departments = [
-  "Department of Transport, Infrastructure and Governance",
-  "Department of Trade, Tourism and Culture",
-  "Department of Education and Vocational Training",
-  "Department of Environment and Water",
-  "Department of Lands, Urban Planning,Housing and Serikali Mtaani",
-  "Department of Health",
-  "Department of Public Service Administration, Youth, Gender and Sports",
-  "Department of Finance, Economic Planning and Digital Transformation",
-  "Department of Blue Economy ,Cooperatives, Agriculture and Livestock",
-  "Department of Climate Change,Energy and Natural Resources"
-];
+import { DEPARTMENTS as departments } from '../constants/departments';
 
 // Accept either `users` or legacy `declarations` prop for backwards compatibility.
 const PersonnelManagement = ({ 
@@ -84,15 +72,18 @@ const PersonnelManagement = ({
           e.target.reset();
         }}
       >
-        <div className="row">
+        <div className="row g-2">
           <div className="col-md-2">
             <input name="national_id" className="form-control mb-2" placeholder="National ID" required />
           </div>
           <div className="col-md-2">
             <input name="payroll_number" className="form-control mb-2" placeholder="Payroll Number (optional)" />
           </div>
-          <div className="col-md-2">
+          <div className="col-md-3">
             <input name="first_name" className="form-control mb-2" placeholder="First Name" required />
+          </div>
+          <div className="col-md-3">
+            <input name="other_names" className="form-control mb-2" placeholder="Other Names" />
           </div>
           <div className="col-md-2">
             <input name="surname" className="form-control mb-2" placeholder="Surname" required />
