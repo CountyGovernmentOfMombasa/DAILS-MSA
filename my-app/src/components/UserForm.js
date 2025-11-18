@@ -190,6 +190,7 @@ const UserFormInner = () => {
       declaration_type: declarationType,
     };
     const key = deriveUserKey(formattedUserData);
+    const fullUserData = { ...profile, ...formattedUserData };
     saveProgress(
       {
         lastStep: "spouse",
@@ -197,7 +198,7 @@ const UserFormInner = () => {
           declarationDate,
           periodStart,
           periodEnd,
-          userData: formattedUserData,
+          userData: fullUserData,
         },
       },
       key
@@ -213,12 +214,7 @@ const UserFormInner = () => {
     navigate(nextPath, {
       state: {
         ...location.state,
-        userData: {
-          ...formattedUserData,
-          declarationDate,
-          periodStart,
-          periodEnd,
-        },
+        userData: fullUserData,
         declarationDate,
         periodStart,
         periodEnd,
