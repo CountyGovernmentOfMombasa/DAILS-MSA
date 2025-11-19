@@ -19,12 +19,28 @@ const SubDepartmentOverview = ({ declarations = [], loading = false }) => {
     const userKey = (d) =>
       d.user_id ?? d.payroll_number ?? d.email ?? `decl-${d.id}`;
 
+    // Helper to read a sub-department value from various possible field names
+    const getSubDept = (d) => {
+      const val =
+        d.sub_department ||
+        d.user_sub_department ||
+        d.subDepartment ||
+        d.user_subDepartment ||
+        d.user_sub_dept ||
+        d.sub_dept ||
+        null;
+      if (!val) return null;
+      const s = String(val).trim();
+      return s.length ? s : null;
+    };
+
     // Use a map to count each user only once, associated with their sub-department.
     // This correctly handles cases where a user might have multiple declarations.
     const subDeptEmployeeMap = new Map();
     for (const d of declarations) {
-      if (d.sub_department) {
-        subDeptEmployeeMap.set(userKey(d), d.sub_department);
+      const sd = getSubDept(d);
+      if (sd) {
+        subDeptEmployeeMap.set(userKey(d), sd);
       }
     }
 
