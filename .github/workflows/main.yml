@@ -90,7 +90,6 @@ jobs:
             APP_DIR="/var/www/dial-msa"
             PM2_APP_NAME="dials-msa"
 
-<<<<<<< Updated upstream
             echo "🔧 Configuring git remote to use SSH..."
             # The GITHUB_REPOSITORY variable is in the format "owner/repo"
             git remote set-url origin git@github.com:${GITHUB_REPOSITORY}.git
@@ -102,17 +101,14 @@ jobs:
             echo "� Pulling latest code..."
             git fetch --all
             git reset --hard origin/main
-=======
             cd $APP_DIR
             echo "📦 Extracting build artifact..."
             tar -xzf build.tar.gz
             rm build.tar.gz
->>>>>>> Stashed changes
 
             echo "🚀 Starting/Restarting PM2 process..."
             cd $APP_DIR/backend
 
-<<<<<<< Updated upstream
             echo "🧱 Building frontend..."
             cd /var/www/dial-msa/my-app
             npm ci
@@ -139,11 +135,9 @@ jobs:
             # Restart or start the app under PM2
             if pm2 describe dials-msa &> /dev/null; then
               pm2 restart dials-msa --update-env
-=======
             # Start or restart the app under PM2
             if pm2 describe $PM2_APP_NAME &> /dev/null; then
               pm2 restart $PM2_APP_NAME --update-env
->>>>>>> Stashed changes
             else
               pm2 start app.js --name $PM2_APP_NAME
             fi

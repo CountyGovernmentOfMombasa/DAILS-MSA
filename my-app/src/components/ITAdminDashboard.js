@@ -273,7 +273,7 @@ const ITAdminDashboard = ({ adminUser }) => {
           {currentTab === "reports" && ( <ReportsAndAnalytics declarations={declarations} reportData={reportData} biennialLocked={biennialLocked} handleToggleBiennialLock={handleToggleBiennialLock} firstLocked={firstLocked} handleToggleFirstLock={handleToggleFirstLock} finalLocked={finalLocked} handleToggleFinalLock={handleToggleFinalLock} downloadReport={downloadReport} usersCount={usersCount} adminUser={adminUser} /> )}
           {currentTab === "adminUser" && (<AdminUserCreation adminUser={adminUser} />)}
           {currentTab === "dept-overview" && (<DepartmentOverview declarations={declarations} backendStats={deptStats} loading={loadingDeptStats} onRefresh={() => fetchDeptStats(true)} /> )}
-          {currentTab === "sub-dept-overview" && (<SubDepartmentOverview declarations={declarations} backendStats={deptStats} loading={loadingDeptStats} onRefresh={() => fetchDeptStats(true)} /> )}
+         {currentTab === 'sub-department' && ( <SubDepartmentOverview declarations={declarations} loading={loading} /> )}
           {currentTab === "consent-logs" && (  <AdminConsentLogs adminUser={adminUser} /> )}
           {currentTab === "bulk-sms" && <BulkSMSPanel itAdmin />}
         </div>
