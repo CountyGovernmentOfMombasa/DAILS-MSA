@@ -6,89 +6,26 @@ on:
       - main
 
 jobs:
-  build-and-deploy:
-    name: Build and Deploy to Ubuntu Server
+  deploy:
+    name: Deploy to Ubuntu Server
     runs-on: ubuntu-latest
 
     steps:
       - name: 🧾 Checkout repository
         uses: actions/checkout@v4
 
-      - name: ⚙️ Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: |
-            backend/package-lock.json
-            my-app/package-lock.json
-
-      - name: 📦 Install backend dependencies
-        run: npm ci --prefix backend --omit=dev
-
-      - name: 📦 Install and build frontend
-        run: |
-          npm ci --prefix my-app
-          npm run build --prefix my-app
-
-      - name: 🧹 Prepare deployment artifact
-        run: |
-          mkdir -p deploy/backend/public
-          cp -r my-app/build/* deploy/backend/public/
-          cp -r backend/node_modules deploy/backend/node_modules
-          cp backend/app.js deploy/backend/app.js
-          cp backend/package.json deploy/backend/package.json
-          cp backend/package-lock.json deploy/backend/package-lock.json
-          cd deploy
-          tar -czf ../build.tar.gz .
-
-      - name: 🚀 Deploy to Server
+      - name: 🚀 Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           port: 4792
-          # Use 'script_stop: true' to continue on non-zero exit codes if needed
           script: |
             echo "=== 🚀 Starting Deployment on $(hostname) ==="
-            set -e # Exit immediately if a command exits with a non-zero status.
 
-            APP_DIR="/var/www/dial-msa"
-            PM2_APP_NAME="dials-msa"
-
-            echo "📂 Creating project directory..."
-            mkdir -p $APP_DIR
-
-            echo "🛑 Stopping PM2 process..."
-            pm2 stop $PM2_APP_NAME || true
-
-            echo "🧹 Cleaning old application files..."
-            rm -rf $APP_DIR/*
-
-      - name: 🚚 Copy artifact to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          port: 4792
-          source: "build.tar.gz"
-          target: "/var/www/dial-msa"
-
-      - name: 🚀 Extract and Restart Application
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          port: 4792
-          script: |
-            echo "=== 🚀 Finalizing Deployment on $(hostname) ==="
-            set -e
-
-            APP_DIR="/var/www/dial-msa"
-            PM2_APP_NAME="dials-msa"
+            # Go to the project directory
+            cd /var/www/dial-msa || exit 1
 
             echo "🔧 Configuring git remote to use SSH..."
             # The GITHUB_REPOSITORY variable is in the format "owner/repo"
@@ -101,13 +38,10 @@ jobs:
             echo "� Pulling latest code..."
             git fetch --all
             git reset --hard origin/main
-            cd $APP_DIR
-            echo "📦 Extracting build artifact..."
-            tar -xzf build.tar.gz
-            rm build.tar.gz
 
-            echo "🚀 Starting/Restarting PM2 process..."
-            cd $APP_DIR/backend
+            echo "🧰 Installing backend dependencies..."
+            cd backend
+            npm ci --omit=dev
 
             echo "🧱 Building frontend..."
             cd /var/www/dial-msa/my-app
@@ -135,11 +69,8 @@ jobs:
             # Restart or start the app under PM2
             if pm2 describe dials-msa &> /dev/null; then
               pm2 restart dials-msa --update-env
-            # Start or restart the app under PM2
-            if pm2 describe $PM2_APP_NAME &> /dev/null; then
-              pm2 restart $PM2_APP_NAME --update-env
             else
-              pm2 start app.js --name $PM2_APP_NAME
+              pm2 start app.js --name dials-msa
             fi
 
             pm2 save
