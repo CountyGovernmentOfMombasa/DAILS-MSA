@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
 
 function AdminConsentLogs() {
@@ -9,28 +9,40 @@ function AdminConsentLogs() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [lastStatus, setLastStatus] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const MAX_AUTO_RETRIES = 2;
 
-  useEffect(() => {
-    fetchLogs();
-    // eslint-disable-next-line
-  }, [page, search]);
-
-  const fetchLogs = async () => {
+  const fetchLogs = useCallback(async () => {
     setLoading(true);
     setError('');
+    setLastStatus(null);
     try {
       const res = await axios.get('/api/admin/consent-logs', {
         params: { page, pageSize, search },
         headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` }
       });
-      setLogs(res.data.logs);
-      setTotal(res.data.total);
+      setLogs(Array.isArray(res.data.logs) ? res.data.logs : []);
+      setTotal(Number(res.data.total) || 0);
+      setRetryCount(0); // reset after success
     } catch (err) {
-      setError('Failed to fetch consent logs.');
+      const status = err.response?.status;
+      setLastStatus(status || null);
+      const backendMsg = err.response?.data?.error || err.response?.data?.message;
+      setError(backendMsg || 'Failed to fetch consent logs.');
+      // Auto-retry limited times for transient 500 errors
+      if (status && status >= 500 && retryCount < MAX_AUTO_RETRIES) {
+        setRetryCount(r => r + 1);
+        setTimeout(() => fetchLogs(), 1000 * (retryCount + 1)); // basic backoff
+      }
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, pageSize, search, retryCount]);
+
+  useEffect(() => {
+    fetchLogs();
+  }, [fetchLogs]);
 
   const totalPages = Math.ceil(total / pageSize);
 
@@ -46,7 +58,13 @@ function AdminConsentLogs() {
           style={{ padding: 8, width: 300, borderRadius: 4, border: '1px solid #ccc' }}
         />
       </div>
-      {loading ? <div>Loading...</div> : error ? <div style={{ color: 'red' }}>{error}</div> : (
+      {loading ? <div>Loading...</div> : error ? (
+        <div style={{ color: 'red', marginBottom: 16 }}>
+          {error}
+          {lastStatus && <div style={{ fontSize: '0.85em' }}>HTTP {lastStatus}{retryCount > 0 && ` (retry ${retryCount}/${MAX_AUTO_RETRIES})`}</div>}
+          <button onClick={fetchLogs} style={{ marginTop: 8 }}>Retry</button>
+        </div>
+      ) : (
         <>
           <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16 }}>
             <thead>

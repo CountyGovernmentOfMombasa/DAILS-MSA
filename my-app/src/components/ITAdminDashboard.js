@@ -8,6 +8,7 @@ import AddUserForm from "./AddUserForm";
 import ITAdminAuditsAndRequests from "./ITAdminAuditsAndRequests";
 import UserAccountManagement from "./UserAccountManagement";
 import DepartmentOverview from "./DepartmentOverview";
+import SubDepartmentOverview from "./SubDepartmentOverview";
 import BulkSMSPanel from "./BulkSMSPanel";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "./AdminPage.css";
@@ -247,65 +248,18 @@ const ITAdminDashboard = ({ adminUser }) => {
     <div className="container mt-4">
       <h2>Digital Transformation Team Dashboard</h2>
       <div className="mb-3 d-flex flex-wrap gap-2 align-items-center">
-        <button
-          className="btn btn-outline-primary"
-          onClick={() => setCurrentTab("add-user")}
-        >
-          Add User
-        </button>
-        <button
-          className="btn btn-outline-primary"
-          onClick={() => setCurrentTab("email")}
-        >
-          Email Management
-        </button>
-        <button
-          className="btn btn-outline-primary"
-          onClick={() => setCurrentTab("account-management")}
-        >
-          Account Management
-        </button>
-        <button
-          className="btn btn-outline-primary"
-          onClick={() => setCurrentTab("reports")}
-        >
-          Reports & Analytics
-        </button>
-        <button
-          className="btn btn-outline-primary"
-          onClick={() => setCurrentTab("audits")}
-        >
-          Audits & Edit Requests
-        </button>
-        <button
-          className="btn btn-outline-primary"
-          onClick={() => setCurrentTab("dept-overview")}
-        >
-          Department Overview
-        </button>
-        <button
-          className="btn btn-outline-primary"
-          onClick={() => setCurrentTab("bulk-sms")}
-        >
-          Bulk SMS
-        </button>
-        <button
-          className="btn btn-outline-success"
-          onClick={() => setCurrentTab("adminUser")}
-        >
-          Admin User Creation
-        </button>
-        <button
-          className="btn btn-outline-primary"
-          onClick={() => setCurrentTab("consent-logs")}
-        >
-          Consent Logs
-        </button>
+        <button className="btn btn-outline-primary" onClick={() => setCurrentTab("add-user")}>Add User </button>
+        <button className="btn btn-outline-primary" onClick={() => setCurrentTab("email")}> Email Management</button>
+        <button className="btn btn-outline-primary" onClick={() => setCurrentTab("account-management")}> Account Management </button>
+        <button className="btn btn-outline-primary" onClick={() => setCurrentTab("reports")}> Reports & Analytics</button>
+        <button className="btn btn-outline-primary" onClick={() => setCurrentTab("audits")}> Audits & Edit Requests</button>
+        <button className="btn btn-outline-primary" onClick={() => setCurrentTab("dept-overview")} > Department Overview</button>
+        <button className="btn btn-outline-primary" onClick={() => setCurrentTab("sub-dept-overview")} > Sub-Department Overview</button>
+        <button className="btn btn-outline-primary" onClick={() => setCurrentTab("bulk-sms")}> Bulk SMS </button>
+        <button className="btn btn-outline-primary" onClick={() => setCurrentTab("adminUser")}> Admin User Creation </button>
+        <button className="btn btn-outline-primary" onClick={() => setCurrentTab("consent-logs")} > Consent Logs </button>
         <div className="ms-auto d-flex gap-2">
-          <button
-            className="btn btn-secondary"
-            onClick={() => navigate("/landing")}
-          >Back to Landing</button>
+          <button className="btn btn-secondary" onClick={() => navigate("/landing")}>Back to Landing</button>
         </div>
       </div>
       {loading && <div>Loading...</div>}
@@ -316,26 +270,11 @@ const ITAdminDashboard = ({ adminUser }) => {
           {currentTab === "account-management" && <UserAccountManagement />}
           {currentTab === "email" && <EmailManagement adminUser={adminUser} />}
           {currentTab === "audits" && <ITAdminAuditsAndRequests />}
-          {currentTab === "reports" && (
-            <ReportsAndAnalytics
-              declarations={declarations}
-              reportData={reportData}
-              biennialLocked={biennialLocked}
-              handleToggleBiennialLock={handleToggleBiennialLock}
-              firstLocked={firstLocked}
-              handleToggleFirstLock={handleToggleFirstLock}
-              finalLocked={finalLocked}
-              handleToggleFinalLock={handleToggleFinalLock}
-              downloadReport={downloadReport}
-              usersCount={usersCount}
-              adminUser={adminUser}
-            />
-          )}
+          {currentTab === "reports" && ( <ReportsAndAnalytics declarations={declarations} reportData={reportData} biennialLocked={biennialLocked} handleToggleBiennialLock={handleToggleBiennialLock} firstLocked={firstLocked} handleToggleFirstLock={handleToggleFirstLock} finalLocked={finalLocked} handleToggleFinalLock={handleToggleFinalLock} downloadReport={downloadReport} usersCount={usersCount} adminUser={adminUser} /> )}
           {currentTab === "adminUser" && (<AdminUserCreation adminUser={adminUser} />)}
           {currentTab === "dept-overview" && (<DepartmentOverview declarations={declarations} backendStats={deptStats} loading={loadingDeptStats} onRefresh={() => fetchDeptStats(true)} /> )}
-          {currentTab === "consent-logs" && (
-            <AdminConsentLogs adminUser={adminUser} />
-          )}
+          {currentTab === "sub-dept-overview" && (<SubDepartmentOverview declarations={declarations} backendStats={deptStats} loading={loadingDeptStats} onRefresh={() => fetchDeptStats(true)} /> )}
+          {currentTab === "consent-logs" && (  <AdminConsentLogs adminUser={adminUser} /> )}
           {currentTab === "bulk-sms" && <BulkSMSPanel itAdmin />}
         </div>
       )}
