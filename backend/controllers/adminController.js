@@ -478,6 +478,7 @@ exports.getAllDeclarations = async (req, res) => {
         u.payroll_number,
         u.email,
         u.department,
+        u.sub_department,
         u.national_id,
         u.designation,
   /* First approval timestamp & approving admin from unified audit table */
