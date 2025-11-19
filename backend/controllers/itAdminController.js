@@ -119,7 +119,7 @@ exports.getITAdminDeclarations = async (req, res) => {
       `
       SELECT 
         d.id, d.user_id, d.declaration_date, d.status, d.declaration_type, d.correction_message,
-        u.first_name, u.other_names, u.surname, u.payroll_number, u.email, u.department
+        u.first_name, u.other_names, u.surname, u.payroll_number, u.email, u.department, u.sub_department
       FROM declarations d
       JOIN users u ON d.user_id = u.id
       WHERE 1=1 ${departmentFilter}

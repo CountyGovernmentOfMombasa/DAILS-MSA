@@ -124,6 +124,30 @@ const ITAdminDashboard = ({ adminUser }) => {
     if (adminToken) fetchAll();
   }, [adminToken, generateReportData]);
 
+  // Refresh declarations when opening Sub-Department tab to ensure latest fields
+  const refreshDeclarations = useCallback(async () => {
+    if (!adminToken) return;
+    try {
+      setLoading(true);
+      const res = await fetch("/api/it-admin/declarations", {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const data = Array.isArray(json.data) ? json.data : [];
+        setDeclarations(data);
+        generateReportData(data);
+      }
+    } catch {}
+    finally { setLoading(false); }
+  }, [adminToken, generateReportData]);
+
+  useEffect(() => {
+    if (currentTab === 'sub-department') {
+      refreshDeclarations();
+    }
+  }, [currentTab, refreshDeclarations]);
+
   const handleToggleBiennialLock = async () => {
     try {
       const res = await fetch("/api/admin/settings/locks", {

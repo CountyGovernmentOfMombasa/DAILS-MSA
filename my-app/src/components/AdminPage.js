@@ -298,6 +298,35 @@ const AdminPage = ({ adminUser }) => {
     }
   }, [currentTab, loadingDeptStats, fetchDeptStats]);
 
+  // Ensure declarations include latest user fields (e.g., sub_department) when opening Sub-Department tab
+  const refreshDeclarations = React.useCallback(async () => {
+    if (!adminToken) return;
+    try {
+      setLoading(true);
+      const response = await fetch('/api/admin/declarations?detailed=true', {
+        headers: {
+          'Authorization': `Bearer ${adminToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.data && Array.isArray(data.data)) {
+          setDeclarations(data.data);
+          generateReportData(data.data, setReportData);
+        }
+      }
+    } catch {}
+    finally { setLoading(false); }
+  }, [adminToken]);
+
+  // Re-fetch when user visits Sub-Department tab so latest backend shape is used
+  useEffect(() => {
+    if (currentTab === 'sub-department') {
+      refreshDeclarations();
+    }
+  }, [currentTab, refreshDeclarations]);
+
   const handleExportConfirm = () => {
     // Prepare data
     const dataToExport = filteredDeclarations.map(declaration => {
