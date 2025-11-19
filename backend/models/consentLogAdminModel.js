@@ -15,6 +15,13 @@ async function ensureConsentLogsTable() {
 
 // Fetch consent logs with pagination and optional search
 async function getConsentLogs({ page = 1, pageSize = 20, search = '' }) {
+  // Proactively ensure table exists (idempotent, inexpensive compared to failing later)
+  try {
+    await ensureConsentLogsTable();
+  } catch (e) {
+    console.error('Failed ensuring consent_logs table before query:', e.message);
+    // Continue; subsequent queries may still surface the underlying issue
+  }
   const offset = (Number(page) - 1) * Number(pageSize);
   let where = '';
   let params = [];
