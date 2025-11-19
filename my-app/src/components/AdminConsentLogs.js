@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import axios from 'axios';
 
 function AdminConsentLogs() {
@@ -10,38 +10,69 @@ function AdminConsentLogs() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [lastStatus, setLastStatus] = useState(null);
-  const [retryCount, setRetryCount] = useState(0);
-  const MAX_AUTO_RETRIES = 2;
+  // Replace state-based retries (which cause re-renders) with refs to avoid duplicate fetches
+  const retryAttemptsRef = useRef(0);
+  const pendingTimeoutRef = useRef(null);
+  const abortControllerRef = useRef(null);
+  const MAX_AUTO_RETRIES = 0; // Disable auto-retry to prevent multiple DB hits; use manual Retry
 
   const fetchLogs = useCallback(async () => {
+    // Cancel any in-flight request
+    if (abortControllerRef.current) {
+      try { abortControllerRef.current.abort(); } catch { /* ignore */ }
+    }
+    abortControllerRef.current = new AbortController();
+    // Clear any queued retry timeouts
+    if (pendingTimeoutRef.current) {
+      clearTimeout(pendingTimeoutRef.current);
+      pendingTimeoutRef.current = null;
+    }
     setLoading(true);
     setError('');
     setLastStatus(null);
     try {
       const res = await axios.get('/api/admin/consent-logs', {
         params: { page, pageSize, search },
-        headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` }
+        headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` },
+        signal: abortControllerRef.current.signal,
       });
       setLogs(Array.isArray(res.data.logs) ? res.data.logs : []);
       setTotal(Number(res.data.total) || 0);
-      setRetryCount(0); // reset after success
+      retryAttemptsRef.current = 0; // reset after success
     } catch (err) {
+      if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') {
+        // Request was canceled due to parameter change/unmount; do not set error
+        return;
+      }
       const status = err.response?.status;
       setLastStatus(status || null);
       const backendMsg = err.response?.data?.error || err.response?.data?.message;
       setError(backendMsg || 'Failed to fetch consent logs.');
-      // Auto-retry limited times for transient 500 errors
-      if (status && status >= 500 && retryCount < MAX_AUTO_RETRIES) {
-        setRetryCount(r => r + 1);
-        setTimeout(() => fetchLogs(), 1000 * (retryCount + 1)); // basic backoff
+      // Optional: one-time auto-retry if enabled
+      if (MAX_AUTO_RETRIES > 0 && status && status >= 500 && retryAttemptsRef.current < MAX_AUTO_RETRIES) {
+        const delayMs = 1000 * (retryAttemptsRef.current + 1);
+        retryAttemptsRef.current += 1;
+        pendingTimeoutRef.current = setTimeout(() => {
+          pendingTimeoutRef.current = null;
+          fetchLogs();
+        }, delayMs);
       }
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, search, retryCount]);
+  }, [page, pageSize, search]);
 
   useEffect(() => {
     fetchLogs();
+    return () => {
+      if (abortControllerRef.current) {
+        try { abortControllerRef.current.abort(); } catch { /* ignore */ }
+      }
+      if (pendingTimeoutRef.current) {
+        clearTimeout(pendingTimeoutRef.current);
+        pendingTimeoutRef.current = null;
+      }
+    };
   }, [fetchLogs]);
 
   const totalPages = Math.ceil(total / pageSize);
@@ -61,7 +92,7 @@ function AdminConsentLogs() {
       {loading ? <div>Loading...</div> : error ? (
         <div style={{ color: 'red', marginBottom: 16 }}>
           {error}
-          {lastStatus && <div style={{ fontSize: '0.85em' }}>HTTP {lastStatus}{retryCount > 0 && ` (retry ${retryCount}/${MAX_AUTO_RETRIES})`}</div>}
+          {lastStatus && <div style={{ fontSize: '0.85em' }}>HTTP {lastStatus}</div>}
           <button onClick={fetchLogs} style={{ marginTop: 8 }}>Retry</button>
         </div>
       ) : (
