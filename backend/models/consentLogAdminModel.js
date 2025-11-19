@@ -31,14 +31,35 @@ async function getConsentLogs({ page = 1, pageSize = 20, search = '' }) {
   }
 
   try {
-    const [rows] = await db.execute(
-      `SELECT id, full_name, national_id, designation, signed, submitted_at FROM consent_logs ${where} ORDER BY submitted_at DESC LIMIT ? OFFSET ?`,
-      [...params, Number(pageSize), offset]
-    );
-    const [countRows] = await db.execute(
-      `SELECT COUNT(*) as count FROM consent_logs ${where}`,
-      params
-    );
+    let rows, countRows;
+    try {
+      [rows] = await db.execute(
+        `SELECT id, full_name, national_id, designation, signed, submitted_at FROM consent_logs ${where} ORDER BY submitted_at DESC LIMIT ? OFFSET ?`,
+        [...params, Number(pageSize), offset]
+      );
+    } catch (qErr) {
+      console.error('[CONSENT_LOGS][QUERY_FAIL] select rows', {
+        code: qErr.code,
+        message: qErr.message,
+        where,
+        params: [...params, Number(pageSize), offset]
+      });
+      throw qErr;
+    }
+    try {
+      [countRows] = await db.execute(
+        `SELECT COUNT(*) as count FROM consent_logs ${where}`,
+        params
+      );
+    } catch (cErr) {
+      console.error('[CONSENT_LOGS][QUERY_FAIL] count rows', {
+        code: cErr.code,
+        message: cErr.message,
+        where,
+        params
+      });
+      throw cErr;
+    }
     const total = (countRows && countRows[0] && countRows[0].count) ? countRows[0].count : 0;
     return { logs: rows, total };
   } catch (err) {
