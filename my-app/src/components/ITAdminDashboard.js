@@ -254,7 +254,7 @@ const ITAdminDashboard = ({ adminUser }) => {
         <button className="btn btn-outline-primary" onClick={() => setCurrentTab("reports")}> Reports & Analytics</button>
         <button className="btn btn-outline-primary" onClick={() => setCurrentTab("audits")}> Audits & Edit Requests</button>
         <button className="btn btn-outline-primary" onClick={() => setCurrentTab("dept-overview")} > Department Overview</button>
-        <button className="btn btn-outline-primary" onClick={() => setCurrentTab("sub-dept-overview")} > Sub-Department Overview</button>
+        <button className="btn btn-outline-primary" onClick={() => setCurrentTab("sub-department")} > Sub-Department Overview</button>
         <button className="btn btn-outline-primary" onClick={() => setCurrentTab("bulk-sms")}> Bulk SMS </button>
         <button className="btn btn-outline-primary" onClick={() => setCurrentTab("adminUser")}> Admin User Creation </button>
         <button className="btn btn-outline-primary" onClick={() => setCurrentTab("consent-logs")} > Consent Logs </button>
