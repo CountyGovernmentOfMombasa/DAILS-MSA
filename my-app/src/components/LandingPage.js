@@ -94,7 +94,6 @@ const LandingPage = () => {
       { key: "department", label: "Department" },
       { key: "email", label: "Email" },
       { key: "phone_number", label: "Phone Number" },
-      { key: "other_names", label: "Other Names" },
       { key: "birthdate", label: "Date of Birth" },
       { key: "place_of_birth", label: "Place of Birth" },
       { key: "physical_address", label: "Physical Address" },
@@ -899,7 +898,6 @@ const LandingPage = () => {
                           value={form.other_names || ""}
                           onChange={handleChange}
                           disabled={!editMode}
-                          required
                           isInvalid={!!fieldErrors.other_names}
                         />
                         {editMode && !String(form.other_names || "").trim() && (
