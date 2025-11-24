@@ -32,6 +32,7 @@ import {
   SUB_DEPARTMENTS,
   SUB_DEPARTMENT_PARENT,
 } from "../constants/departments";
+import { NATURE_OF_EMPLOYMENT_OPTIONS } from "../constants/employment";
 // PDF now generated server-side; client just downloads
 // import { appendDeclarationIdToPath } from '../utilis/editContext'; // no longer needed after draft removal
 import {
@@ -1260,9 +1261,11 @@ const LandingPage = () => {
                           isInvalid={!!fieldErrors.nature_of_employment}
                         >
                           <option value="">Select employment type</option>
-                          <option value="Permanent">Permanent</option>
-                          <option value="Contract">Contract</option>
-                          <option value="Temporary">Temporary</option>
+                          {NATURE_OF_EMPLOYMENT_OPTIONS.map((opt) => (
+                            <option key={opt} value={opt}>
+                              {opt}
+                            </option>
+                          ))}
                         </Form.Select>
                         {editMode &&
                           !String(form.nature_of_employment || "").trim() && (

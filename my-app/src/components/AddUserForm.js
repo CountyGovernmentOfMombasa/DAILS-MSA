@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useDepartments } from '../hooks/useDepartments';
+import { NATURE_OF_EMPLOYMENT_OPTIONS } from '../constants/employment';
 
 // Form for IT Admin to add a normal (non-admin) user directly to the database
 // Uses the existing public registration endpoint (/api/auth/register)
@@ -140,9 +141,7 @@ const AddUserForm = () => {
             <label className="form-label">Nature of Employment</label>
             <select name="nature_of_employment" value={form.nature_of_employment} onChange={handleChange} className="form-select">
               <option value="">Select</option>
-              <option value="Permanent">Permanent</option>
-              <option value="Contract">Contract</option>
-              <option value="Casual">Casual</option>
+              {NATURE_OF_EMPLOYMENT_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
             </select>
           </div>
           <div className="col-md-4">

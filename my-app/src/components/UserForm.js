@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { NATURE_OF_EMPLOYMENT_OPTIONS } from "../constants/employment";
 import { toISODate } from "../util/date";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
@@ -783,9 +784,9 @@ const UserFormInner = () => {
                               style={{ borderRadius: "12px" }}
                             >
                               <option value="">Select employment type</option>
-                              <option value="Permanent">Permanent</option>
-                              <option value="Contract">Contract</option>
-                              <option value="Temporary">Temporary</option>
+                              {NATURE_OF_EMPLOYMENT_OPTIONS.map(opt => (
+                                <option key={opt} value={opt}>{opt}</option>
+                              ))}
                             </Form.Select>
                           </Form.Group>
                         </Col>

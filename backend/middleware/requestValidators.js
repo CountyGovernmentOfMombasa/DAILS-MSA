@@ -95,6 +95,11 @@ const updateMe = [
   body('department').optional().isString().trim().isLength({ max: 180 }),
   body('sub_department').optional().isString().trim().isLength({ max: 180 }),
   body('nature_of_employment').optional().isString().trim().isLength({ max: 120 }),
+    body('nature_of_employment').optional().isString().trim().isLength({ max: 120 }).custom(v => {
+        if (!v) return true;
+        const { NATURE_OF_EMPLOYMENT_OPTIONS } = require('../constants/employment');
+        if (!NATURE_OF_EMPLOYMENT_OPTIONS.includes(v)) throw new Error('nature_of_employment must be one of: ' + NATURE_OF_EMPLOYMENT_OPTIONS.join(', '));
+        return true;}),
   body('phone_number').optional().matches(/^\+?[0-9]{7,15}$/).withMessage('Invalid phone_number format'),
   body('place_of_birth').optional().isString().trim().isLength({ max: 150 }).withMessage('place_of_birth too long'),
   body('postal_address').optional().isString().trim().isLength({ max: 300 }).withMessage('postal_address too long'),

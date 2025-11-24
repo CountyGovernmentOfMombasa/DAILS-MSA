@@ -16,16 +16,21 @@ function normalizeDepartment(name) {
 function mapToCanonical(raw, canonicalIndex) {
   const norm = normalizeDepartment(raw);
   if (!norm) return null;
-  // 1. Exact match (best case)
+  // Exact match first
   if (canonicalIndex.has(norm)) return canonicalIndex.get(norm);
-  // 2. Fallback: partial matching (contains or starts/ends with)
+  // Conservative fallback: only match if norm is a whole-word prefix or suffix of canonical,
+  // or canonical is a whole-word prefix/suffix of norm. This reduces accidental merges.
   for (const [normCanon, canonName] of canonicalIndex.entries()) {
-    // Check if the user's department is a substring of a canonical one, or vice-versa.
-    if (normCanon.includes(norm) || norm.includes(normCanon)) {
+    if (
+      normCanon.startsWith(norm + " ") ||
+      normCanon.endsWith(" " + norm) ||
+      norm.startsWith(normCanon + " ") ||
+      norm.endsWith(" " + normCanon)
+    ) {
       return canonName;
     }
   }
-  return null; // unknown bucket
+  return null;
 }
 
 /**
@@ -50,20 +55,22 @@ const DepartmentOverview = ({
     dynamicDeps && dynamicDeps.length ? dynamicDeps : STATIC_DEPARTMENTS;
   const { rows, overallTotalsSource, hadUnknown, backendUsed, employeeMap } = useMemo(() => {
     // If backendStats provided, build rows directly from it (authoritative unique declarant counts)
-    if (backendStats && backendStats.counts) { // This block is for when pre-calculated stats are available
+    if (backendStats && backendStats.counts) { // Pre-calculated unique declarant stats from backend
       const totalUnique =
         backendStats.totalUniqueEmployeesWithDeclarations ||
         Object.values(backendStats.counts).reduce(
           (a, v) => a + (typeof v === "number" ? v : 0),
           0
         ) + (backendStats.unknown || 0);
+
       const rows = CANONICAL_DEPARTMENTS.map((canon) => {
         const declared = backendStats.counts[canon] || 0;
         const totalForDept = employeeTotalsByDepartment
           ? employeeTotalsByDepartment[canon] ?? null
-          : declared; // if separate totals passed, use them
-        const percent =
-          totalUnique > 0 ? ((declared / totalUnique) * 100).toFixed(1) : "0.0";
+          : declared;
+        const percent = employeeTotalsByDepartment
+          ? (totalForDept > 0 ? ((declared / totalForDept) * 100).toFixed(1) : "0.0")
+          : (totalUnique > 0 ? ((declared / totalUnique) * 100).toFixed(1) : "0.0");
         return { department: canon, declared, total: totalForDept, percent };
       });
       if (showUnknown && backendStats.unknown > 0) {
@@ -71,10 +78,9 @@ const DepartmentOverview = ({
         const totalForUnknown = employeeTotalsByDepartment
           ? employeeTotalsByDepartment["Unknown / Other"] ?? null
           : unknownDeclared;
-        const percent =
-          totalUnique > 0
-            ? ((unknownDeclared / totalUnique) * 100).toFixed(1)
-            : "0.0";
+        const percent = employeeTotalsByDepartment
+          ? (totalForUnknown > 0 ? ((unknownDeclared / totalForUnknown) * 100).toFixed(1) : "0.0")
+          : (totalUnique > 0 ? ((unknownDeclared / totalUnique) * 100).toFixed(1) : "0.0");
         rows.push({
           department: "Unknown / Other",
           declared: unknownDeclared,
@@ -84,11 +90,11 @@ const DepartmentOverview = ({
       }
       return {
         rows,
-        overallTotalsSource: "backend (unique declarants)",
+        overallTotalsSource: employeeTotalsByDepartment ? "department totals" : "backend (unique declarants)",
         hadUnknown: (backendStats.unknown || 0) > 0,
         backendUsed: true,
-        employeeMap: new Map(), // Not used in this path, but return for consistent shape,
-        subDepartmentSummary: [], // Sub-department summary is handled in a separate component.
+        employeeMap: new Map(),
+        subDepartmentSummary: [],
       };
     }
 
