@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { useDepartments } from "../hooks/useDepartments";
 import { DEPARTMENTS as STATIC_DEPARTMENTS } from "../constants/departments";
 
@@ -13,22 +13,13 @@ function normalizeDepartment(name) {
 }
 
 // Attempt to map an arbitrary department string to a canonical department.
+// Mapping now mirrors backend (inclusive substring fallback) to keep figures consistent.
 function mapToCanonical(raw, canonicalIndex) {
   const norm = normalizeDepartment(raw);
   if (!norm) return null;
-  // Exact match first
   if (canonicalIndex.has(norm)) return canonicalIndex.get(norm);
-  // Conservative fallback: only match if norm is a whole-word prefix or suffix of canonical,
-  // or canonical is a whole-word prefix/suffix of norm. This reduces accidental merges.
   for (const [normCanon, canonName] of canonicalIndex.entries()) {
-    if (
-      normCanon.startsWith(norm + " ") ||
-      normCanon.endsWith(" " + norm) ||
-      norm.startsWith(normCanon + " ") ||
-      norm.endsWith(" " + normCanon)
-    ) {
-      return canonName;
-    }
+    if (normCanon.includes(norm) || norm.includes(normCanon)) return canonName;
   }
   return null;
 }
@@ -53,7 +44,8 @@ const DepartmentOverview = ({
   const { departments: dynamicDeps } = useDepartments();
   const CANONICAL_DEPARTMENTS =
     dynamicDeps && dynamicDeps.length ? dynamicDeps : STATIC_DEPARTMENTS;
-  const { rows, overallTotalsSource, hadUnknown, backendUsed, employeeMap } = useMemo(() => {
+  const [mode, setMode] = useState("unique"); // unique | raw
+  const { rows, overallTotalsSource, hadUnknown, backendUsed, employeeMap, rawRows } = useMemo(() => {
     // If backendStats provided, build rows directly from it (authoritative unique declarant counts)
     if (backendStats && backendStats.counts) { // Pre-calculated unique declarant stats from backend
       const totalUnique =
@@ -88,8 +80,33 @@ const DepartmentOverview = ({
           percent,
         });
       }
+      // Raw declaration counts (non-dedup) if declarations supplied
+      let rawRows = [];
+      if (declarations && declarations.length) {
+        const canonicalIndexLocal = new Map();
+        CANONICAL_DEPARTMENTS.forEach(c => canonicalIndexLocal.set(normalizeDepartment(c), c));
+        const rawCounts = new Map();
+        let rawUnknown = 0;
+        for (const d of declarations) {
+          const canon = mapToCanonical(d.department, canonicalIndexLocal);
+          if (canon) rawCounts.set(canon, (rawCounts.get(canon) || 0) + 1);
+          else rawUnknown += 1;
+        }
+        rawRows = CANONICAL_DEPARTMENTS.map(c => ({
+          department: c,
+          declared: rawCounts.get(c) || 0,
+          total: rawCounts.get(c) || 0,
+          percent: "0.0", // computed below after total
+        }));
+        if (showUnknown && rawUnknown > 0) {
+          rawRows.push({ department: "Unknown / Other", declared: rawUnknown, total: rawUnknown, percent: "0.0" });
+        }
+        const rawTotal = rawRows.reduce((a, r) => a + r.declared, 0);
+        rawRows = rawRows.map(r => ({ ...r, percent: rawTotal > 0 ? ((r.declared / rawTotal) * 100).toFixed(1) : "0.0" }));
+      }
       return {
         rows,
+        rawRows,
         overallTotalsSource: employeeTotalsByDepartment ? "department totals" : "backend (unique declarants)",
         hadUnknown: (backendStats.unknown || 0) > 0,
         backendUsed: true,
@@ -222,14 +239,35 @@ const DepartmentOverview = ({
       });
     }
 
+    // Raw declaration counts (non-dedup) path (frontend only)
+    const rawCounts = new Map();
+    let rawUnknown = 0;
+    for (const d of declarations) {
+      const canon = mapToCanonical(d.department, canonicalIndex);
+      if (canon) rawCounts.set(canon, (rawCounts.get(canon) || 0) + 1);
+      else rawUnknown += 1;
+    }
+    let rawRows = CANONICAL_DEPARTMENTS.map(c => ({
+      department: c,
+      declared: rawCounts.get(c) || 0,
+      total: rawCounts.get(c) || 0,
+      percent: "0.0", // compute after total
+    }));
+    if (showUnknown && rawUnknown > 0) {
+      rawRows.push({ department: "Unknown / Other", declared: rawUnknown, total: rawUnknown, percent: "0.0" });
+    }
+    const rawTotal = rawRows.reduce((a, r) => a + r.declared, 0);
+    rawRows = rawRows.map(r => ({ ...r, percent: rawTotal > 0 ? ((r.declared / rawTotal) * 100).toFixed(1) : "0.0" }));
+
     return {
       rows,
+      rawRows,
       overallTotalsSource: employeeTotalsByDepartment
         ? "department totals"
         : "unique declarants",
       hadUnknown: unknownCount > 0,
       employeeMap,
-      subDepartmentSummary: [], // This is now handled by SubDepartmentOverview component
+      subDepartmentSummary: [],
       backendUsed: false,
     };
   }, [
@@ -285,7 +323,7 @@ const DepartmentOverview = ({
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {(mode === "unique" ? rows : rawRows).map((r) => (
                 <tr key={r.department}>
                   <td>{r.department}</td>
                   <td>{r.declared}</td>
@@ -297,19 +335,25 @@ const DepartmentOverview = ({
             <tfoot>
               <tr className="fw-bold">
                 <td>Total</td>
-                <td>{backendUsed ? rows.reduce((a, r) => a + r.declared, 0) : employeeMap.size}</td>
-                <td>
-                  {employeeTotalsByDepartment
-                    ? Object.values(employeeTotalsByDepartment).reduce(
-                        (a, v) => a + (typeof v === "number" ? v : 0),
-                        0
-                      )
-                    : rows.reduce((a, r) => a + r.declared, 0)}
-                </td>
+                <td>{mode === "unique" ? (backendUsed ? rows.reduce((a, r) => a + r.declared, 0) : employeeMap.size) : rawRows.reduce((a, r) => a + r.declared, 0)}</td>
+                <td>{mode === "unique"
+                  ? (employeeTotalsByDepartment
+                    ? Object.values(employeeTotalsByDepartment).reduce((a, v) => a + (typeof v === "number" ? v : 0), 0)
+                    : rows.reduce((a, r) => a + r.declared, 0))
+                  : rawRows.reduce((a, r) => a + r.declared, 0)}</td>
                 <td>100.0</td>
               </tr>
             </tfoot>
           </table>
+        </div>
+        <div className="mt-3 small">
+          <div className="btn-group" role="group" aria-label="Mode select">
+            <button type="button" className={`btn btn-sm ${mode === 'unique' ? 'btn-primary' : 'btn-outline-primary'}`} onClick={() => setMode('unique')}>Unique Declarants</button>
+            <button type="button" className={`btn btn-sm ${mode === 'raw' ? 'btn-primary' : 'btn-outline-primary'}`} onClick={() => setMode('raw')}>Raw Declarations</button>
+          </div>
+          <div className="mt-2 text-muted">
+            {mode === 'unique' ? 'Each person counted once (latest declaration). Differences vs DB raw counts often reflect repeat filings.' : 'Counts every declaration record (includes repeat filings).'}
+          </div>
         </div>
       </div>
     </div>
