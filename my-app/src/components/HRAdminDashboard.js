@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import EmailManagement from "./EmailManagement";
 import DepartmentUserStatus from "./DepartmentUserStatus";
 import WealthDeclarationRegister from "./WealthDeclarationRegister";
+import HRSubDepartmentUsers from './HRSubDepartmentUsers';
 import "bootstrap/dist/css/bootstrap.min.css";
 import "./AdminPage.css";
 
@@ -30,6 +31,11 @@ const HRAdminDashboard = ({ adminUser }) => {
         >
           Wealth Declaration Register
         </button>
+                <button
+                  className={`nav-link ${currentTab === 'hr-sub-dept-users' ? 'active' : ''}`}
+                  onClick={() => setCurrentTab('hr-sub-dept-users')}>
+                  My Sub-Department
+                </button>
         <button
           className="btn btn-outline-primary me-2"
           onClick={() => setCurrentTab("email")}
@@ -48,16 +54,11 @@ const HRAdminDashboard = ({ adminUser }) => {
       {/* Error state removed, so only check for loading */}
       {!loading && (
         <div>
-          {currentTab === "declarations" && (
-            <WealthDeclarationRegister adminUser={adminUser} />
-          )}
+          {currentTab === "declarations" && (<WealthDeclarationRegister adminUser={adminUser} />)}
+          {currentTab === "hr-sub-dept-users" && (<HRSubDepartmentUsers adminUser={adminUser} /> )}
           {currentTab === "email" && <EmailManagement adminUser={adminUser} />}
-          {currentTab === "wealth-register" && (
-            <WealthDeclarationRegister adminUser={adminUser} />
-          )}
-          {currentTab === "dept-user-status" && (
-            <DepartmentUserStatus adminUser={adminUser} />
-          )}
+          {currentTab === "wealth-register" && (<WealthDeclarationRegister adminUser={adminUser} />)}
+          {currentTab === "dept-user-status" && (<DepartmentUserStatus adminUser={adminUser} />)}
         </div>
       )}
     </div>

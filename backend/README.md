@@ -192,6 +192,32 @@ npm start
 - `POST /api/declarations` - Submit declaration
 - `GET /api/declarations` - Get user declarations
 
+### HR Admin
+
+HR admins are department-scoped. The following endpoint lists all employees (users) within the HR admin's assigned `sub_department` (and, if present, restricted to the same `department`). Requires an admin JWT with role `hr_admin`.
+
+- `GET /api/hr/sub-department/users` – Returns an array of user records with basic profile fields (id, payroll_number, name parts, email, designation, department, sub_department, nature_of_employment). This is intended for HR overview screens (no financial declaration data). Response shape:
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 123,
+      "payroll_number": "PN00123",
+      "first_name": "Jane",
+      "other_names": null,
+      "surname": "Doe",
+      "email": "jane.doe@example.com",
+      "designation": "Officer",
+      "department": "Department of Health",
+      "sub_department": "Public Health",
+      "nature_of_employment": "Permanent"
+    }
+  ]
+}
+```
+
 ## Validation
 
 Input validation has been centralized in `middleware/requestValidators.js` to ensure consistent constraints, error formatting and to reduce duplication.
