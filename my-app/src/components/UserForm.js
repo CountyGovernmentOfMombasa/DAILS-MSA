@@ -447,8 +447,7 @@ const UserFormInner = () => {
                                 existingData?.other_names ||
                                 userData.other_names
                               }
-                              onChange={handleChange}
-                              required
+                              onChange={handleChange}                              
                               className="py-3"
                               style={{ borderRadius: "12px" }}
                             />
