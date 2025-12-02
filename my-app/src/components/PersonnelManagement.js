@@ -1,11 +1,9 @@
 import React from 'react';
-import { DEPARTMENTS as departments } from '../constants/departments';
 
 // Accept either `users` or legacy `declarations` prop for backwards compatibility.
 const PersonnelManagement = ({ 
   users, 
   declarations, 
-  onAddPersonnel, 
   onRemovePersonnel,
   onPageChange,
   currentPage = 1,
@@ -55,50 +53,6 @@ const PersonnelManagement = ({
           </div>
         )}
       </div>
-      {/* Add Personnel Form */}
-      <form
-        className="mb-4"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          const formData = new FormData(e.target);
-          const newPerson = Object.fromEntries(formData.entries());
-          // If payroll_number is empty, use national_id as a fallback
-          if (!newPerson.payroll_number) {
-            newPerson.payroll_number = newPerson.national_id;
-          }
-          if (onAddPersonnel) {
-            await onAddPersonnel(newPerson);
-          }
-          e.target.reset();
-        }}
-      >
-        <div className="row g-2">
-          <div className="col-md-2">
-            <input name="national_id" className="form-control mb-2" placeholder="National ID" required />
-          </div>
-          <div className="col-md-2">
-            <input name="payroll_number" className="form-control mb-2" placeholder="Payroll Number (optional)" />
-          </div>
-          <div className="col-md-3">
-            <input name="first_name" className="form-control mb-2" placeholder="First Name" required />
-          </div>
-          <div className="col-md-3">
-            <input name="other_names" className="form-control mb-2" placeholder="Other Names" />
-          </div>
-          <div className="col-md-2">
-            <input name="surname" className="form-control mb-2" placeholder="Surname" required />
-          </div>
-          <div className="col-md-4">
-            <select name="department" className="form-control mb-2" required>
-              <option value="">Select Department</option>
-              {departments.map(dept => (
-                <option key={dept} value={dept}>{dept}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <button type="submit" className="btn btn-success mt-2">Add Personnel</button>
-      </form>
       {/* Personnel List */}
       <div className="table-responsive">
         <table className="table table-striped table-hover">

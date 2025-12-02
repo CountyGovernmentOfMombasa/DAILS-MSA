@@ -19,13 +19,13 @@ const User = {
     const bcrypt = require("bcryptjs");
     const {
       payroll_number,
-      birthdate,
       password,
       first_name,
       other_names,
       surname,
       email,
       national_id = null,
+      birthdate,
       place_of_birth = null,
       marital_status = null,
       postal_address = null,

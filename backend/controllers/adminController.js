@@ -317,6 +317,7 @@ const pool = require("../config/db");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const AdminUser = require("../models/AdminUser");
+const User = require("../models/userModel");
 const PDFDocument = require("pdfkit");
 const sendSMSUtil = require("../util/sendSMS");
 const { isValidPhone, normalizePhone } = require("../util/phone");
@@ -1753,6 +1754,7 @@ exports.getDistinctDesignations = async (req, res) => {
 // Create a new user (admin only). Non-super admins are restricted to their department.
 exports.createUser = async (req, res) => {
   try {
+    const User = require("../models/userModel");
     const {
       payroll_number,
       first_name,
@@ -1760,7 +1762,8 @@ exports.createUser = async (req, res) => {
       other_names = null,
       national_id,
       department,
-      sub_department = null,
+      birthdate,
+      sub_department,
       email = null,
       phone_number = null,
     } = req.body || {};
@@ -1770,11 +1773,13 @@ exports.createUser = async (req, res) => {
       !first_name ||
       !surname ||
       !national_id ||
-      !department
+      !department ||
+      !birthdate ||
+      !sub_department
     ) {
       return res.status(400).json({
         message:
-          "payroll_number, first_name, surname, national_id and department are required",
+          "payroll_number, first_name, surname, national_id, department, sub_department, and birthdate are required",
       });
     }
 
@@ -1840,6 +1845,7 @@ exports.createUser = async (req, res) => {
       other_names,
       national_id,
       department,
+      birthdate,
       sub_department,
       email,
       phone_number: normalizedPhone,

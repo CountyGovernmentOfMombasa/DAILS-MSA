@@ -5,6 +5,7 @@ import { saveAs } from 'file-saver';
 import EmailManagement from './EmailManagement';
 import AdminEmailAuditTab from './AdminEmailAuditTab';
 import AdminUserCreation from './AdminUserCreation';
+import AddUserForm from './AddUserForm';
 import AdminConsentLogs from './AdminConsentLogs';
 import DepartmentOverview from './DepartmentOverview';
 import DepartmentManagement from './DepartmentManagement';
@@ -436,6 +437,9 @@ const AdminPage = ({ adminUser }) => {
       if (!res.ok || !data.success) throw new Error(data.message || 'Failed to add user');
       // Prepend new user to list
       setAllUsers(prev => [data.user, ...prev]);
+      setAdminToast({
+        show: true, message: `User added. Temp password: ${data.temporaryPassword}`
+      });
       alert('User added. Temporary password: ' + data.temporaryPassword);
     } catch (err) {
       alert('Error adding user: ' + err.message);
@@ -961,6 +965,17 @@ const handleRemovePersonnel = async (person) => {
                 >
                   <i className="bi bi-person-gear me-2"></i>
                   Admin Users
+                </button>
+              </li>
+            )}
+            {isSuper && (
+              <li className="nav-item" role="presentation">
+                <button
+                  className={`nav-link ${currentTab === 'add-user' ? 'active' : ''}`}
+                  onClick={() => setCurrentTab('add-user')}
+                  type="button"
+                >
+                  <i className="bi bi-person-plus me-2"></i>Add User
                 </button>
               </li>
             )}
@@ -1557,6 +1572,11 @@ const handleRemovePersonnel = async (person) => {
                     </div>
                   </div>
                 </div>
+              </div>
+            )}
+            {currentTab === 'add-user' && isSuper && (
+              <div className="tab-pane fade show active">
+                <AddUserForm />
               </div>
             )}
 

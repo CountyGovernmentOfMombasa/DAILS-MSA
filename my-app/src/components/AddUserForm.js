@@ -63,7 +63,7 @@ const AddUserForm = () => {
         setLoading(false);
         return;
       }
-      const res = await fetch('/api/it-admin/create-user', {
+      const res = await fetch('/api/admin/users', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
