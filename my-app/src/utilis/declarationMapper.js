@@ -23,10 +23,12 @@ export function mapDeclarationToUserForm(decl) {
     postal_address: decl.postal_address || '',
     physical_address: decl.physical_address || '',
     email: decl.email || '',
+    phone_number: decl.phone_number || '',
     national_id: decl.national_id || '',
     payroll_number: decl.payroll_number || '',
     designation: decl.designation || '',
     department: decl.department || '',
+    sub_department: decl.sub_department || '',
     employment_nature: employmentNature,
     nature_of_employment: employmentNature,
     declaration_type: decl.declaration_type || ''
