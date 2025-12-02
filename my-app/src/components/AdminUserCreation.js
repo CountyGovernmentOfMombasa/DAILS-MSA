@@ -90,7 +90,8 @@ const AdminUserCreation = ({ adminUser }) => {
             ...prev,
             first_name: autoFirst,
             surname: autoSurname,
-            department: prev.role === 'super_admin' ? '' : (data.user.department || prev.department),
+            userId: data.user.id || prev.userId,
+            department: prev.role === 'super_admin' ? '' : (data.user.department || prev.department), // Populate department from user record
             username: nextUsername
           };
         });
