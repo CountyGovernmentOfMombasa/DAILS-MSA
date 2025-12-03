@@ -15,9 +15,7 @@ class AdminUser {
     this.department = data.department || null;
     this.sub_department = data.sub_department || data.subDepartment || null;
     // Linkage fields (may be absent in legacy rows)
-    this.user_id = Object.prototype.hasOwnProperty.call(data, "user_id")
-      ? data.user_id
-      : null;
+    this.user_id = data.user_id || data.userId || null;
     this.linked_national_id =
       data.linked_national_id || data.national_id || null;
     this.linked_user_email = data.linked_user_email || data.user_email || null;
@@ -121,12 +119,14 @@ class AdminUser {
         surname,
         created_by,
         is_active,
-        user_id,
+        userId,
       } = adminData;
-      const allowedRoles = ["super_admin", "hr_admin", "it_admin"];
+      const allowedRoles = ["super_admin", "hr_admin", "it_admin", "finance_admin"];
       if (!role || !allowedRoles.includes(role)) role = "hr_admin";
       if (typeof is_active === "undefined") is_active = true;
-      const hashedPassword = await bcrypt.hash(password, 10);
+      // Only hash password if it's provided (for non-linked users)
+      // For linked users, password will be undefined, and we store null.
+      const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
 
       const insertAttempts = [
         // New preferred schema including user_id + sub_department + other_names + surname
@@ -135,16 +135,16 @@ class AdminUser {
           params: [
             username,
             hashedPassword,
-            email,
+            email || null,
             role,
             department,
             sub_department || "Unknown",
             first_name,
-            other_names,
+            other_names || null,
             surname,
-            created_by,
+            created_by || null,
             is_active,
-            user_id || null,
+            userId || null,
           ],
         },
         {
@@ -152,12 +152,12 @@ class AdminUser {
           params: [
             username,
             hashedPassword,
-            email,
+            email || null,
             role,
             department,
             sub_department || "Unknown",
             first_name,
-            other_names,
+            other_names || null,
             surname,
             created_by,
             is_active,
@@ -168,7 +168,7 @@ class AdminUser {
           params: [
             username,
             hashedPassword,
-            email,
+            email || null,
             role,
             department,
             sub_department || "Unknown",
@@ -183,7 +183,7 @@ class AdminUser {
           params: [
             username,
             hashedPassword,
-            email,
+            email || null,
             role,
             department,
             sub_department,

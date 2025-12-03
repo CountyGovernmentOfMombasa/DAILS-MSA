@@ -349,6 +349,18 @@ const LandingPage = () => {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleBlur = (e) => {
+    const { name, value } = e.target;
+    if (name === 'designation' && value && typeof value === 'string') {
+      // Convert to UPPER CASE.
+      const upperCaseValue = value.trim().toUpperCase();
+      if (upperCaseValue !== value) {
+        setForm(prev => ({ ...prev, designation: upperCaseValue }));
+      }
+    }
+    // Can add other onBlur logic here if needed in the future
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -1164,6 +1176,7 @@ const LandingPage = () => {
                           name="designation"
                           value={form.designation || ""}
                           onChange={handleChange}
+                          onBlur={handleBlur}
                           disabled={!editMode}
                           required={editMode}
                           isInvalid={!!fieldErrors.designation}
