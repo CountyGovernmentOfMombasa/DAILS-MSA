@@ -1235,7 +1235,7 @@ const LandingPage = () => {
                     <Col md={4}>
                       <Form.Group className="mb-3">
                         <Form.Label htmlFor="profile-department">
-                          Department (auto)
+                          Department
                         </Form.Label>
                         <Form.Control
                           id="profile-department"
