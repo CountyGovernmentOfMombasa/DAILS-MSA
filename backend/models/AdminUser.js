@@ -121,7 +121,6 @@ class AdminUser {
         surname,
         created_by,
         is_active,
-        user_id,
       } = adminData;
       const allowedRoles = ["super_admin", "hr_admin", "it_admin"];
       if (!role || !allowedRoles.includes(role)) role = "hr_admin";

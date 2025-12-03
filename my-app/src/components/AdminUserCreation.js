@@ -92,6 +92,7 @@ const AdminUserCreation = ({ adminUser }) => {
             surname: autoSurname,
             userId: data.user.id || prev.userId,
             department: prev.role === 'super_admin' ? '' : (data.user.department || prev.department), // Populate department from user record
+            sub_department: prev.role === 'super_admin' ? '' : (data.user.sub_department || prev.sub_department), // Populate sub-department
             username: nextUsername
           };
         });
@@ -113,9 +114,9 @@ const AdminUserCreation = ({ adminUser }) => {
     try {
       // Validation for department & sub-department when not super_admin
       if (form.linkExistingUser) {
-        if (!form.userId && !form.nationalId) {
+        if (!form.userId) {
           setLoading(false);
-          setError('Provide userId or nationalId for linking');
+          setError('Please look up a user by National ID and ensure a User ID is populated.');
           return;
         }
       } else if (form.role !== 'super_admin') {
@@ -186,16 +187,16 @@ const AdminUserCreation = ({ adminUser }) => {
         {form.linkExistingUser && (
           <div className="mb-2 border rounded p-2 bg-light">
             <div className="mb-2">
-              <label className="form-label small">User ID (optional)</label>
-              <input type="number" className="form-control form-control-sm" name="userId" value={form.userId} onChange={handleChange} placeholder="e.g. 42" />
-            </div>
-            <div className="mb-2">
-              <label className="form-label small">National ID (optional)</label>
-              <input type="text" className="form-control form-control-sm" name="nationalId" value={form.nationalId} onChange={handleChange} onBlur={handleNationalIdBlur} placeholder="e.g. 12345678" />
+              <label className="form-label small">National ID</label>
+              <input type="text" className="form-control form-control-sm" name="nationalId" value={form.nationalId} onChange={handleChange} onBlur={handleNationalIdBlur} placeholder="e.g. 12345678" required />
               {lookupLoading && <div className="small text-info mt-1">Looking up National ID...</div>}
               {(!lookupLoading && lookupNotFound) && <div className="small text-warning mt-1">No user found for that National ID.</div>}
             </div>
-            <div className="small text-muted">Provide either User ID or National ID (User ID preferred if known).</div>
+            <div className="mb-2">
+              <label className="form-label small">User ID</label>
+              <input type="number" className="form-control form-control-sm" name="userId" value={form.userId} placeholder="Populated from lookup" readOnly />
+            </div>
+            <div className="small text-muted">Enter the user's National ID to look them up and link their account.</div>
           </div>
         )}
         <div className="mb-2">
