@@ -131,6 +131,13 @@ const AdminUserCreation = ({ adminUser }) => {
           return;
         }
       }
+      // Generate a random password if not linking to an existing user
+      let password;
+      if (!form.linkExistingUser) {
+        // Simple random password generator
+        password = Math.random().toString(36).slice(-10) + 'A1!';
+      }
+
       const payload = {
         username: form.username,
         role: form.role,
@@ -140,7 +147,8 @@ const AdminUserCreation = ({ adminUser }) => {
         sub_department: form.role === 'super_admin' ? undefined : form.sub_department || undefined,
         linkExistingUser: form.linkExistingUser || undefined,
         userId: form.userId ? parseInt(form.userId,10) : undefined,
-        nationalId: form.nationalId || undefined
+        nationalId: form.nationalId || undefined,
+        password: password // Add password to payload
       };
       const res = await fetch('/api/admin/admins', {
         method: 'POST',
@@ -152,7 +160,11 @@ const AdminUserCreation = ({ adminUser }) => {
       });
       const data = await res.json();
       if (res.ok) {
-        setSuccess('Admin user created successfully!');
+        let successMessage = 'Admin user created successfully!';
+        if (password) {
+          successMessage += ` Temporary Password: ${password}`;
+        }
+        setSuccess(successMessage);
         setForm({ first_name: '', surname: '', username: '', role: 'hr_admin', department: '', sub_department: '', linkExistingUser:false, userId:'', nationalId:'' });
       } else {
         setError(data.message || 'Failed to create admin user');
