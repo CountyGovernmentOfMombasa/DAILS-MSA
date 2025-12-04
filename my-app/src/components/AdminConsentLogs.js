@@ -3,6 +3,18 @@ import axios from 'axios';
 import { Table, Pagination, Form, Spinner, Alert, Button } from 'react-bootstrap';
 
 function AdminConsentLogs() {
+  const formatDateTime = (isoString) => {
+    if (!isoString) return 'N/A';
+    try {
+      const date = new Date(isoString);
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed
+      const year = date.getFullYear();
+      const time = date.toTimeString().split(' ')[0]; // hh:mm:ss
+      return `${day}-${month}-${year} ${time}`;
+    } catch (e) { return 'Invalid Date'; }
+  };
+
   const [logs, setLogs] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -126,7 +138,7 @@ function AdminConsentLogs() {
                   <td>{log.national_id}</td>
                   <td>{log.designation}</td>
                   <td>{log.signed ? 'Yes' : 'No'}</td>
-                  <td>{new Date(log.submitted_at).toLocaleString()}</td>
+                  <td>{formatDateTime(log.submitted_at)}</td>
                 </tr>
               ))}
             </tbody>
