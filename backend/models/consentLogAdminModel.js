@@ -23,44 +23,55 @@ async function getConsentLogs({ page = 1, pageSize = 20, search = '' }) {
     // Continue; subsequent queries may still surface the underlying issue
   }
   const offset = (Number(page) - 1) * Number(pageSize);
-  let where = '';
-  let params = [];
+
+  // --- New Robust Query Building ---
+  const selectParts = ['SELECT id, full_name, national_id, designation, signed, submitted_at FROM consent_logs'];
+  const countParts = ['SELECT COUNT(*) as count FROM consent_logs'];
+  const queryParams = [];
+
   if (search) {
-    where = `WHERE full_name LIKE ? OR national_id LIKE ? OR designation LIKE ?`;
-    params = [`%${search}%`, `%${search}%`, `%${search}%`];
+    const whereClause = `WHERE full_name LIKE ? OR national_id LIKE ? OR designation LIKE ?`;
+    selectParts.push(whereClause);
+    countParts.push(whereClause);
+    const searchTerm = `%${search}%`;
+    queryParams.push(searchTerm, searchTerm, searchTerm);
   }
 
   try {
     let rows, countRows;
+
+    // Declare SQL and params here to make them accessible in the catch block
+    let selectSql, selectParams;
+
     try {
-      [rows] = await db.execute(
-        `SELECT id, full_name, national_id, designation, signed, submitted_at FROM consent_logs ${where} ORDER BY submitted_at DESC LIMIT ? OFFSET ?`,
-        [...params, Number(pageSize), offset]
-      );
+      // Finalize and execute the SELECT query
+      selectParts.push('ORDER BY submitted_at DESC LIMIT ? OFFSET ?');
+      selectSql = selectParts.join(' ');
+      selectParams = [...queryParams, Number(pageSize), Number(offset)];
+      [rows] = await db.query(selectSql, selectParams);
     } catch (qErr) {
       console.error('[CONSENT_LOGS][QUERY_FAIL] select rows', {
         code: qErr.code,
         message: qErr.message,
-        where,
-        params: [...params, Number(pageSize), offset]
+        sql: selectSql || selectParts.join(' '), // Use declared variable, fallback for safety
+        params: selectParams,
       });
       throw qErr;
     }
     try {
-      [countRows] = await db.execute(
-        `SELECT COUNT(*) as count FROM consent_logs ${where}`,
-        params
-      );
+      // Finalize and execute the COUNT query
+      const countSql = countParts.join(' ');
+      [countRows] = await db.query(countSql, queryParams);
     } catch (cErr) {
       console.error('[CONSENT_LOGS][QUERY_FAIL] count rows', {
         code: cErr.code,
         message: cErr.message,
-        where,
-        params
+        sql: countParts.join(' '),
+        params: queryParams
       });
       throw cErr;
     }
-    const total = (countRows && countRows[0] && countRows[0].count) ? countRows[0].count : 0;
+    const total = countRows?.[0]?.count || 0;
     return { logs: rows, total };
   } catch (err) {
     // If table is missing, create it on-the-fly and return empty result to avoid admin UI breakage
