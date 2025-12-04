@@ -70,7 +70,6 @@ const LandingPage = () => {
   const [declModalError, setDeclModalError] = useState("");
   const [selectedDecl, setSelectedDecl] = useState(null);
   const [adminFallbackUsed, setAdminFallbackUsed] = useState(false);
-  const [sampleDesignations, setSampleDesignations] = useState([]);
   const navigate = useNavigate();
   const profileCardRef = useRef(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -114,27 +113,6 @@ const LandingPage = () => {
     },
     [REQUIRED_PROFILE_FIELDS]
   );
-
-  // Fetch sample designations when edit mode is activated
-  useEffect(() => {
-    if (editMode && sampleDesignations.length === 0) {
-      const fetchDesignations = async () => {
-        try {
-          const token = localStorage.getItem("token");
-          const res = await fetch("/api/admin/users/designations/distinct", {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (res.ok) {
-            const data = await res.json();
-            setSampleDesignations(data.designations || []);
-          }
-        } catch (e) {
-          /* Silently fail */
-        }
-      };
-      fetchDesignations();
-    }
-  }, [editMode, sampleDesignations.length]);
 
   const handleExportPDF = async (declaration) => {
     try {
@@ -420,6 +398,14 @@ const LandingPage = () => {
       // If the error object has a 'response' property with an 'errors' object, set fieldErrors
       if (e.response && e.response.errors) {
         setFieldErrors(e.response.errors);
+        // Construct a more informative top-level error message
+        const errorCount = Object.keys(e.response.errors).length;
+        const plural = errorCount > 1 ? 's' : '';
+        setError(`Please correct the ${errorCount} validation error${plural} below.`);
+      } else {
+        // Fallback for generic network or server errors
+        const errorMessage = e.message || "Could not update profile. Please check your connection and try again.";
+        setError(errorMessage);
       }
     } finally {
       setSaving(false);
@@ -913,9 +899,6 @@ const LandingPage = () => {
                           disabled={!editMode}
                           isInvalid={!!fieldErrors.other_names}
                         />
-                        {editMode && !String(form.other_names || "").trim() && (
-                          <div className="form-text text-danger">Required.</div>
-                        )}
                         <Form.Control.Feedback type="invalid">
                           {fieldErrors.other_names}
                         </Form.Control.Feedback>
@@ -976,13 +959,6 @@ const LandingPage = () => {
                         <Form.Control.Feedback type="invalid">
                           {fieldErrors.place_of_birth}
                         </Form.Control.Feedback>
-                        {editMode && sampleDesignations.length > 0 && (
-                          <Alert variant="light" className="mt-2 p-2 small">
-                            <i className="fas fa-info-circle me-1"></i>
-                            e.g., {sampleDesignations.slice(0, 5).join(", ")}
-                            {sampleDesignations.length > 5 ? ", etc." : "."}
-                          </Alert>
-                        )}
                       </Form.Group>
                     </Col>
                     <Col md={4}>
