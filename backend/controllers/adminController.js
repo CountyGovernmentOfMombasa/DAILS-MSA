@@ -1729,28 +1729,6 @@ exports.getDistinctDepartments = async (req, res) => {
   }
 };
 
-// Get distinct designations (for dropdown filtering on frontend)
-exports.getDistinctDesignations = async (req, res) => {
-  try {
-    const [rows] = await pool.query(`
-      SELECT DISTINCT designation
-      FROM users
-      WHERE designation IS NOT NULL AND designation != ''
-      ORDER BY designation ASC
-    `);
-    const designations = rows.map((r) => r.designation);
-    res.json({
-      success: true,
-      designations,
-    });
-  } catch (error) {
-    console.error("Get distinct designations error:", error);
-    res
-      .status(500)
-      .json({ message: "Server error while fetching designations" });
-  }
-};
-
 // Create a new user (admin only). Non-super admins are restricted to their department.
 exports.createUser = async (req, res) => {
   try {

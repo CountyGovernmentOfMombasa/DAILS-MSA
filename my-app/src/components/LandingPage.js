@@ -34,6 +34,7 @@ import {
 } from "../constants/departments";
 import { NATURE_OF_EMPLOYMENT_OPTIONS } from "../constants/employment";
 import { formatToDDMMYYYY } from "../utilis/dateUtils";
+import { formatToDDMMYYYY } from "../utilis/dateUtils";
 // PDF now generated server-side; client just downloads
 // import { appendDeclarationIdToPath } from '../utilis/editContext'; // no longer needed after draft removal
 import {
@@ -71,7 +72,6 @@ const LandingPage = () => {
   const [declModalError, setDeclModalError] = useState("");
   const [selectedDecl, setSelectedDecl] = useState(null);
   const [adminFallbackUsed, setAdminFallbackUsed] = useState(false);
-  const [sampleDesignations, setSampleDesignations] = useState([]);
   const navigate = useNavigate();
   const profileCardRef = useRef(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -141,7 +141,6 @@ const LandingPage = () => {
       fetchDesignations();
     }
   }, [editMode, sampleDesignations.length]);
-
   const handleExportPDF = async (declaration) => {
     try {
       const token = localStorage.getItem("token");
@@ -344,6 +343,18 @@ const LandingPage = () => {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleBlur = (e) => {
+    const { name, value } = e.target;
+    if (name === 'designation' && value && typeof value === 'string') {
+      // Convert to UPPER CASE.
+      const upperCaseValue = value.trim().toUpperCase();
+      if (upperCaseValue !== value) {
+        setForm(prev => ({ ...prev, designation: upperCaseValue }));
+      }
+    }
+    // Can add other onBlur logic here if needed in the future
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -403,6 +414,14 @@ const LandingPage = () => {
       // If the error object has a 'response' property with an 'errors' object, set fieldErrors
       if (e.response && e.response.errors) {
         setFieldErrors(e.response.errors);
+        // Construct a more informative top-level error message
+        const errorCount = Object.keys(e.response.errors).length;
+        const plural = errorCount > 1 ? 's' : '';
+        setError(`Please correct the ${errorCount} validation error${plural} below.`);
+      } else {
+        // Fallback for generic network or server errors
+        const errorMessage = e.message || "Could not update profile. Please check your connection and try again.";
+        setError(errorMessage);
       }
     } finally {
       setSaving(false);
@@ -896,9 +915,6 @@ const LandingPage = () => {
                           disabled={!editMode}
                           isInvalid={!!fieldErrors.other_names}
                         />
-                        {editMode && !String(form.other_names || "").trim() && (
-                          <div className="form-text text-danger">Required.</div>
-                        )}
                         <Form.Control.Feedback type="invalid">
                           {fieldErrors.other_names}
                         </Form.Control.Feedback>
@@ -959,13 +975,6 @@ const LandingPage = () => {
                         <Form.Control.Feedback type="invalid">
                           {fieldErrors.place_of_birth}
                         </Form.Control.Feedback>
-                        {editMode && sampleDesignations.length > 0 && (
-                          <Alert variant="light" className="mt-2 p-2 small">
-                            <i className="fas fa-info-circle me-1"></i>
-                            e.g., {sampleDesignations.slice(0, 5).join(", ")}
-                            {sampleDesignations.length > 5 ? ", etc." : "."}
-                          </Alert>
-                        )}
                       </Form.Group>
                     </Col>
                     <Col md={4}>
@@ -1159,6 +1168,7 @@ const LandingPage = () => {
                           name="designation"
                           value={form.designation || ""}
                           onChange={handleChange}
+                          onBlur={handleBlur}
                           disabled={!editMode}
                           required={editMode}
                           isInvalid={!!fieldErrors.designation}
@@ -1217,7 +1227,7 @@ const LandingPage = () => {
                     <Col md={4}>
                       <Form.Group className="mb-3">
                         <Form.Label htmlFor="profile-department">
-                          Department (auto)
+                          Department
                         </Form.Label>
                         <Form.Control
                           id="profile-department"

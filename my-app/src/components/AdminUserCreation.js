@@ -90,7 +90,9 @@ const AdminUserCreation = ({ adminUser }) => {
             ...prev,
             first_name: autoFirst,
             surname: autoSurname,
-            department: prev.role === 'super_admin' ? '' : (data.user.department || prev.department),
+            userId: data.user.id || prev.userId,
+            department: prev.role === 'super_admin' ? '' : (data.user.department || prev.department), // Populate department from user record
+            sub_department: prev.role === 'super_admin' ? '' : (data.user.sub_department || prev.sub_department), // Populate sub-department
             username: nextUsername
           };
         });
@@ -112,9 +114,9 @@ const AdminUserCreation = ({ adminUser }) => {
     try {
       // Validation for department & sub-department when not super_admin
       if (form.linkExistingUser) {
-        if (!form.userId && !form.nationalId) {
+        if (!form.userId) {
           setLoading(false);
-          setError('Provide userId or nationalId for linking');
+          setError('Please look up a user by National ID and ensure a User ID is populated.');
           return;
         }
       } else if (form.role !== 'super_admin') {
@@ -129,6 +131,13 @@ const AdminUserCreation = ({ adminUser }) => {
           return;
         }
       }
+      // Generate a random password if not linking to an existing user
+      let password;
+      if (!form.linkExistingUser) {
+        // Simple random password generator
+        password = Math.random().toString(36).slice(-10) + 'A1!';
+      }
+
       const payload = {
         username: form.username,
         role: form.role,
@@ -138,7 +147,8 @@ const AdminUserCreation = ({ adminUser }) => {
         sub_department: form.role === 'super_admin' ? undefined : form.sub_department || undefined,
         linkExistingUser: form.linkExistingUser || undefined,
         userId: form.userId ? parseInt(form.userId,10) : undefined,
-        nationalId: form.nationalId || undefined
+        nationalId: form.nationalId || undefined,
+        password: password // Add password to payload
       };
       const res = await fetch('/api/admin/admins', {
         method: 'POST',
@@ -150,7 +160,11 @@ const AdminUserCreation = ({ adminUser }) => {
       });
       const data = await res.json();
       if (res.ok) {
-        setSuccess('Admin user created successfully!');
+        let successMessage = 'Admin user created successfully!';
+        if (password) {
+          successMessage += ` Temporary Password: ${password}`;
+        }
+        setSuccess(successMessage);
         setForm({ first_name: '', surname: '', username: '', role: 'hr_admin', department: '', sub_department: '', linkExistingUser:false, userId:'', nationalId:'' });
       } else {
         setError(data.message || 'Failed to create admin user');
@@ -185,16 +199,16 @@ const AdminUserCreation = ({ adminUser }) => {
         {form.linkExistingUser && (
           <div className="mb-2 border rounded p-2 bg-light">
             <div className="mb-2">
-              <label className="form-label small">User ID (optional)</label>
-              <input type="number" className="form-control form-control-sm" name="userId" value={form.userId} onChange={handleChange} placeholder="e.g. 42" />
-            </div>
-            <div className="mb-2">
-              <label className="form-label small">National ID (optional)</label>
-              <input type="text" className="form-control form-control-sm" name="nationalId" value={form.nationalId} onChange={handleChange} onBlur={handleNationalIdBlur} placeholder="e.g. 12345678" />
+              <label className="form-label small">National ID</label>
+              <input type="text" className="form-control form-control-sm" name="nationalId" value={form.nationalId} onChange={handleChange} onBlur={handleNationalIdBlur} placeholder="e.g. 12345678" required />
               {lookupLoading && <div className="small text-info mt-1">Looking up National ID...</div>}
               {(!lookupLoading && lookupNotFound) && <div className="small text-warning mt-1">No user found for that National ID.</div>}
             </div>
-            <div className="small text-muted">Provide either User ID or National ID (User ID preferred if known).</div>
+            <div className="mb-2">
+              <label className="form-label small">User ID</label>
+              <input type="number" className="form-control form-control-sm" name="userId" value={form.userId} placeholder="Populated from lookup" readOnly />
+            </div>
+            <div className="small text-muted">Enter the user's National ID to look them up and link their account.</div>
           </div>
         )}
         <div className="mb-2">

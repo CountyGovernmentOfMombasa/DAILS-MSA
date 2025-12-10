@@ -47,6 +47,6 @@ router.post('/check-password-status', authController.checkPasswordStatus);
 
 // --- Profile ---
 router.get('/me', verifyToken, authController.getMe); // Get user profile
-router.put('/me', verifyToken, updateMeValidators, handleValidation, authController.updateMe); // Update user profile (validated)
+router.put('/me', verifyToken, authController.updateMe); // Update user profile (validated in controller)
 
 module.exports = router;

@@ -1,7 +1,20 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import axios from 'axios';
+import { Table, Pagination, Form, Spinner, Alert, Button } from 'react-bootstrap';
 
 function AdminConsentLogs() {
+  const formatDateTime = (isoString) => {
+    if (!isoString) return 'N/A';
+    try {
+      const date = new Date(isoString);
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed
+      const year = date.getFullYear();
+      const time = date.toTimeString().split(' ')[0]; // hh:mm:ss
+      return `${day}-${month}-${year} ${time}`;
+    } catch (e) { return 'Invalid Date'; }
+  };
+
   const [logs, setLogs] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -78,59 +91,69 @@ function AdminConsentLogs() {
   const totalPages = Math.ceil(total / pageSize);
 
   return (
-    <div style={{ maxWidth: 900, margin: '40px auto', padding: 24 }}>
-      <h2>Consent Logs</h2>
-      <div style={{ marginBottom: 16 }}>
-        <input
+    <div className="card shadow-sm">
+      <div className="card-header bg-light d-flex justify-content-between align-items-center">
+        <h5 className="mb-0"><i className="bi bi-clipboard-check me-2" />Consent Logs</h5>
+        <Form.Control
           type="text"
           placeholder="Search by name, ID, or designation"
           value={search}
           onChange={e => { setPage(1); setSearch(e.target.value); }}
-          style={{ padding: 8, width: 300, borderRadius: 4, border: '1px solid #ccc' }}
+          style={{ width: '300px' }}
         />
       </div>
-      {loading ? <div>Loading...</div> : error ? (
-        <div style={{ color: 'red', marginBottom: 16 }}>
-          {error}
-          {lastStatus && <div style={{ fontSize: '0.85em' }}>HTTP {lastStatus}</div>}
-          <button onClick={fetchLogs} style={{ marginTop: 8 }}>Retry</button>
-        </div>
-      ) : (
-        <>
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16 }}>
+      <div className="card-body">
+        {loading ? (
+          <div className="text-center py-5">
+            <Spinner animation="border" />
+            <p className="mt-2">Loading logs...</p>
+          </div>
+        ) : error ? (
+          <Alert variant="danger" className="d-flex justify-content-between align-items-center">
+            <div>
+              <strong>Error:</strong> {error}
+              {lastStatus && <small className="d-block">HTTP Status: {lastStatus}</small>}
+            </div>
+            <Button variant="outline-danger" size="sm" onClick={fetchLogs}>Retry</Button>
+          </Alert>
+        ) : (
+          <Table striped bordered hover responsive>
             <thead>
-              <tr style={{ background: '#f0f0f0' }}>
-                <th style={{ padding: 8, border: '1px solid #ddd' }}>#</th>
-                <th style={{ padding: 8, border: '1px solid #ddd' }}>Full Name</th>
-                <th style={{ padding: 8, border: '1px solid #ddd' }}>National ID</th>
-                <th style={{ padding: 8, border: '1px solid #ddd' }}>Designation</th>
-                <th style={{ padding: 8, border: '1px solid #ddd' }}>Signed</th>
-                <th style={{ padding: 8, border: '1px solid #ddd' }}>Submitted At</th>
+              <tr>
+                <th>#</th>
+                <th>Full Name</th>
+                <th>National ID</th>
+                <th>Designation</th>
+                <th>Signed</th>
+                <th>Submitted At</th>
               </tr>
             </thead>
             <tbody>
               {logs.length === 0 ? (
-                <tr><td colSpan={6} style={{ textAlign: 'center', padding: 16 }}>No logs found.</td></tr>
+                <tr><td colSpan={6} className="text-center text-muted py-4">No logs found.</td></tr>
               ) : logs.map((log, idx) => (
                 <tr key={log.id}>
-                  <td style={{ padding: 8, border: '1px solid #eee' }}>{(page - 1) * pageSize + idx + 1}</td>
-                  <td style={{ padding: 8, border: '1px solid #eee' }}>{log.full_name}</td>
-                  <td style={{ padding: 8, border: '1px solid #eee' }}>{log.national_id}</td>
-                  <td style={{ padding: 8, border: '1px solid #eee' }}>{log.designation}</td>
-                  <td style={{ padding: 8, border: '1px solid #eee' }}>{log.signed ? 'Yes' : 'No'}</td>
-                  <td style={{ padding: 8, border: '1px solid #eee' }}>{new Date(log.submitted_at).toLocaleString()}</td>
+                  <td>{(page - 1) * pageSize + idx + 1}</td>
+                  <td>{log.full_name}</td>
+                  <td>{log.national_id}</td>
+                  <td>{log.designation}</td>
+                  <td>{log.signed ? 'Yes' : 'No'}</td>
+                  <td>{formatDateTime(log.submitted_at)}</td>
                 </tr>
               ))}
             </tbody>
-          </table>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>Page {page} of {totalPages}</span>
-            <div>
-              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>Prev</button>
-              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>Next</button>
-            </div>
-          </div>
-        </>
+          </Table>
+        )}
+      </div>
+      {total > 0 && !loading && (
+        <div className="card-footer d-flex justify-content-between align-items-center">
+          <small className="text-muted">Showing {logs.length} of {total} records</small>
+          <Pagination size="sm" className="mb-0">
+            <Pagination.Prev onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} />
+            <Pagination.Item active>{page}</Pagination.Item>
+            <Pagination.Next onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} />
+          </Pagination>
+        </div>
       )}
     </div>
   );

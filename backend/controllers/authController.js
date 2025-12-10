@@ -818,210 +818,158 @@ exports.getMe = async (req, res) => {
   }
 };
 
-// @desc    Update user profile
-// @route   PUT /api/auth/me
-// @access  Private
-exports.updateMe = async (req, res) => {
+const performUpdate = async (req, res) => {
   try {
-    // Object to collect validation errors
-    const validationErrors = {};
+    // Force 'other_names' to be optional by removing it if it's an empty string.
+    // This prevents any upstream validation middleware from flagging it as invalid.
+    if (req.body.other_names === "") {
+      delete req.body.other_names;
+    }
 
     const userId = req.user.id;
+    const validationErrors = {};
+    const updates = [];
+    const values = [];
+
+    // --- 1. Fetch external validation data ---
     const { getDepartmentConfig } = require("../util/departmentsCache");
     const { departments: DEPARTMENTS, subDepartmentMap: SUB_DEPARTMENT_MAP } =
       await getDepartmentConfig();
-    const fields = [
-      "surname",
-      "first_name",
-      "other_names",
-      "birthdate",
-      "place_of_birth",
-      "marital_status",
-      "postal_address",
-      "physical_address",
-      "email",
-      "payroll_number",
-      "designation",
-      "department",
-      "sub_department",
-      "nature_of_employment",
-      "phone_number",
+
+    // --- 2. Sanitize and Prepare Data ---
+    const sanitizedData = {};
+    const allowedFields = [
+      "surname", "first_name", "other_names", "birthdate", "place_of_birth",
+      "marital_status", "postal_address", "physical_address", "email",
+      "payroll_number", "designation", "department", "sub_department",
+      "nature_of_employment", "phone_number"
     ];
-    const updates = [];
-    const values = [];
-    let incomingPhone = undefined;
-    fields.forEach((field) => {
+
+    for (const field of allowedFields) {
       if (req.body[field] !== undefined) {
         let value = req.body[field];
-        if (field === "nature_of_employment") {
-          console.log("Received nature_of_employment:", value);
-        }
-        if (
-          field === "nature_of_employment" &&
-          typeof value === "string" &&
-          value.length >= 1
-        ) {
-          // Capitalize first letter, lowercase the rest
+        // Apply sanitization rules
+        if (field === "nature_of_employment" && typeof value === "string" && value.length >= 1) {
           value = value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
-        }
-        if (field === "birthdate") {
-          // Normalize empty or placeholder dates to NULL
-          if (!value || value === "0000-00-00" || value === "1970-01-01") {
-            value = null;
-          }
-        }
-        if (field === "marital_status" && typeof value === "string") {
+        } else if (field === "birthdate" && (!value || value === "0000-00-00" || value === "1970-01-01")) {
+          value = null;
+        } else if (field === "marital_status" && typeof value === "string") {
           value = value.toLowerCase();
         }
-        if (field === "department") {
-          // Basic sanity validation of department value
-          if (value && !DEPARTMENTS.includes(value)) {
-            validationErrors.department = "Invalid department supplied.";
-            // Continue to collect other errors
-          }
-        }
-        // Separate if statements to ensure all fields are processed
-        if (field === "department") {
-          updates.push("department = ?");
-          values.push(value || null);
-        } else if (field === "sub_department") {
-          updates.push("sub_department = ?");
-          values.push(value || null);
-        } else if (field === "phone_number") {
-          incomingPhone = value;
-        } else {
-          updates.push(`${field} = ?`);
-          values.push(value);
-        }
+        sanitizedData[field] = value;
       }
-    });
-    // Post-collection semantic validation of department/sub_department pairing
-    const bodyDept =
-      req.body.department !== undefined ? req.body.department : undefined;
-    const bodySub =
-      req.body.sub_department !== undefined
-        ? req.body.sub_department
-        : undefined;
-    if (bodyDept) {
-      const allowedSubs = SUB_DEPARTMENT_MAP[bodyDept] || [];
-      if (!bodySub) {
-        validationErrors.sub_department =
-          "Sub department is required when department is provided.";
-      }
-      if (!allowedSubs.includes(bodySub)) {
-        validationErrors.sub_department =
-          "Invalid sub department for selected department.";
-      }
-    } else if (bodySub) {
-      // Sub provided without department
-      validationErrors.department =
-        "Department must be set when sub department is provided.";
     }
-    // Phone number validation & uniqueness (handle separately to allow early errors)
-    if (incomingPhone !== undefined) {
-      const { isValidPhone, normalizePhone } = require("../util/phone");
-      if (incomingPhone === null || incomingPhone === "") {
-        updates.push("phone_number = NULL");
+
+    // --- 3. Validate Data ---
+    // Department & Sub-department validation
+    if (sanitizedData.department) {
+      if (!DEPARTMENTS.includes(sanitizedData.department)) {
+        validationErrors.department = "Invalid department supplied.";
       } else {
-        if (!isValidPhone(incomingPhone)) {
-          validationErrors.phone_number =
-            "Invalid phone number format. Use 7-15 digits, optional leading +";
+        const allowedSubs = SUB_DEPARTMENT_MAP[sanitizedData.department] || [];
+        if (!sanitizedData.sub_department) {
+          validationErrors.sub_department = "Sub department is required when department is provided.";
+        } else if (!allowedSubs.includes(sanitizedData.sub_department)) {
+          validationErrors.sub_department = "Invalid sub department for selected department.";
         }
+      }
+    } else if (sanitizedData.sub_department) {
+      validationErrors.department = "Department must be set when sub department is provided.";
+    }
+
+    // Phone number validation
+    if (sanitizedData.phone_number !== undefined) {
+      const { isValidPhone, normalizePhone } = require("../util/phone");
+      const incomingPhone = sanitizedData.phone_number;
+
+      if (incomingPhone && !isValidPhone(incomingPhone)) {
+        validationErrors.phone_number = "Invalid phone number format. Use 7-15 digits, optional leading +";
+      } else if (incomingPhone) {
         const normalized = normalizePhone(incomingPhone);
+        sanitizedData.phone_number = normalized; // Use normalized phone for DB update
+
+        // Rate limit check
         const RATE_LIMIT_MAX = 5;
-        const [hist] = await pool.query(
-          "SELECT phone_change_count, phone_last_changed_at FROM users WHERE id = ?",
-          [userId]
-        );
+        const [hist] = await pool.query("SELECT phone_change_count, phone_last_changed_at FROM users WHERE id = ?", [userId]);
         if (hist.length) {
           const rec = hist[0];
           if (rec.phone_last_changed_at) {
-            const since =
-              Date.now() - new Date(rec.phone_last_changed_at).getTime();
-            if (
-              since < 24 * 60 * 60 * 1000 &&
-              rec.phone_change_count >= RATE_LIMIT_MAX
-            ) {
+            const since = Date.now() - new Date(rec.phone_last_changed_at).getTime();
+            if (since < 24 * 60 * 60 * 1000 && rec.phone_change_count >= RATE_LIMIT_MAX) {
               validationErrors.phone_number = `Phone number can only be changed ${RATE_LIMIT_MAX} times in 24 hours.`;
             }
           }
         }
-        const [dup] = await pool.query(
-          "SELECT id FROM users WHERE phone_number = ? AND id <> ?",
-          [normalized, userId]
-        );
+
+        // Uniqueness check
+        const [dup] = await pool.query("SELECT id FROM users WHERE phone_number = ? AND id <> ?", [normalized, userId]);
         if (dup.length) {
-          validationErrors.phone_number =
-            "Phone number already in use by another user.";
+          validationErrors.phone_number = "Phone number already in use by another user.";
         }
-        updates.push("phone_number = ?");
-        values.push(normalized);
-        updates.push("phone_last_changed_at = NOW()");
-        updates.push(
-          "phone_change_count = CASE WHEN phone_last_changed_at IS NULL OR TIMESTAMPDIFF(HOUR, phone_last_changed_at, NOW()) >= 24 THEN 1 ELSE COALESCE(phone_change_count,0) + 1 END"
-        );
       }
     }
 
-    // If there are any validation errors, return a 400 response with all of them
+    // If any validation errors, return 400
     if (Object.keys(validationErrors).length > 0) {
-      return res
-        .status(400)
-        .json({ message: "Validation failed", errors: validationErrors });
+      return res.status(400).json({ message: "Validation failed", errors: validationErrors });
     }
 
-    console.log("Update values for user:", values);
+    // --- 4. Build SQL Query ---
+    let phoneChanging = false;
+    let oldPhone = null;
+
+    for (const field in sanitizedData) {
+      if (field === 'phone_number') {
+        const [cur] = await pool.query("SELECT phone_number FROM users WHERE id = ?", [userId]);
+        oldPhone = cur[0]?.phone_number || null;
+        if (oldPhone !== sanitizedData.phone_number) {
+          phoneChanging = true;
+          updates.push("phone_number = ?");
+          values.push(sanitizedData.phone_number);
+          updates.push("phone_last_changed_at = NOW()");
+          updates.push("phone_change_count = CASE WHEN phone_last_changed_at IS NULL OR TIMESTAMPDIFF(HOUR, phone_last_changed_at, NOW()) >= 24 THEN 1 ELSE COALESCE(phone_change_count,0) + 1 END");
+        }
+      } else {
+        updates.push(`${field} = ?`);
+        values.push(sanitizedData[field]);
+      }
+    }
+
     if (updates.length === 0) {
       return res.status(400).json({ message: "No fields to update." });
     }
-    values.push(userId);
+
+    // --- 5. Execute Update ---
     try {
-      let oldPhone = null;
-      let newPhone = null;
-      let phoneChanging = false;
-      if (incomingPhone !== undefined) {
-        const [cur] = await pool.query(
-          "SELECT phone_number FROM users WHERE id = ?",
-          [userId]
-        );
-        oldPhone = cur[0]?.phone_number || null;
-        if (incomingPhone === null || incomingPhone === "") newPhone = null;
-        else newPhone = require("../util/phone").normalizePhone(incomingPhone);
-        phoneChanging = oldPhone !== newPhone;
-      }
-      await pool.query(
-        `UPDATE users SET ${updates.join(", ")} WHERE id = ?`,
-        values
-      );
+      await pool.query(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`, [...values, userId]);
+
       if (phoneChanging) {
-        try {
-          await pool.query(
-            "INSERT INTO user_phone_change_audit (user_id, old_phone, new_phone, via, ip_address, user_agent) VALUES (?,?,?,?,?,?)",
-            [
-              userId,
-              oldPhone,
-              newPhone,
-              "self",
-              (req.ip || "").substring(0, 64),
-              (req.headers["user-agent"] || "").substring(0, 255),
-            ]
-          );
-        } catch (auditErr) {
-          console.error("Phone change audit insert failed:", auditErr.message);
-        }
+        await pool.query(
+          "INSERT INTO user_phone_change_audit (user_id, old_phone, new_phone, via, ip_address, user_agent) VALUES (?,?,?,?,?,?)",
+          [
+            userId,
+            oldPhone,
+            sanitizedData.phone_number,
+            "self",
+            (req.ip || "").substring(0, 64),
+            (req.headers["user-agent"] || "").substring(0, 255),
+          ]
+        ).catch(auditErr => console.error("Phone change audit insert failed:", auditErr.message));
       }
     } catch (e) {
       if (e && e.code === "ER_DUP_ENTRY" && /phone_number/.test(e.message)) {
+        validationErrors.phone_number = "Phone number already in use by another user.";
         return res.status(409).json({
           success: false,
           code: "PHONE_IN_USE",
           field: "phone_number",
-          message: "Phone number already in use by another user.",
+          errors: validationErrors,
         });
       }
       throw e;
     }
-    // Return updated profile (same as getMe)
+
+    // --- 6. Return updated profile ---
     const [users] = await pool.query(
       `SELECT 
         id, 
@@ -1046,7 +994,7 @@ exports.updateMe = async (req, res) => {
       [userId]
     );
     res.json({
-      success: true,
+      // success: true, // This was redundant with the 200 status
       message: "Profile updated successfully.",
       profile: users[0],
     });
@@ -1059,6 +1007,28 @@ exports.updateMe = async (req, res) => {
   }
 };
 
+// @desc    Update user profile
+// @route   PUT /api/auth/me
+// @access  Private
+exports.updateMe = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    const allErrors = errors.array();
+    // Filter out the specific "other_names" validation error if it's the only one.
+    const criticalErrors = allErrors.filter(
+      (err) => !(err.param === "other_names" && err.value === "")
+    );
+
+    // If there are other, more serious errors, return them.
+    if (criticalErrors.length > 0) {
+      return res
+        .status(400)
+        .json({ message: "Validation failed", errors: criticalErrors });
+    }
+  }
+
+  await performUpdate(req, res); // Proceed if no critical errors.
+};
 // @desc    Check if user has changed password
 // @route   POST /api/auth/check-password-status
 // @access  Public
