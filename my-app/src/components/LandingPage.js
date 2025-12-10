@@ -34,7 +34,6 @@ import {
 } from "../constants/departments";
 import { NATURE_OF_EMPLOYMENT_OPTIONS } from "../constants/employment";
 import { formatToDDMMYYYY } from "../utilis/dateUtils";
-import { formatToDDMMYYYY } from "../utilis/dateUtils";
 // PDF now generated server-side; client just downloads
 // import { appendDeclarationIdToPath } from '../utilis/editContext'; // no longer needed after draft removal
 import {
@@ -76,6 +75,7 @@ const LandingPage = () => {
   const profileCardRef = useRef(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [missingProfile, setMissingProfile] = useState([]);
+  const [sampleDesignations, setSampleDesignations] = useState([]);
   const {
     hasAdminAccess,
     adminToken,
