@@ -33,6 +33,7 @@ import {
   SUB_DEPARTMENT_PARENT,
 } from "../constants/departments";
 import { NATURE_OF_EMPLOYMENT_OPTIONS } from "../constants/employment";
+import { formatToDDMMYYYY } from "../utilis/dateUtils";
 // PDF now generated server-side; client just downloads
 // import { appendDeclarationIdToPath } from '../utilis/editContext'; // no longer needed after draft removal
 import {
@@ -115,6 +116,11 @@ const LandingPage = () => {
     [REQUIRED_PROFILE_FIELDS]
   );
 
+  // Helper to consistently format dates in UI
+  const formatDateDDMMYYYY = (dateString) => {
+    return formatToDDMMYYYY(dateString);
+  };
+
   // Fetch sample designations when edit mode is activated
   useEffect(() => {
     if (editMode && sampleDesignations.length === 0) {
@@ -179,19 +185,8 @@ const LandingPage = () => {
     if (s === "rejected") return "Requesting Clarification";
     return s.charAt(0).toUpperCase() + s.slice(1);
   };
-  // Fetch declarations
-  const formatDateDDMMYYYY = (dateString) => {
-    if (!dateString) return "N/A";
-    try {
-      const date = new Date(dateString);
-      const day = String(date.getDate()).padStart(2, "0");
-      const month = String(date.getMonth() + 1).padStart(2, "0"); // Months are 0-indexed
-      const year = date.getFullYear();
-      return `${day}-${month}-${year}`;
-    } catch (e) {
-      return "N/A";
-    }
-  };
+  // Fetch declarations: use the shared formatter
+  // Already defined above: formatDateDDMMYYYY -> formatToDDMMYYYY
 
   useEffect(() => {
     let cancelled = false;

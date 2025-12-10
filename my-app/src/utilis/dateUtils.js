@@ -15,3 +15,13 @@ export function validateDate(dateString) {
     date.getFullYear() === parseInt(year)
   );
 }
+
+// Format a date string or Date to dd/mm/yyyy
+export function formatToDDMMYYYY(input) {
+  const d = typeof input === 'string' ? new Date(input) : input;
+  if (!(d instanceof Date) || isNaN(d.getTime())) return '';
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = String(d.getFullYear());
+  return `${day}/${month}/${year}`;
+}
