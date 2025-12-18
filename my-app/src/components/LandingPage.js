@@ -345,11 +345,15 @@ const LandingPage = () => {
 
   const handleBlur = (e) => {
     const { name, value } = e.target;
-    if (name === 'designation' && value && typeof value === 'string') {
-      // Convert to UPPER CASE.
-      const upperCaseValue = value.trim().toUpperCase();
-      if (upperCaseValue !== value) {
-        setForm(prev => ({ ...prev, designation: upperCaseValue }));
+    if (typeof value === 'string') {
+      let processedValue = value.trim();
+      // Special handling for designation to also make it uppercase
+      if (name === 'designation') {
+        processedValue = processedValue.toUpperCase();
+      }
+      // Only update state if the value has changed
+      if (processedValue !== value) {
+        setForm(prev => ({ ...prev, [name]: processedValue }));
       }
     }
     // Can add other onBlur logic here if needed in the future
@@ -868,6 +872,7 @@ const LandingPage = () => {
                           name="surname"
                           value={form.surname || ""}
                           onChange={handleChange}
+                          onBlur={handleBlur}
                           disabled={!editMode}
                           required
                           isInvalid={!!fieldErrors.surname}
@@ -890,6 +895,7 @@ const LandingPage = () => {
                           name="first_name"
                           value={form.first_name || ""}
                           onChange={handleChange}
+                          onBlur={handleBlur}
                           disabled={!editMode}
                           required
                           isInvalid={!!fieldErrors.first_name}
@@ -912,6 +918,7 @@ const LandingPage = () => {
                           name="other_names"
                           value={form.other_names || ""}
                           onChange={handleChange}
+                          onBlur={handleBlur}
                           disabled={!editMode}
                           isInvalid={!!fieldErrors.other_names}
                         />
@@ -932,18 +939,25 @@ const LandingPage = () => {
                         <Form.Label htmlFor="profile-birthdate">
                           Date of Birth
                         </Form.Label>
-                        <Form.Control
-                          id="profile-birthdate"
-                          name="birthdate"
-                          type="date"
-                          value={
-                            form.birthdate ? form.birthdate.slice(0, 10) : ""
-                          }
-                          onChange={handleChange}
-                          disabled={!editMode}
-                          required
-                          isInvalid={!!fieldErrors.birthdate}
-                        />
+                        {editMode ? (
+                          <Form.Control
+                            id="profile-birthdate"
+                            name="birthdate"
+                            type="date"
+                            value={
+                              form.birthdate ? form.birthdate.slice(0, 10) : ""
+                            }
+                            onChange={handleChange}
+                            required
+                            isInvalid={!!fieldErrors.birthdate}
+                          />
+                        ) : (
+                          <Form.Control
+                            type="text"
+                            value={form.birthdate ? formatDateDDMMYYYY(form.birthdate) : ""}
+                            disabled
+                          />
+                        )}
                         {editMode && !String(form.birthdate || "").trim() && (
                           <div className="form-text text-danger">Required.</div>
                         )}
@@ -962,6 +976,7 @@ const LandingPage = () => {
                           name="place_of_birth"
                           value={form.place_of_birth || ""}
                           onChange={handleChange}
+                          onBlur={handleBlur}
                           disabled={!editMode}
                           required
                           isInvalid={!!fieldErrors.place_of_birth}
@@ -1025,6 +1040,7 @@ const LandingPage = () => {
                           name="postal_address"
                           value={form.postal_address || ""}
                           onChange={handleChange}
+                          onBlur={handleBlur}
                           disabled={!editMode}
                           isInvalid={!!fieldErrors.postal_address}
                         />
@@ -1043,6 +1059,7 @@ const LandingPage = () => {
                           name="physical_address"
                           value={form.physical_address || ""}
                           onChange={handleChange}
+                          onBlur={handleBlur}
                           disabled={!editMode}
                           required
                           isInvalid={!!fieldErrors.physical_address}
@@ -1072,6 +1089,7 @@ const LandingPage = () => {
                           name="email"
                           value={form.email || ""}
                           onChange={handleChange}
+                          onBlur={handleBlur}
                           disabled={!editMode}
                           required
                           isInvalid={!!fieldErrors.email}
@@ -1094,6 +1112,7 @@ const LandingPage = () => {
                           name="phone_number"
                           value={form.phone_number || ""}
                           onChange={handleChange}
+                          onBlur={handleBlur}
                           disabled={!editMode}
                           required
                           isInvalid={!!fieldErrors.phone_number}
@@ -1141,6 +1160,7 @@ const LandingPage = () => {
                           name="payroll_number"
                           value={form.payroll_number || ""}
                           onChange={handleChange}
+                          onBlur={handleBlur}
                           disabled={!editMode}
                           required
                           isInvalid={!!fieldErrors.payroll_number}
