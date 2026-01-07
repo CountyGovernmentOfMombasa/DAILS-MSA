@@ -5,7 +5,7 @@ import { normalizeDeclarationType } from './normalizeDeclarationType';
 
 const ALLOWED_TYPES = ['First', 'Biennial', 'Final'];
 
-export function validateDeclarationPayload(payload) {
+export function validateDeclarationPayload(payload, opts = {}) {
   const errors = [];
   if (!payload) {
     return { valid: false, errors: ['No payload supplied'] };
@@ -22,11 +22,18 @@ export function validateDeclarationPayload(payload) {
   if (normalized === 'Biennial' && payload.declaration_date) {
     const d = new Date(payload.declaration_date);
     if (!isNaN(d.getTime())) {
-      const year = d.getFullYear();
-      const month = d.getMonth() + 1;
-      const day = d.getDate();
-      const inWindow = year >= 2025 && year % 2 === 1 && ((month === 11 && day >= 1) || (month === 12 && day <= 31));
-      if (!inWindow) errors.push('Biennial declaration only allowed Nov 1 - Dec 31 of an odd year starting 2025.');
+      const window = opts?.window;
+      if (window && window.start_date && window.end_date) {
+        const start = new Date(window.start_date);
+        const end = new Date(window.end_date);
+        if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) {
+          errors.push('Invalid configured biennial window.');
+        } else if (!(d >= start && d <= end)) {
+          errors.push('Biennial declaration only allowed within the configured window.');
+        }
+      } else {
+        errors.push('Biennial declarations are currently closed.');
+      }
     }
   }
   return { valid: errors.length === 0, errors, normalizedType: normalized };

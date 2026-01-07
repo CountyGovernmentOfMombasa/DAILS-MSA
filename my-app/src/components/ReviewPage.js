@@ -346,19 +346,7 @@ const ReviewPageInner = () => {
       if (!payload.declaration_type) {
         throw new Error('Please select a valid declaration type (First, Biennial, or Final).');
       }
-      if (payload.declaration_type === 'Biennial') {
-  const decISO = toISODate(userFinancialData?.declaration_date) || '';
-        if (decISO) {
-          const dObj = new Date(decISO);
-          const year = dObj.getFullYear();
-            const month = dObj.getMonth() + 1;
-            const day = dObj.getDate();
-            const windowOk = year >= 2025 && year % 2 === 1 && ((month === 11 && day >= 1) || (month === 12 && day <= 31));
-            if (!windowOk) {
-              throw new Error('Biennial declaration only allowed Nov 1 - Dec 31 of an odd year starting 2025.');
-            }
-        }
-      }
+      // Biennial calendar restrictions are driven by configured windows (validated elsewhere)
       
       const pruneRows = (arr=[]) => arr.filter(r => r && (String(r.description||'').trim() || String(r.value||'').trim()));
       payload.biennial_income = pruneRows(payload.biennial_income);

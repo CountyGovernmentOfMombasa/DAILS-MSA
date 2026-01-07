@@ -13,6 +13,7 @@ const DeclarationTypePage = () => {
   const [firstLocked, setFirstLocked] = useState(false);
   const [finalLocked, setFinalLocked] = useState(false);
   const [serverDate, setServerDate] = useState("");
+  const [biennialWindow, setBiennialWindow] = useState(null);
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
   const [showModal, setShowModal] = useState(false);
@@ -49,6 +50,23 @@ const DeclarationTypePage = () => {
       });
   }, []);
 
+  // Fetch active biennial window using server year when available
+  useEffect(() => {
+    const parseDDMMYYYY = (s) => {
+      if (!s || !/\d{2}\/\d{2}\/\d{4}/.test(s)) return null;
+      const [dd, mm, yyyy] = s.split("/");
+      return new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
+    };
+    const d = parseDDMMYYYY(serverDate) || new Date();
+    const year = d.getFullYear();
+    fetch(`/api/windows/biennial?year=${year}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) setBiennialWindow(data.window || null);
+      })
+      .catch(() => setBiennialWindow(null));
+  }, [serverDate]);
+
   const handleSelect = (type) => {
     if (
       (type === "biennial" && biennialLocked) ||
@@ -57,19 +75,15 @@ const DeclarationTypePage = () => {
     )
       return;
     // Pre-populate dates depending on declaration type before opening modal
-    const parseDDMMYYYY = (s) => {
-      if (!s || !/\d{2}\/\d{2}\/\d{4}/.test(s)) return new Date();
-      const [dd, mm, yyyy] = s.split("/");
-      return new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
-    };
-    const server = parseDDMMYYYY(serverDate);
     if (type === "biennial") {
-      // Biennial end date should be 31/10/<oddYear>
-      let year = server.getFullYear();
-      if (year % 2 === 0) year += 1; // ensure odd year for biennial
-      const end = `${year}-10-31`; // YYYY-MM-DD format
-      setPeriodEnd(end);
-      setPeriodStart("2023-11-01"); // Set start date to 1/11/2023 for all biennial declarations
+      // Use configured window if available; no legacy fallback
+      if (biennialWindow && biennialWindow.start_date && biennialWindow.end_date) {
+        setPeriodStart(biennialWindow.start_date);
+        setPeriodEnd(biennialWindow.end_date);
+      } else {
+        setPeriodStart("");
+        setPeriodEnd("");
+      }
     } else if (type === "final") {
       // Clear pre-filled end/start for final to let user specify leaving date
       setPeriodEnd("");
@@ -103,7 +117,7 @@ const DeclarationTypePage = () => {
       declaration_date: formattedServerDate,
       period_start_date: formattedPeriodStart,
       period_end_date: formattedPeriodEnd,
-    });
+    }, { window: biennialWindow });
     if (!valid) {
       setValidationErrors(errors);
       return; // keep modal open
@@ -210,7 +224,7 @@ const DeclarationTypePage = () => {
               }}
               style={{ borderRadius: "12px" }}
               required
-              readOnly
+              readOnly={pendingType === "biennial"}
             />
           </div>
           <div className="mb-3">
@@ -231,7 +245,7 @@ const DeclarationTypePage = () => {
               }}
               style={{ borderRadius: "12px" }}
               required
-              readOnly
+              readOnly={pendingType === "biennial"}
             />
             {validationErrors.length > 0 && (
               <div className="mt-3">
@@ -251,43 +265,34 @@ const DeclarationTypePage = () => {
             These dates will be used as the official period of your declaration.
           </span>
           {/* Contextual guidance based on declaration type */}
-          {/* Biennial Declaration Guidance hidden for now */}
+          {pendingType === "biennial" && (
+            <Alert variant={biennialWindow ? "info" : "warning"} className="mt-3">
+              <i className="fas fa-info-circle me-2"></i>
+              {biennialWindow ? (
+                <span>
+                  <strong>Biennial Window:</strong> Submissions are open from <b>{biennialWindow.start_date}</b> to <b>{biennialWindow.end_date}</b>{biennialWindow.year ? ` (Year: ${biennialWindow.year})` : ''}.
+                </span>
+              ) : (
+                <span>
+                  <strong>Closed:</strong> Biennial declarations are currently closed. The administrator may open a window at any time.
+                </span>
+              )}
+            </Alert>
+          )}
           {pendingType === "first" && (
             <Alert variant="info" className="mt-3">
               <strong>First (Initial) Declaration Guidance:</strong>
               <br />
-              Your declaration period should cover{" "}
-              <b>
-                one year prior to your date of appointment up to your date of
-                appointment
-              </b>
-              . Set the end date to your appointment date and the start date to
-              one year earlier.
+              Your declaration period should reflect your first year up to the statement date.
             </Alert>
           )}
-          {pendingType === "final" &&
-            (() => {
-              const parseDDMMYYYY = (s) => {
-                if (!s || !/\d{2}\/\d{2}\/\d{4}/.test(s)) return new Date();
-                const [dd, mm, yyyy] = s.split("/");
-                return new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
-              };
-              const server = parseDDMMYYYY(serverDate);
-              const year = server.getFullYear();
-              const previousDeclarationYear =
-                year % 2 === 0 ? year - 1 : year - 2; // last odd year cycle
-              return (
-                <Alert variant="info" className="mt-3">
-                  <strong>Final Declaration Guidance:</strong>
-                  <br />
-                  Set the start date to <b>
-                    31/10/{previousDeclarationYear}
-                  </b>{" "}
-                  (the end date of your last declaration). The end date should
-                  be your <b>last day of service</b> with the County.
-                </Alert>
-              );
-            })()}
+          {pendingType === "final" && (
+            <Alert variant="info" className="mt-3">
+              <strong>Final Declaration Guidance:</strong>
+              <br />
+              Set the start date to the end date of your last declaration. The end date should be your last day of service with the County.
+            </Alert>
+          )}
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={handleModalClose}>
@@ -367,12 +372,17 @@ const DeclarationTypePage = () => {
           </button>
         </div>
         <div>
-          <Alert variant="info" className="mb-3">
+          <Alert variant={biennialWindow ? "info" : "warning"} className="mb-3">
             <i className="fas fa-info-circle me-2"></i>
-            <strong>Note:</strong> This is the biennial declaration that must be
-            completed before 31st of December. Biennial declarations can{" "}
-            <u>only</u> be submitted between <b>November 1</b> and{" "}
-            <b>December 31</b> of an <b>odd year</b> (e.g., 2025, 2027, etc.).
+            {biennialWindow ? (
+              <span>
+                <strong>Note:</strong> Biennial declarations are currently open from <b>{biennialWindow.start_date}</b> to <b>{biennialWindow.end_date}</b>{biennialWindow.year ? ` (Year: ${biennialWindow.year})` : ''}.
+              </span>
+            ) : (
+              <span>
+                <strong>Note:</strong> Biennial declarations are currently closed. The administrator may open a window at any time.
+              </span>
+            )}
           </Alert>
         </div>
         <div className="col-md-4 mb-3">

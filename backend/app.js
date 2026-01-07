@@ -17,6 +17,7 @@ const userRoutes = require("./routes/userRoutes");
 const consentRoutes = require("./routes/consentRoutes");
 const progressRoutes = require("./routes/progressRoutes");
 const publicDepartments = require("./controllers/publicDepartmentsController");
+const { getBiennialWindowForYear } = require("./models/windowSettingsModel");
 
 const app = express();
 // Trust first proxy (needed for express-rate-limit with X-Forwarded-For)
@@ -194,6 +195,30 @@ app.get("/api/server-date", (req, res) => {
   const year = now.getFullYear();
   const formattedDate = `${day}/${month}/${year}`;
   res.json({ date: formattedDate });
+});
+
+// Public endpoint to fetch the active Biennial declaration window
+// Optional query param: year (number). If omitted, uses current server year.
+app.get("/api/windows/biennial", async (req, res) => {
+  try {
+    const now = new Date();
+    const qYear = parseInt(String(req.query.year || now.getFullYear()), 10);
+    const windowRow = await getBiennialWindowForYear(isNaN(qYear) ? now.getFullYear() : qYear);
+    if (!windowRow) {
+      return res.json({ success: true, window: null });
+    }
+    return res.json({ success: true, window: {
+      id: windowRow.id,
+      year: windowRow.year,
+      start_date: windowRow.start_date,
+      end_date: windowRow.end_date,
+      active: !!windowRow.active,
+      notes: windowRow.notes || null
+    }});
+  } catch (e) {
+    console.error("/api/windows/biennial error:", e.message);
+    return res.status(500).json({ success: false, message: "Failed to fetch biennial window" });
+  }
 });
 
 // Public (read‑only) endpoint for declaration lock statuses so regular users

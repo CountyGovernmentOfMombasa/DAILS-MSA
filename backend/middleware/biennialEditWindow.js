@@ -1,6 +1,5 @@
 // middleware/biennialEditWindow.js
-// Blocks edits to Biennial declarations outside the allowed declaration window
-// Allowed window: Nov 1 – Dec 31 of odd years, starting 2025, and matching the declaration year
+// Blocks edits to Biennial declarations outside admin-configured windows (or explicit period on record)
 
 const pool = require('../config/db');
 const { getBiennialWindowForYear, findActiveOverride } = require('../models/windowSettingsModel');
@@ -20,17 +19,7 @@ function parseIsoOrDmy(dateStr) {
   return isNaN(dt.getTime()) ? null : dt;
 }
 
-function isWithinBiennialWindow(now, declarationYear) {
-  const y = now.getFullYear();
-  const m = now.getMonth() + 1; // 1-12
-  const d = now.getDate();
-  // Must be odd year >= 2025 and same as declaration year
-  if (y < 2025 || (y % 2) === 0) return false;
-  if (y !== declarationYear) return false;
-  // Only allow between Nov 1 and Dec 31 inclusive
-  const inWindow = (m === 11 && d >= 1) || (m === 12 && d <= 31);
-  return inWindow;
-}
+// Legacy calendar checks removed – only configured windows or explicit periods apply
 
 module.exports = async function biennialEditWindow(req, res, next) {
   try {
@@ -82,21 +71,8 @@ module.exports = async function biennialEditWindow(req, res, next) {
         return next();
       }
     }
-
-    // Fallback: Legacy policy (Nov 1 – Dec 31 of declaration year, odd years >= 2025)
-    let decDate = parseIsoOrDmy(row.declaration_date) || parseIsoOrDmy(row.period_end_date) || parseIsoOrDmy(row.period_start_date);
-    if (!decDate) {
-      return res.status(400).json({ success: false, message: 'Cannot determine biennial declaration year for edit window check.' });
-    }
-    const declarationYear = decDate.getFullYear();
-    if (!isWithinBiennialWindow(now, declarationYear)) {
-      return res.status(403).json({
-        success: false,
-        message: 'Editing Biennial declarations is only allowed between Nov 1 and Dec 31 of the declaration year (odd years starting 2025).'
-      });
-    }
-
-    return next();
+    // No configured window: deny edits by default
+    return res.status(403).json({ success: false, message: 'Editing Biennial declarations is currently closed.' });
   } catch (err) {
     console.error('biennialEditWindow error:', err.message);
     return res.status(500).json({ success: false, message: 'Server error enforcing biennial edit window' });

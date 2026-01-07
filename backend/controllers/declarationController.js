@@ -1155,6 +1155,7 @@ exports.getDeclarations = async (req, res) => {
   }
 };
 const pool = require("../config/db");
+const { getBiennialWindowForYear } = require("../models/windowSettingsModel");
 exports.submitDeclaration = async (req, res) => {
   try {
     const {
@@ -1236,37 +1237,36 @@ exports.submitDeclaration = async (req, res) => {
       });
     }
 
-    // Bienniel logic: only allowed every two years, Nov 1 - Dec 31, starting 2025
+    // Biennial logic: enforce only admin-configured windows; no legacy calendar fallback
     if (normalizedType === "Biennial") {
-      // Parse date
+      // Parse declaration_date to ISO if needed
       let decDate = declaration_date;
       if (typeof decDate === "string" && decDate.includes("/")) {
-        // Convert DD/MM/YYYY to YYYY-MM-DD
         const [day, month, year] = decDate.split("/");
         decDate = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
       }
       const dateObj = new Date(decDate);
       const year = dateObj.getFullYear();
-      const month = dateObj.getMonth() + 1; // 1-based
-      const day = dateObj.getDate();
-      // Only allow odd years >= 2025
-      if (year < 2025 || year % 2 === 0) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Biennial declaration is only allowed every two years starting 2025.",
-        });
+
+      let windowRow = null;
+      try {
+        windowRow = await getBiennialWindowForYear(year);
+      } catch (_) {
+        windowRow = null;
       }
-      // Only allow between Nov 1 and Dec 31
-      const isAllowedWindow =
-        (month === 11 && day >= 1) || (month === 12 && day <= 31);
-      if (!isAllowedWindow) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Biennial declaration is only allowed between Nov 1 and Dec 31 of the allowed year.",
-        });
+
+      if (!windowRow || !windowRow.start_date || !windowRow.end_date) {
+        return res.status(403).json({ success: false, message: "Biennial declarations are currently closed." });
       }
+      const start = new Date(windowRow.start_date);
+      const end = new Date(windowRow.end_date);
+      if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) {
+        return res.status(500).json({ success: false, message: "Invalid biennial window configuration" });
+      }
+      if (!(dateObj >= start && dateObj <= end)) {
+        return res.status(403).json({ success: false, message: "Biennial declaration is only allowed within the configured window." });
+      }
+
       // Only one biennial per allowed year (account for legacy spelling in DB)
       if (
         previousDeclarations.some(
@@ -1278,8 +1278,7 @@ exports.submitDeclaration = async (req, res) => {
       ) {
         return res.status(400).json({
           success: false,
-          message:
-            "You have already submitted a Biennial declaration for this period.",
+          message: "You have already submitted a Biennial declaration for this period.",
         });
       }
     }
