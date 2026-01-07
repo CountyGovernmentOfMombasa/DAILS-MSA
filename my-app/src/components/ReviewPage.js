@@ -38,6 +38,7 @@ const ReviewPageInner = () => {
     children: initialState.children || [],
     allFinancialData: initialState.allFinancialData || []
   });
+  const [biennialWindow, setBiennialWindow] = useState(null);
 
   function getAssetDescription(item = {}) {
     const fields = [item.description, item.asset_other_type, item.make, item.model, item.licence_no, item.title_deed, item.location];
@@ -112,6 +113,26 @@ const ReviewPageInner = () => {
       })();
     }
   }, [model]);
+
+  // Fetch active biennial window based on the declaration date year (or current year)
+  useEffect(() => {
+    const parseDDMMYYYY = (s) => {
+      if (!s || !/\d{2}\/\d{2}\/\d{4}/.test(s)) return null;
+      const [dd, mm, yyyy] = s.split('/');
+      return new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
+    };
+    const decStr = (prefilled?.userData?.declaration_date) || (location.state?.declarationDate) || '';
+    const d = parseDDMMYYYY(decStr) || (decStr ? new Date(decStr) : new Date());
+    const year = isNaN(d.getTime()) ? new Date().getFullYear() : d.getFullYear();
+    (async () => {
+      try {
+        const resp = await fetch(`/api/windows/biennial?year=${year}`);
+        const data = await resp.json();
+        if (data?.success) setBiennialWindow(data.window || null);
+        else setBiennialWindow(null);
+      } catch (_) { setBiennialWindow(null); }
+    })();
+  }, [prefilled?.userData?.declaration_date, location.state]);
 
   useDebouncedPatch(
     [witnessChecked, declarationChecked, witnessName, witnessAddress, witnessPhone, isEditingExisting, model?.id],
@@ -304,7 +325,21 @@ const ReviewPageInner = () => {
         payload.declaration_type = normalizeDeclarationType(payload.declaration_type);
       }
        payload.signature_path = declarationChecked ? 1 : 0;
-       const { valid, errors, normalizedType } = validateDeclarationPayload(payload);
+       // Ensure biennial window is used for client-side validation when applicable
+       let windowOpt = biennialWindow;
+       const typeCanon = normalizeDeclarationType(payload.declaration_type);
+       if (typeCanon === 'Biennial') {
+         try {
+           const d = new Date(toISODate(payload.declaration_date));
+           const year = isNaN(d.getTime()) ? new Date().getFullYear() : d.getFullYear();
+           if (!windowOpt || !windowOpt.start_date || !windowOpt.end_date) {
+             const resp = await fetch(`/api/windows/biennial?year=${year}`);
+             const data = await resp.json();
+             windowOpt = (data?.success && data.window) ? data.window : null;
+           }
+         } catch (_) { /* ignore – validator will handle closed case */ }
+       }
+       const { valid, errors, normalizedType } = validateDeclarationPayload(payload, { window: windowOpt });
        payload.declaration_type = normalizedType;
       if (!valid) {
         throw new Error(errors.join('; '));
